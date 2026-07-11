@@ -4,10 +4,21 @@
 
 *GLIA stands for GNU Linux IA (Intelligenza Artificiale — Italian for AI).*
 
-The philosophy: live your system from the terminal, with AI as your guide.
+## Philosophy
+
+**GLIA is not a chatbot that uses your PC for you — it's a bridge that brings you to the terminal.**
+
+Most AI assistants turn the computer into a black box: you ask, something happens, you learn nothing. GLIA does the opposite. The goal is to get more people to open the terminal and actually use it, with AI sitting next to them as a guide.
+
+Every request in natural language becomes a real shell command, shown to you *before* it runs. You read it, you approve it, you run it — and little by little you learn it. The AI doesn't replace the terminal: it teaches you to master it.
+
+- **Transparency**: you always see the command, never just the result.
+- **Learning by doing**: each interaction is a small terminal lesson.
+- **Safety**: dangerous commands (rm -rf, dd, mkfs, ...) require reinforced confirmation.
+- **You stay in control**: the AI proposes, you decide.
+
 The assistant (`mypc`, name configurable at install time) turns natural-language
-requests into shell commands, with configurable approval levels: dangerous
-commands require reinforced confirmation.
+requests into shell commands, with configurable approval levels.
 
 ## Project status
 
