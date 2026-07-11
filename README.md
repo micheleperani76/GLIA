@@ -1,6 +1,8 @@
-# GLIA
+# GLIA — GNU/Linux + IA
 
 **A Linux distribution with a built-in AI terminal assistant.**
+
+*GLIA stands for GNU Linux IA (Intelligenza Artificiale — Italian for AI).*
 
 The philosophy: live your system from the terminal, with AI as your guide.
 The assistant (`my_pc`, name configurable at install time) turns natural-language
