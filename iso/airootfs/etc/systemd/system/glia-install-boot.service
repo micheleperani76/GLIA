@@ -1,0 +1,14 @@
+[Unit]
+Description=GLIA installer (selected from the boot menu)
+ConditionKernelCommandLine=glia_install
+After=multi-user.target systemd-user-sessions.service
+Conflicts=getty@tty1.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/glia-install
+TTYPath=/dev/tty1
+StandardOutput=journal
+
+[Install]
+WantedBy=multi-user.target
