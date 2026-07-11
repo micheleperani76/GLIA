@@ -1,10 +1,15 @@
 #!/usr/bin/env bash
 # ============================================================
 #  mypc - AI terminal assistant (Ollama + aichat)
-#  Version: 1.4 - 2026-07-12
+#  Version: 1.5 - 2026-07-12
 #  Author: Michele (with Claude)
 #  Project: GLIA (GNU Linux IA)
 #
+#  What's new in v1.5 ("look before acting, learn from errors"):
+#   - the model now sees the current directory and its contents,
+#     so commands fit the place you are in
+#   - if a command fails, the error is sent back to the model and
+#     a corrected command is proposed (with the usual confirmation)
 #  What's new in v1.4:
 #   - project mode built in: `mypc -p <idea>` plans a project in
 #     steps and writes its files (with confirmation), inside
@@ -197,13 +202,19 @@ t() {
         it:need_jq)         echo "La modalità progetto richiede jq:  sudo pacman -S jq" ;;
         de:need_jq)         echo "Der Projektmodus benötigt jq:  sudo pacman -S jq" ;;
         *:need_jq)          echo "Project mode requires jq:  sudo pacman -S jq" ;;
+        it:cmd_failed)      echo "Il comando è fallito" ;;
+        de:cmd_failed)      echo "Der Befehl ist fehlgeschlagen" ;;
+        *:cmd_failed)       echo "The command failed" ;;
+        it:ask_fix)         echo "Invio = chiedo all'IA una correzione | altro = esco: " ;;
+        de:ask_fix)         echo "Enter = KI um Korrektur bitten | sonst = beenden: " ;;
+        *:ask_fix)          echo "Enter = ask the AI for a fix | anything else = quit: " ;;
     esac
 }
 
 show_help() {
     case "$UILANG" in
     it) cat <<EOF
-$PROG v1.4 - assistente IA da terminale (modello: ${MODEL#ollama:})
+$PROG v1.5 - assistente IA da terminale (modello: ${MODEL#ollama:})
 
 Uso:
   $PROG <richiesta>       propone un comando shell
@@ -227,7 +238,7 @@ Se l'IA non risponde:
 EOF
         ;;
     de) cat <<EOF
-$PROG v1.4 - KI-Terminal-Assistent (Modell: ${MODEL#ollama:})
+$PROG v1.5 - KI-Terminal-Assistent (Modell: ${MODEL#ollama:})
 
 Verwendung:
   $PROG <Anfrage>         schlägt einen Shell-Befehl vor
@@ -251,7 +262,7 @@ Wenn die KI nicht antwortet:
 EOF
         ;;
     *) cat <<EOF
-$PROG v1.4 - AI terminal assistant (model: ${MODEL#ollama:})
+$PROG v1.5 - AI terminal assistant (model: ${MODEL#ollama:})
 
 Usage:
   $PROG <request>        propose a shell command
@@ -369,9 +380,11 @@ needs_extra_confirm() {
 
 AI_ERR=""
 generate_command() {
-    local errfile out
+    # "look before acting": the model sees where we are and what is here
+    local errfile out ctx
+    ctx="$CONTEXT Current directory: $PWD. It contains: $(ls -1 2>/dev/null | head -n 15 | paste -sd ', ' -)."
     errfile=$(mktemp)
-    out=$(aichat --model "$MODEL" "$CONTEXT Request: $*" < /dev/null 2>"$errfile" \
+    out=$(aichat --model "$MODEL" "$ctx Request: $*" < /dev/null 2>"$errfile" \
         | sed 's/^```[a-z]*//; s/```$//' \
         | grep -v '^\s*$' \
         | head -n 1)
@@ -380,16 +393,21 @@ generate_command() {
     echo "$out"
 }
 
+CMD_ERR=""
 run_command() {
-    local cmd="$1"
-    bash -c "$cmd"
-    local status=$?
+    # runs the command; stderr is shown live AND captured for the fix loop
+    local cmd="$1" errf status
+    errf=$(mktemp)
+    bash -c "$cmd" 2> >(tee "$errf" >&2)
+    status=$?
+    CMD_ERR=$(tail -n 5 "$errf" 2>/dev/null)
+    rm -f "$errf"
     write_log "EXECUTED (exit=$status)" "$cmd"
     return $status
 }
 
 propose_and_run() {
-    local request="$*" cmd answer
+    local original="$*" request="$*" cmd answer status fixes=0
     while true; do
         echo -e "${YELLOW}$(t thinking)${NC}" >&2
         cmd=$(generate_command "$request")
@@ -408,7 +426,7 @@ propose_and_run() {
             read -r -p "$(t ask_danger)" answer < /dev/tty \
                 || { write_log "CANCELLED (no tty)" "$cmd"; echo "$(t cancelled)"; return; }
             case "$answer" in
-                "$CONFIRM_WORD") run_command "$cmd"; return ;;
+                "$CONFIRM_WORD") : ;;
                 r|R) continue ;;
                 *)   write_log "CANCELLED" "$cmd"; echo "$(t cancelled)"; return ;;
             esac
@@ -416,11 +434,28 @@ propose_and_run() {
             read -r -p "$(t ask_normal)" answer < /dev/tty \
                 || { write_log "CANCELLED (no tty)" "$cmd"; echo "$(t cancelled)"; return; }
             case "$answer" in
-                "")  run_command "$cmd"; return ;;
+                "")  : ;;
                 r|R) continue ;;
                 *)   write_log "CANCELLED" "$cmd"; echo "$(t cancelled)"; return ;;
             esac
         fi
+
+        # ---- execute; on failure, learn from the error (max 2 fixes) ----
+        run_command "$cmd"
+        status=$?
+        [ "$status" -eq 0 ] && return 0
+        if [ "$fixes" -ge 2 ]; then
+            return "$status"
+        fi
+        echo -e "${RED}$(t cmd_failed) (exit $status).${NC}"
+        read -r -p "$(t ask_fix)" answer < /dev/tty || return "$status"
+        case "$answer" in
+            "")
+                fixes=$((fixes+1))
+                request="Original request: $original. The command '$cmd' failed with exit code $status and this error: ${CMD_ERR:-unknown}. Propose a corrected single-line bash command."
+                continue ;;
+            *)  return "$status" ;;
+        esac
     done
 }
 
