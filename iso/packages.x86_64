@@ -11,6 +11,10 @@ bolt
 brltty
 broadcom-wl
 btrfs-progs
+cachyos-calamares
+cachyos-keyring
+cachyos-mirrorlist
+cage
 clonezilla
 cloud-init
 cryptsetup
@@ -93,6 +97,7 @@ ppp
 pptpclient
 pv
 qemu-guest-agent
+qt6-wayland
 refind
 reflector
 rsync
