@@ -28,6 +28,18 @@ Implemented in mypc v1.6:
    destructive command, a second model call explains in one plain-language
    sentence (in the UI language) what the command will do.
 
+## Ideas to evaluate
+
+6. **Memory retrieval (lightweight RAG)** — only if memory outgrows the
+   prompt. Two stages:
+   - **6a (lean, no new deps):** raise the memory cap (e.g. 200 lines) and,
+     instead of injecting everything, `grep`-filter the lines sharing words
+     with the request. Lexical retrieval, GLIA-style.
+   - **6b (real RAG):** embeddings via Ollama (e.g. nomic-embed-text) +
+     local vector store. Only if 6a proves insufficient: it adds a second
+     model in RAM and new dependencies, against the lean philosophy.
+   Worth it for large notes/docs/logs, not for ~20 one-line facts.
+
 ## Done
 
 1. **mypc assistant** (v1.2) — proposes commands, safety levels (YES for
