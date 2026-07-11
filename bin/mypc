@@ -57,6 +57,7 @@ OLLAMA_URL="http://localhost:11434"
 DOCS="$(xdg-user-dir DOCUMENTS 2>/dev/null)"
 [ -z "$DOCS" ] || [ "$DOCS" = "$HOME" ] && DOCS="$HOME/Documents"
 PROJBASE="$DOCS/$PROG"
+PROJBASE_SHOW="${PROJBASE/#$HOME/\~}"   # short form for help/messages
 
 # Patterns that require extra confirmation (they don't block: they ask to type the confirm word)
 EXTRA_CONFIRM_PATTERNS=(
@@ -208,7 +209,7 @@ Uso:
   $PROG <richiesta>       propone un comando shell
                           Invio = esegui | n = annulla | r = riprova
   $PROG -p <idea>         modalità progetto: piano a step, poi crea
-                          i file (con conferma) in $PROJBASE
+                          i file (con conferma) in $PROJBASE_SHOW
   $PROG -d <domanda>      risposta testuale, nessun comando
   $PROG -l                mostra il log dei comandi
   $PROG --rename <nome>   rinomina l'assistente (es: $PROG --rename jarvis)
@@ -232,7 +233,7 @@ Verwendung:
   $PROG <Anfrage>         schlägt einen Shell-Befehl vor
                           Enter = ausführen | n = abbrechen | r = wiederholen
   $PROG -p <Idee>         Projektmodus: Plan in Schritten, erstellt
-                          Dateien (mit Bestätigung) in $PROJBASE
+                          Dateien (mit Bestätigung) in $PROJBASE_SHOW
   $PROG -d <Frage>        Textantwort, kein Befehl
   $PROG -l                Befehlsprotokoll anzeigen
   $PROG --rename <Name>   Assistenten umbenennen (z.B.: $PROG --rename jarvis)
@@ -256,7 +257,7 @@ Usage:
   $PROG <request>        propose a shell command
                          Enter = run | n = cancel | r = retry
   $PROG -p <idea>        project mode: plan in steps, then create
-                         the files (confirmed by you) in $PROJBASE
+                         the files (confirmed by you) in $PROJBASE_SHOW
   $PROG -d <question>    plain-text answer, no command
   $PROG -l               show the command log
   $PROG --rename <name>  rename the assistant (example: $PROG --rename jarvis)
