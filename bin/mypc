@@ -105,7 +105,12 @@ EXTRA_CONFIRM_PATTERNS=(
 )
 
 OS_NAME=$(. /etc/os-release 2>/dev/null && echo "${PRETTY_NAME:-Linux}")
-CONTEXT="System: ${OS_NAME:-Linux}, user: $USER. \
+# Anchor the model to the local machine: name the package manager explicitly
+PKGMGR=""
+for p in pacman apt dnf zypper apk; do
+    command -v "$p" >/dev/null 2>&1 && { PKGMGR="$p"; break; }
+done
+CONTEXT="System: ${OS_NAME:-Linux}, user: $USER.${PKGMGR:+ The package manager on THIS machine is $PKGMGR.} \
 Commands will be executed with bash. Reply ONLY with a single-line bash \
 command, no explanations, no markdown, no backticks."
 # ---------------------------------------------------
@@ -519,7 +524,7 @@ run_command() {
     # runs the command; stderr is shown live AND captured for the fix loop
     local cmd="$1" errf status
     errf=$(mktemp)
-    bash -c "$cmd" 2> >(tee "$errf" >&2)
+    bash -c "set -o pipefail; $cmd" 2> >(tee "$errf" >&2)
     status=$?
     CMD_ERR=$(tail -n 5 "$errf" 2>/dev/null)
     rm -f "$errf"
