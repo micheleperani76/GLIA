@@ -8,7 +8,7 @@ Your AI assistant is called  mypc
   mypc <request>        proposes a shell command (Enter = run)
   mypc -d <question>    plain-text answer, no command
   glia-hardware          shows the recommended AI model for this machine
-  glia-project <idea>    plans a project and writes its files (step by step)
+  mypc -p <idea>         plans a project and writes its files (step by step)
 
 The AI model is preinstalled - try right away:
 

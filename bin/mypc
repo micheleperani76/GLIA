@@ -1,20 +1,22 @@
 #!/usr/bin/env bash
 # ============================================================
 #  mypc - AI terminal assistant (Ollama + aichat)
-#  Version: 1.3 - 2026-07-12
+#  Version: 1.4 - 2026-07-12
 #  Author: Michele (with Claude)
 #  Project: GLIA (GNU Linux IA)
 #
-#  What's new in v1.3:
-#   - multi-language interface: English, Italian, German
-#     (--lang it|en|de; auto-detected from $LANG by default)
-#   - real error shown when the model call fails
-#   - RAM check before loading the model
+#  What's new in v1.4:
+#   - project mode built in: `mypc -p <idea>` plans a project in
+#     steps and writes its files (with confirmation), inside
+#     <Documents>/GLIA-Projects/ only. Replaces glia-project.
+#   - the plan is written in the interface language
+#  v1.3: multi-language UI (en/it/de), real AI errors, RAM check
 #  v1.2: model from config (~/.config/glia/model -> /etc/glia/model)
 #  v1.1: AI self-check, --rename, dynamic program name
 #
 #  Usage:
 #    mypc <request>        propose a command (Enter = run)
+#    mypc -p <idea>        project mode: plan steps, write files
 #    mypc -d <question>    plain-text answer, no command
 #    mypc -l               show the command log
 #    mypc --rename <name>  rename the assistant
@@ -23,10 +25,6 @@
 # ============================================================
 
 # ----------------- CONFIGURATION -----------------
-# Model selection (first match wins):
-#   1. ~/.config/glia/model   (per-user choice)
-#   2. /etc/glia/model        (system default, written by the installer)
-#   3. DEFAULT_MODEL below
 DEFAULT_MODEL="qwen2.5-coder:7b"
 if [ -r "$HOME/.config/glia/model" ]; then
     MODEL="ollama:$(head -n1 "$HOME/.config/glia/model")"
@@ -36,8 +34,6 @@ else
     MODEL="ollama:$DEFAULT_MODEL"
 fi
 
-# Language selection (first match wins):
-#   1. ~/.config/glia/lang    2. /etc/glia/lang    3. $LANG    4. en
 if [ -r "$HOME/.config/glia/lang" ]; then
     UILANG="$(head -n1 "$HOME/.config/glia/lang")"
 elif [ -r /etc/glia/lang ]; then
@@ -55,6 +51,11 @@ PROG="$(basename "$0")"
 LOGDIR="$HOME/.local/share/$PROG"
 LOGFILE="$LOGDIR/$PROG.log"
 OLLAMA_URL="http://localhost:11434"
+
+# Project mode: files can be written ONLY under this folder
+DOCS="$(xdg-user-dir DOCUMENTS 2>/dev/null)"
+[ -z "$DOCS" ] || [ "$DOCS" = "$HOME" ] && DOCS="$HOME/Documents"
+PROJBASE="$DOCS/GLIA-Projects"
 
 # Patterns that require extra confirmation (they don't block: they ask to type the confirm word)
 EXTRA_CONFIRM_PATTERNS=(
@@ -74,7 +75,6 @@ EXTRA_CONFIRM_PATTERNS=(
     '\bsudo\b'
 )
 
-# Context given to the model to generate correct commands
 OS_NAME=$(. /etc/os-release 2>/dev/null && echo "${PRETTY_NAME:-Linux}")
 CONTEXT="System: ${OS_NAME:-Linux}, user: $USER. \
 Commands will be executed with bash. Reply ONLY with a single-line bash \
@@ -82,107 +82,132 @@ command, no explanations, no markdown, no backticks."
 # ---------------------------------------------------
 
 # ------------------- LANGUAGE ----------------------
-RED='\033[1;31m'; GREEN='\033[1;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
+RED='\033[1;31m'; GREEN='\033[1;32m'; YELLOW='\033[1;33m'; BLUE='\033[1;34m'; NC='\033[0m'
 
 case "$UILANG" in
-    it) CONFIRM_WORD="SI" ;;
-    de) CONFIRM_WORD="JA" ;;
-    *)  CONFIRM_WORD="YES" ;;
+    it) CONFIRM_WORD="SI";  PLAN_LANG="Italian" ;;
+    de) CONFIRM_WORD="JA";  PLAN_LANG="German" ;;
+    *)  CONFIRM_WORD="YES"; PLAN_LANG="English" ;;
 esac
 
 t() {
-    # t <key> - translated string
     case "${UILANG}:${1}" in
         it:thinking)        echo "Sto pensando..." ;;
         de:thinking)        echo "Denke nach..." ;;
         *:thinking)         echo "Thinking..." ;;
-
         it:proposed)        echo "Comando proposto: " ;;
         de:proposed)        echo "Vorgeschlagener Befehl: " ;;
         *:proposed)         echo "Proposed command: " ;;
-
         it:warn)            echo "⚠ ATTENZIONE: comando potenzialmente distruttivo." ;;
         de:warn)            echo "⚠ ACHTUNG: potenziell zerstörerischer Befehl." ;;
         *:warn)             echo "⚠ WARNING: potentially destructive command." ;;
-
         it:ask_danger)      echo "Digita $CONFIRM_WORD (maiuscolo) per eseguire, r per riprovare, altro per annullare: " ;;
         de:ask_danger)      echo "Tippe $CONFIRM_WORD (Großbuchstaben) zum Ausführen, r zum Wiederholen, sonst abbrechen: " ;;
         *:ask_danger)       echo "Type $CONFIRM_WORD (uppercase) to run, r to retry, anything else to cancel: " ;;
-
         it:ask_normal)      echo "Invio = esegui | n = annulla | r = riprova: " ;;
         de:ask_normal)      echo "Enter = ausführen | n = abbrechen | r = wiederholen: " ;;
         *:ask_normal)       echo "Enter = run | n = cancel | r = retry: " ;;
-
         it:cancelled)       echo "Annullato." ;;
         de:cancelled)       echo "Abgebrochen." ;;
         *:cancelled)        echo "Cancelled." ;;
-
         it:no_command)      echo "Nessun comando generato." ;;
         de:no_command)      echo "Kein Befehl erzeugt." ;;
         *:no_command)       echo "No command generated." ;;
-
         it:model_error)     echo "Errore dal motore IA:" ;;
         de:model_error)     echo "Fehler von der KI-Engine:" ;;
         *:model_error)      echo "Error from the AI engine:" ;;
-
         it:ollama_start)    echo "Ollama non è in esecuzione, lo avvio..." ;;
         de:ollama_start)    echo "Ollama läuft nicht, starte es..." ;;
         *:ollama_start)     echo "Ollama is not running, starting it..." ;;
-
         it:ollama_fail)     echo "Ollama non parte. Controlla con: systemctl status ollama" ;;
         de:ollama_fail)     echo "Ollama startet nicht. Prüfe mit: systemctl status ollama" ;;
         *:ollama_fail)      echo "Ollama could not be started. Check with: systemctl status ollama" ;;
-
         it:model_missing)   echo "Il modello ${MODEL#ollama:} non è ancora scaricato." ;;
         de:model_missing)   echo "Das Modell ${MODEL#ollama:} ist noch nicht heruntergeladen." ;;
         *:model_missing)    echo "The model ${MODEL#ollama:} is not downloaded yet." ;;
-
         it:download_with)   echo "Scaricalo con:  ollama pull ${MODEL#ollama:}   (o esegui glia-hardware per un consiglio)" ;;
         de:download_with)   echo "Herunterladen mit:  ollama pull ${MODEL#ollama:}   (oder glia-hardware für eine Empfehlung)" ;;
         *:download_with)    echo "Download it with:  ollama pull ${MODEL#ollama:}   (or run glia-hardware for advice)" ;;
-
         it:low_ram)         echo "Poca RAM libera per questo modello: potrebbe fallire o essere lentissimo." ;;
         de:low_ram)         echo "Wenig freier RAM für dieses Modell: kann fehlschlagen oder sehr langsam sein." ;;
         *:low_ram)          echo "Low free RAM for this model: it may fail or be very slow." ;;
-
         it:no_log)          echo "Ancora nessun log ($LOGFILE)." ;;
         de:no_log)          echo "Noch kein Protokoll ($LOGFILE)." ;;
         *:no_log)           echo "No log yet ($LOGFILE)." ;;
-
         it:renamed)         echo "Fatto. Il tuo assistente ora si chiama:" ;;
         de:renamed)         echo "Fertig. Dein Assistent heißt jetzt:" ;;
         *:renamed)          echo "Done. Your assistant is now called:" ;;
-
         it:rename_invalid)  echo "Nome non valido (lettere, numeri, - o _; deve iniziare con una lettera)." ;;
         de:rename_invalid)  echo "Ungültiger Name (Buchstaben, Zahlen, - oder _; muss mit Buchstabe beginnen)." ;;
         *:rename_invalid)   echo "Invalid name (letters, digits, - or _; must start with a letter)." ;;
-
         it:rename_exists)   echo "Esiste già un comando con questo nome." ;;
         de:rename_exists)   echo "Ein Befehl mit diesem Namen existiert bereits." ;;
         *:rename_exists)    echo "A command with that name already exists." ;;
-
         it:rename_denied)   echo "Permesso negato. Prova con: sudo $PROG --rename" ;;
         de:rename_denied)   echo "Zugriff verweigert. Versuche: sudo $PROG --rename" ;;
         *:rename_denied)    echo "Permission denied. Try: sudo $PROG --rename" ;;
-
         it:lang_set)        echo "Lingua impostata: " ;;
         de:lang_set)        echo "Sprache eingestellt: " ;;
         *:lang_set)         echo "Language set: " ;;
-
         it:lang_usage)      echo "Uso: $PROG --lang it|en|de" ;;
         de:lang_usage)      echo "Verwendung: $PROG --lang it|en|de" ;;
         *:lang_usage)       echo "Usage: $PROG --lang it|en|de" ;;
+        # ---- project mode ----
+        it:planning)        echo "Preparo il piano del progetto..." ;;
+        de:planning)        echo "Erstelle den Projektplan..." ;;
+        *:planning)         echo "Preparing the project plan..." ;;
+        it:plan)            echo "PIANO DEL PROGETTO" ;;
+        de:plan)            echo "PROJEKTPLAN" ;;
+        *:plan)             echo "PROJECT PLAN" ;;
+        it:steps)           echo "Passi:" ;;
+        de:steps)           echo "Schritte:" ;;
+        *:steps)            echo "Steps:" ;;
+        it:files)           echo "File da creare:" ;;
+        de:files)           echo "Zu erstellende Dateien:" ;;
+        *:files)            echo "Files to create:" ;;
+        it:go)              echo "Invio = procedi | n = annulla: " ;;
+        de:go)              echo "Enter = weiter | n = abbrechen: " ;;
+        *:go)               echo "Enter = proceed | n = cancel: " ;;
+        it:writing)         echo "Genero il file" ;;
+        de:writing)         echo "Erzeuge Datei" ;;
+        *:writing)          echo "Generating file" ;;
+        it:preview)         echo "Anteprima (prime 20 righe):" ;;
+        de:preview)         echo "Vorschau (erste 20 Zeilen):" ;;
+        *:preview)          echo "Preview (first 20 lines):" ;;
+        it:save)            echo "Invio = salva | v = vedi tutto | r = rigenera | s = salta: " ;;
+        de:save)            echo "Enter = speichern | v = alles zeigen | r = neu | s = überspringen: " ;;
+        *:save)             echo "Enter = save | v = view all | r = regenerate | s = skip: " ;;
+        it:saved)           echo "Salvato:" ;;
+        de:saved)           echo "Gespeichert:" ;;
+        *:saved)            echo "Saved:" ;;
+        it:skipped)         echo "Saltato." ;;
+        de:skipped)         echo "Übersprungen." ;;
+        *:skipped)          echo "Skipped." ;;
+        it:proj_done)       echo "Progetto creato in:" ;;
+        de:proj_done)       echo "Projekt erstellt in:" ;;
+        *:proj_done)        echo "Project created in:" ;;
+        it:plan_fail)       echo "Il modello non ha prodotto un piano valido. Riprova (elenca esplicitamente i file che vuoi)." ;;
+        de:plan_fail)       echo "Das Modell hat keinen gültigen Plan erzeugt. Versuche es erneut (liste die Dateien explizit auf)." ;;
+        *:plan_fail)        echo "The model did not produce a valid plan. Try again (list the files you want explicitly)." ;;
+        it:badpath)         echo "Percorso file non sicuro, saltato:" ;;
+        de:badpath)         echo "Unsicherer Dateipfad, übersprungen:" ;;
+        *:badpath)          echo "Unsafe file path, skipped:" ;;
+        it:need_jq)         echo "La modalità progetto richiede jq:  sudo pacman -S jq" ;;
+        de:need_jq)         echo "Der Projektmodus benötigt jq:  sudo pacman -S jq" ;;
+        *:need_jq)          echo "Project mode requires jq:  sudo pacman -S jq" ;;
     esac
 }
 
 show_help() {
     case "$UILANG" in
     it) cat <<EOF
-$PROG v1.3 - assistente IA da terminale (modello: ${MODEL#ollama:})
+$PROG v1.4 - assistente IA da terminale (modello: ${MODEL#ollama:})
 
 Uso:
   $PROG <richiesta>       propone un comando shell
                           Invio = esegui | n = annulla | r = riprova
+  $PROG -p <idea>         modalità progetto: piano a step, poi crea
+                          i file (con conferma) in $PROJBASE
   $PROG -d <domanda>      risposta testuale, nessun comando
   $PROG -l                mostra il log dei comandi
   $PROG --rename <nome>   rinomina l'assistente (es: $PROG --rename jarvis)
@@ -190,6 +215,7 @@ Uso:
   $PROG -h                questo aiuto
 
 I comandi potenzialmente distruttivi richiedono di digitare $CONFIRM_WORD.
+Consiglio per -p: elenca esplicitamente i file che vuoi nel progetto.
 Log: $LOGFILE
 
 Se l'IA non risponde:
@@ -199,11 +225,13 @@ Se l'IA non risponde:
 EOF
         ;;
     de) cat <<EOF
-$PROG v1.3 - KI-Terminal-Assistent (Modell: ${MODEL#ollama:})
+$PROG v1.4 - KI-Terminal-Assistent (Modell: ${MODEL#ollama:})
 
 Verwendung:
   $PROG <Anfrage>         schlägt einen Shell-Befehl vor
                           Enter = ausführen | n = abbrechen | r = wiederholen
+  $PROG -p <Idee>         Projektmodus: Plan in Schritten, erstellt
+                          Dateien (mit Bestätigung) in $PROJBASE
   $PROG -d <Frage>        Textantwort, kein Befehl
   $PROG -l                Befehlsprotokoll anzeigen
   $PROG --rename <Name>   Assistenten umbenennen (z.B.: $PROG --rename jarvis)
@@ -211,6 +239,7 @@ Verwendung:
   $PROG -h                diese Hilfe
 
 Potenziell zerstörerische Befehle erfordern die Eingabe von $CONFIRM_WORD.
+Tipp für -p: liste die gewünschten Dateien explizit auf.
 Protokoll: $LOGFILE
 
 Wenn die KI nicht antwortet:
@@ -220,11 +249,13 @@ Wenn die KI nicht antwortet:
 EOF
         ;;
     *) cat <<EOF
-$PROG v1.3 - AI terminal assistant (model: ${MODEL#ollama:})
+$PROG v1.4 - AI terminal assistant (model: ${MODEL#ollama:})
 
 Usage:
   $PROG <request>        propose a shell command
                          Enter = run | n = cancel | r = retry
+  $PROG -p <idea>        project mode: plan in steps, then create
+                         the files (confirmed by you) in $PROJBASE
   $PROG -d <question>    plain-text answer, no command
   $PROG -l               show the command log
   $PROG --rename <name>  rename the assistant (example: $PROG --rename jarvis)
@@ -232,6 +263,7 @@ Usage:
   $PROG -h               this help
 
 Potentially destructive commands require typing $CONFIRM_WORD.
+Tip for -p: list the files you want explicitly.
 Log: $LOGFILE
 
 If the AI does not answer:
@@ -250,7 +282,6 @@ write_log() {
 }
 
 ram_needed_mb() {
-    # rough estimate of free RAM needed by the configured model
     case "${MODEL}" in
         *32b*|*30b*) echo 22000 ;;
         *14b*)       echo 11000 ;;
@@ -260,7 +291,6 @@ ram_needed_mb() {
 }
 
 check_ai() {
-    # 1. Ollama running?
     if ! curl -fsS --max-time 2 "$OLLAMA_URL/api/tags" >/dev/null 2>&1; then
         echo -e "${YELLOW}$(t ollama_start)${NC}" >&2
         systemctl start ollama 2>/dev/null || sudo systemctl start ollama 2>/dev/null
@@ -274,13 +304,11 @@ check_ai() {
         echo -e "${RED}$(t ollama_fail)${NC}" >&2
         exit 1
     fi
-    # 2. model downloaded?
     if ! curl -fsS --max-time 5 "$OLLAMA_URL/api/tags" 2>/dev/null | grep -q "\"${MODEL#ollama:}\""; then
         echo -e "${YELLOW}$(t model_missing)${NC}" >&2
         echo -e "$(t download_with)" >&2
         exit 1
     fi
-    # 3. enough free RAM? (warning only)
     local avail need
     avail=$(awk '/MemAvailable/ {print int($2/1024)}' /proc/meminfo)
     need=$(ram_needed_mb)
@@ -339,7 +367,6 @@ needs_extra_confirm() {
 
 AI_ERR=""
 generate_command() {
-    # asks the model for a command; real errors go to AI_ERR
     local errfile out
     errfile=$(mktemp)
     out=$(aichat --model "$MODEL" "$CONTEXT Request: $*" < /dev/null 2>"$errfile" \
@@ -395,10 +422,120 @@ propose_and_run() {
     done
 }
 
+# ---------------- PROJECT MODE ----------------------
+MSGS='[]'
+add_msg() {
+    MSGS=$(jq -c --arg r "$1" --arg c "$2" '. + [{"role":$r,"content":$c}]' <<< "$MSGS")
+}
+
+chat() {
+    # $1 = "json" to force JSON output. Prints the reply, appends it to MSGS.
+    local body reply
+    body="{\"model\":\"${MODEL#ollama:}\",\"messages\":$MSGS,\"stream\":false"
+    [ "$1" = "json" ] && body="$body,\"format\":\"json\""
+    body="$body}"
+    reply=$(curl -fsS --max-time 600 "$OLLAMA_URL/api/chat" -d "$body" 2>/dev/null | jq -r '.message.content // empty')
+    [ -z "$reply" ] && return 1
+    add_msg assistant "$reply"
+    printf '%s' "$reply"
+}
+
+safe_relpath() {
+    case "$1" in
+        ""|/*|*..*|*'~'*|*'$'*) return 1 ;;
+        *) return 0 ;;
+    esac
+}
+
+strip_fences() {
+    sed 's/^```[a-zA-Z]*$//; s/^```$//' | sed '/./,$!d'
+}
+
+project_mode() {
+    local REQUEST="$*"
+    command -v jq >/dev/null || { echo "$(t need_jq)" >&2; exit 1; }
+    check_ai
+
+    echo -e "${YELLOW}$(t planning)${NC}"
+    add_msg system "You are the GLIA project agent. You plan small software or document projects and then write their files. Always reply in the exact format requested. Keep projects small and practical."
+    add_msg user "Project request: ${REQUEST}. Reply ONLY with JSON in this exact shape: {\"project_name\":\"short-kebab-case-name\",\"steps\":[\"step 1\",\"step 2\"],\"files\":[{\"path\":\"relative/path.ext\",\"description\":\"what this file contains\"}]}. Between 1 and 8 files. Write the steps and descriptions in ${PLAN_LANG}. No other text."
+
+    local PLAN NAME NFILES
+    PLAN=$(chat json) || { echo -e "${RED}$(t plan_fail)${NC}"; exit 1; }
+    NAME=$(jq -r '.project_name // empty' <<< "$PLAN" 2>/dev/null | tr -cd 'a-zA-Z0-9_-' | cut -c1-40)
+    NFILES=$(jq -r '.files | length' <<< "$PLAN" 2>/dev/null)
+    if [ -z "$NAME" ] || [ -z "$NFILES" ] || [ "$NFILES" = "0" ]; then
+        echo -e "${RED}$(t plan_fail)${NC}"; exit 1
+    fi
+
+    echo
+    echo -e "${BLUE}=== $(t plan): $NAME ===${NC}"
+    echo -e "${YELLOW}$(t steps)${NC}"
+    jq -r '.steps[]' <<< "$PLAN" | nl -w2 -s'. '
+    echo -e "${YELLOW}$(t files)${NC}"
+    jq -r '.files[] | "  \(.path)  -  \(.description)"' <<< "$PLAN"
+    echo
+    local A
+    read -r -p "$(t go)" A < /dev/tty || exit 1
+    case "$A" in n|N) echo "$(t cancelled)"; exit 0 ;; esac
+
+    local PROJDIR="$PROJBASE/$NAME"
+    mkdir -p "$PROJDIR"
+    write_log "PROJECT START" "$NAME | $REQUEST"
+
+    local i=0 FPATH FDESC CONTENT LINES
+    while [ "$i" -lt "$NFILES" ]; do
+        FPATH=$(jq -r ".files[$i].path" <<< "$PLAN")
+        FDESC=$(jq -r ".files[$i].description" <<< "$PLAN")
+        i=$((i+1))
+        if ! safe_relpath "$FPATH"; then
+            echo -e "${RED}$(t badpath) $FPATH${NC}"
+            write_log "SKIPPED (unsafe path)" "$NAME/$FPATH"
+            continue
+        fi
+        while true; do
+            echo
+            echo -e "${YELLOW}$(t writing) [$i/$NFILES]: ${NC}${GREEN}$FPATH${NC}"
+            add_msg user "Now write the COMPLETE content of the file '$FPATH' ($FDESC) for the project above. Reply ONLY with the raw file content. No explanations, no markdown fences."
+            CONTENT=$(chat) || { echo -e "${RED}$(t plan_fail)${NC}"; break; }
+            CONTENT=$(strip_fences <<< "$CONTENT")
+            echo -e "${BLUE}$(t preview)${NC}"
+            head -n 20 <<< "$CONTENT"
+            LINES=$(wc -l <<< "$CONTENT")
+            echo -e "${BLUE}--- ($LINES lines) ---${NC}"
+            read -r -p "$(t save)" A < /dev/tty || A="s"
+            if [ "$A" = "v" ] || [ "$A" = "V" ]; then
+                echo "$CONTENT" | less
+                read -r -p "$(t save)" A < /dev/tty || A="s"
+            fi
+            case "$A" in
+                "")
+                    mkdir -p "$PROJDIR/$(dirname "$FPATH")"
+                    printf '%s\n' "$CONTENT" > "$PROJDIR/$FPATH"
+                    echo -e "${GREEN}$(t saved) $PROJDIR/$FPATH${NC}"
+                    write_log "SAVED" "$NAME/$FPATH ($LINES lines)"
+                    break ;;
+                r|R) continue ;;
+                *)  echo "$(t skipped)"; write_log "SKIPPED" "$NAME/$FPATH"; break ;;
+            esac
+        done
+    done
+
+    echo
+    echo -e "${GREEN}$(t proj_done) $PROJDIR${NC}"
+    find "$PROJDIR" -type f | sed "s|$PROJDIR/|  |"
+    write_log "PROJECT END" "$NAME"
+}
+
 # --------------------- MAIN ------------------------
 case "$1" in
     -h|--help|"")
         show_help
+        ;;
+    -p|--project)
+        shift
+        [ -z "$*" ] && { show_help; exit 1; }
+        project_mode "$@"
         ;;
     --rename)
         shift
