@@ -1,0 +1,18 @@
+
+========================================================
+  GLIA Live — Linux with a built-in AI terminal assistant
+========================================================
+
+Your AI assistant is called  my_pc
+
+  my_pc <request>        proposes a shell command (Enter = run)
+  my_pc -d <question>    plain-text answer, no command
+  glia-hardware          shows the recommended AI model for this machine
+
+First step (needs network):
+
+  ollama pull qwen3:4b   # or the model suggested by glia-hardware
+
+Dangerous commands always require typing YES.
+Project: https://github.com/micheleperani76/GLIA
+
