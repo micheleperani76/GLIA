@@ -15,8 +15,8 @@ commands require reinforced confirmation.
 |---|---|
 | 1. `mypc` assistant with safety levels | ✅ working |
 | 2. Hardware detection → model recommendation | ✅ `glia-hardware` v1.0 |
-| 3. Live ISO (archiso) with AI preinstalled | 🔜 next step |
-| 4. Calamares installer with AI setup step | ⏳ |
+| 3. Live ISO (archiso) with AI preinstalled | ✅ 5.8 GB ISO, model embedded, tested in QEMU |
+| 4. Calamares installer with AI setup step | 🔜 next step |
 | 5. Btrfs snapshots, branding, polish | ⏳ |
 
 ## Components
