@@ -421,7 +421,7 @@ set_language() {
 memory_context() {
     # prints the stored facts as one prompt line; nothing if memory is empty
     [ -s "$MEMFILE" ] || return 0
-    printf 'Known facts about the user (from memory): %s. ' \
+    printf 'Known facts about the user (background only, use them ONLY when the request refers to them; otherwise act on the local machine): %s. ' \
         "$(paste -sd ';' "$MEMFILE" | sed 's/;/; /g')"
 }
 
