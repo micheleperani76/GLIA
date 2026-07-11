@@ -1,0 +1,31 @@
+# GLIA branding for Calamares
+---
+componentName: glia
+
+welcomeStyleCalamares: false
+welcomeExpandingLogo: true
+
+strings:
+  productName: "GLIA"
+  shortProductName: "GLIA"
+  version: "2026.07"
+  shortVersion: "2026.07"
+  versionedName: "GLIA 2026.07"
+  shortVersionedName: "GLIA 2026.07"
+  bootloaderEntryName: "GLIA"
+  productUrl: "https://github.com/micheleperani76/GLIA"
+  supportUrl: "https://github.com/micheleperani76/GLIA/issues"
+
+images:
+  productLogo: "logo.png"
+  productIcon: "logo.png"
+  productWelcome: "logo.png"
+
+slideshow: "show.qml"
+slideshowAPI: 2
+
+style:
+  SidebarBackground: "#1a1c2c"
+  SidebarText: "#ffffff"
+  SidebarTextCurrent: "#4fd1c5"
+  SidebarBackgroundCurrent: "#2a2d44"

@@ -17,6 +17,7 @@ bootstrap_tarball_compression=('zstd' '-c' '-T0' '--auto-threads=logical' '--lon
 file_permissions=(
   ["/usr/local/bin/mypc"]="0:0:755"
   ["/usr/local/bin/glia-install"]="0:0:755"
+  ["/usr/local/bin/glia-firstboot"]="0:0:755"
   ["/usr/local/bin/glia-hardware"]="0:0:755"
   ["/etc/shadow"]="0:0:400"
   ["/root"]="0:0:750"
