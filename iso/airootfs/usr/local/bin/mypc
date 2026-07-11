@@ -1,24 +1,24 @@
 #!/usr/bin/env bash
 # ============================================================
 #  mypc - AI terminal assistant (Ollama + aichat)
-#  Version: 1.2 - 2026-07-11
+#  Version: 1.3 - 2026-07-12
 #  Author: Michele (with Claude)
 #  Project: GLIA (GNU Linux IA)
 #
-#  What's new in v1.2:
-#   - model read from config: ~/.config/glia/model, then /etc/glia/model
-#     (written by the installer), then built-in default
-#  What's new in v1.1:
-#   - startup self-check: starts Ollama if stopped, tells you
-#     exactly what to do if the model is missing
-#   - --rename <name>: rename the assistant to whatever you want
-#   - help and messages use the current command name
+#  What's new in v1.3:
+#   - multi-language interface: English, Italian, German
+#     (--lang it|en|de; auto-detected from $LANG by default)
+#   - real error shown when the model call fails
+#   - RAM check before loading the model
+#  v1.2: model from config (~/.config/glia/model -> /etc/glia/model)
+#  v1.1: AI self-check, --rename, dynamic program name
 #
 #  Usage:
 #    mypc <request>        propose a command (Enter = run)
 #    mypc -d <question>    plain-text answer, no command
 #    mypc -l               show the command log
 #    mypc --rename <name>  rename the assistant
+#    mypc --lang <code>    set interface language (en, it, de)
 #    mypc -h               this help
 # ============================================================
 
@@ -35,13 +35,28 @@ elif [ -r /etc/glia/model ]; then
 else
     MODEL="ollama:$DEFAULT_MODEL"
 fi
+
+# Language selection (first match wins):
+#   1. ~/.config/glia/lang    2. /etc/glia/lang    3. $LANG    4. en
+if [ -r "$HOME/.config/glia/lang" ]; then
+    UILANG="$(head -n1 "$HOME/.config/glia/lang")"
+elif [ -r /etc/glia/lang ]; then
+    UILANG="$(head -n1 /etc/glia/lang)"
+else
+    case "${LANG:-en}" in
+        it*) UILANG="it" ;;
+        de*) UILANG="de" ;;
+        *)   UILANG="en" ;;
+    esac
+fi
+case "$UILANG" in it|de|en) : ;; *) UILANG="en" ;; esac
+
 PROG="$(basename "$0")"
 LOGDIR="$HOME/.local/share/$PROG"
 LOGFILE="$LOGDIR/$PROG.log"
 OLLAMA_URL="http://localhost:11434"
 
-# Patterns that require extra confirmation (they don't block: they ask to type YES)
-# Extended regexes, one per line: add/remove freely
+# Patterns that require extra confirmation (they don't block: they ask to type the confirm word)
 EXTRA_CONFIRM_PATTERNS=(
     'rm .*-[a-zA-Z]*[rf]'
     '\bdd\b'
@@ -60,20 +75,152 @@ EXTRA_CONFIRM_PATTERNS=(
 )
 
 # Context given to the model to generate correct commands
-# (OS name and user are detected at runtime, so the same script works
-#  on the installed system and on the GLIA live ISO)
 OS_NAME=$(. /etc/os-release 2>/dev/null && echo "${PRETTY_NAME:-Linux}")
 CONTEXT="System: ${OS_NAME:-Linux}, user: $USER. \
 Commands will be executed with bash. Reply ONLY with a single-line bash \
 command, no explanations, no markdown, no backticks."
 # ---------------------------------------------------
 
-# ------------------- FUNCTIONS ----------------------
+# ------------------- LANGUAGE ----------------------
 RED='\033[1;31m'; GREEN='\033[1;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
 
+case "$UILANG" in
+    it) CONFIRM_WORD="SI" ;;
+    de) CONFIRM_WORD="JA" ;;
+    *)  CONFIRM_WORD="YES" ;;
+esac
+
+t() {
+    # t <key> - translated string
+    case "${UILANG}:${1}" in
+        it:thinking)        echo "Sto pensando..." ;;
+        de:thinking)        echo "Denke nach..." ;;
+        *:thinking)         echo "Thinking..." ;;
+
+        it:proposed)        echo "Comando proposto: " ;;
+        de:proposed)        echo "Vorgeschlagener Befehl: " ;;
+        *:proposed)         echo "Proposed command: " ;;
+
+        it:warn)            echo "⚠ ATTENZIONE: comando potenzialmente distruttivo." ;;
+        de:warn)            echo "⚠ ACHTUNG: potenziell zerstörerischer Befehl." ;;
+        *:warn)             echo "⚠ WARNING: potentially destructive command." ;;
+
+        it:ask_danger)      echo "Digita $CONFIRM_WORD (maiuscolo) per eseguire, r per riprovare, altro per annullare: " ;;
+        de:ask_danger)      echo "Tippe $CONFIRM_WORD (Großbuchstaben) zum Ausführen, r zum Wiederholen, sonst abbrechen: " ;;
+        *:ask_danger)       echo "Type $CONFIRM_WORD (uppercase) to run, r to retry, anything else to cancel: " ;;
+
+        it:ask_normal)      echo "Invio = esegui | n = annulla | r = riprova: " ;;
+        de:ask_normal)      echo "Enter = ausführen | n = abbrechen | r = wiederholen: " ;;
+        *:ask_normal)       echo "Enter = run | n = cancel | r = retry: " ;;
+
+        it:cancelled)       echo "Annullato." ;;
+        de:cancelled)       echo "Abgebrochen." ;;
+        *:cancelled)        echo "Cancelled." ;;
+
+        it:no_command)      echo "Nessun comando generato." ;;
+        de:no_command)      echo "Kein Befehl erzeugt." ;;
+        *:no_command)       echo "No command generated." ;;
+
+        it:model_error)     echo "Errore dal motore IA:" ;;
+        de:model_error)     echo "Fehler von der KI-Engine:" ;;
+        *:model_error)      echo "Error from the AI engine:" ;;
+
+        it:ollama_start)    echo "Ollama non è in esecuzione, lo avvio..." ;;
+        de:ollama_start)    echo "Ollama läuft nicht, starte es..." ;;
+        *:ollama_start)     echo "Ollama is not running, starting it..." ;;
+
+        it:ollama_fail)     echo "Ollama non parte. Controlla con: systemctl status ollama" ;;
+        de:ollama_fail)     echo "Ollama startet nicht. Prüfe mit: systemctl status ollama" ;;
+        *:ollama_fail)      echo "Ollama could not be started. Check with: systemctl status ollama" ;;
+
+        it:model_missing)   echo "Il modello ${MODEL#ollama:} non è ancora scaricato." ;;
+        de:model_missing)   echo "Das Modell ${MODEL#ollama:} ist noch nicht heruntergeladen." ;;
+        *:model_missing)    echo "The model ${MODEL#ollama:} is not downloaded yet." ;;
+
+        it:download_with)   echo "Scaricalo con:  ollama pull ${MODEL#ollama:}   (o esegui glia-hardware per un consiglio)" ;;
+        de:download_with)   echo "Herunterladen mit:  ollama pull ${MODEL#ollama:}   (oder glia-hardware für eine Empfehlung)" ;;
+        *:download_with)    echo "Download it with:  ollama pull ${MODEL#ollama:}   (or run glia-hardware for advice)" ;;
+
+        it:low_ram)         echo "Poca RAM libera per questo modello: potrebbe fallire o essere lentissimo." ;;
+        de:low_ram)         echo "Wenig freier RAM für dieses Modell: kann fehlschlagen oder sehr langsam sein." ;;
+        *:low_ram)          echo "Low free RAM for this model: it may fail or be very slow." ;;
+
+        it:no_log)          echo "Ancora nessun log ($LOGFILE)." ;;
+        de:no_log)          echo "Noch kein Protokoll ($LOGFILE)." ;;
+        *:no_log)           echo "No log yet ($LOGFILE)." ;;
+
+        it:renamed)         echo "Fatto. Il tuo assistente ora si chiama:" ;;
+        de:renamed)         echo "Fertig. Dein Assistent heißt jetzt:" ;;
+        *:renamed)          echo "Done. Your assistant is now called:" ;;
+
+        it:rename_invalid)  echo "Nome non valido (lettere, numeri, - o _; deve iniziare con una lettera)." ;;
+        de:rename_invalid)  echo "Ungültiger Name (Buchstaben, Zahlen, - oder _; muss mit Buchstabe beginnen)." ;;
+        *:rename_invalid)   echo "Invalid name (letters, digits, - or _; must start with a letter)." ;;
+
+        it:rename_exists)   echo "Esiste già un comando con questo nome." ;;
+        de:rename_exists)   echo "Ein Befehl mit diesem Namen existiert bereits." ;;
+        *:rename_exists)    echo "A command with that name already exists." ;;
+
+        it:rename_denied)   echo "Permesso negato. Prova con: sudo $PROG --rename" ;;
+        de:rename_denied)   echo "Zugriff verweigert. Versuche: sudo $PROG --rename" ;;
+        *:rename_denied)    echo "Permission denied. Try: sudo $PROG --rename" ;;
+
+        it:lang_set)        echo "Lingua impostata: " ;;
+        de:lang_set)        echo "Sprache eingestellt: " ;;
+        *:lang_set)         echo "Language set: " ;;
+
+        it:lang_usage)      echo "Uso: $PROG --lang it|en|de" ;;
+        de:lang_usage)      echo "Verwendung: $PROG --lang it|en|de" ;;
+        *:lang_usage)       echo "Usage: $PROG --lang it|en|de" ;;
+    esac
+}
+
 show_help() {
-    cat <<EOF
-$PROG v1.2 - AI terminal assistant (model: ${MODEL#ollama:})
+    case "$UILANG" in
+    it) cat <<EOF
+$PROG v1.3 - assistente IA da terminale (modello: ${MODEL#ollama:})
+
+Uso:
+  $PROG <richiesta>       propone un comando shell
+                          Invio = esegui | n = annulla | r = riprova
+  $PROG -d <domanda>      risposta testuale, nessun comando
+  $PROG -l                mostra il log dei comandi
+  $PROG --rename <nome>   rinomina l'assistente (es: $PROG --rename jarvis)
+  $PROG --lang <codice>   lingua dell'interfaccia: en, it, de
+  $PROG -h                questo aiuto
+
+I comandi potenzialmente distruttivi richiedono di digitare $CONFIRM_WORD.
+Log: $LOGFILE
+
+Se l'IA non risponde:
+  systemctl start ollama          avvia il motore IA
+  ollama pull ${MODEL#ollama:}    scarica il modello
+  glia-hardware                   modello consigliato per questa macchina
+EOF
+        ;;
+    de) cat <<EOF
+$PROG v1.3 - KI-Terminal-Assistent (Modell: ${MODEL#ollama:})
+
+Verwendung:
+  $PROG <Anfrage>         schlägt einen Shell-Befehl vor
+                          Enter = ausführen | n = abbrechen | r = wiederholen
+  $PROG -d <Frage>        Textantwort, kein Befehl
+  $PROG -l                Befehlsprotokoll anzeigen
+  $PROG --rename <Name>   Assistenten umbenennen (z.B.: $PROG --rename jarvis)
+  $PROG --lang <Code>     Sprache der Oberfläche: en, it, de
+  $PROG -h                diese Hilfe
+
+Potenziell zerstörerische Befehle erfordern die Eingabe von $CONFIRM_WORD.
+Protokoll: $LOGFILE
+
+Wenn die KI nicht antwortet:
+  systemctl start ollama          KI-Engine starten
+  ollama pull ${MODEL#ollama:}    Modell herunterladen
+  glia-hardware                   empfohlenes Modell für diesen Rechner
+EOF
+        ;;
+    *) cat <<EOF
+$PROG v1.3 - AI terminal assistant (model: ${MODEL#ollama:})
 
 Usage:
   $PROG <request>        propose a shell command
@@ -81,9 +228,10 @@ Usage:
   $PROG -d <question>    plain-text answer, no command
   $PROG -l               show the command log
   $PROG --rename <name>  rename the assistant (example: $PROG --rename jarvis)
+  $PROG --lang <code>    interface language: en, it, de
   $PROG -h               this help
 
-Potentially destructive commands require typing YES.
+Potentially destructive commands require typing $CONFIRM_WORD.
 Log: $LOGFILE
 
 If the AI does not answer:
@@ -91,18 +239,30 @@ If the AI does not answer:
   ollama pull ${MODEL#ollama:}    download the model
   glia-hardware                   see which model fits this machine
 EOF
+        ;;
+    esac
 }
 
+# ------------------- FUNCTIONS ----------------------
 write_log() {
-    # $1 = status, $2 = command
     mkdir -p "$LOGDIR"
     printf '%s | %s | %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$1" "$2" >> "$LOGFILE"
 }
 
+ram_needed_mb() {
+    # rough estimate of free RAM needed by the configured model
+    case "${MODEL}" in
+        *32b*|*30b*) echo 22000 ;;
+        *14b*)       echo 11000 ;;
+        *7b*|*8b*)   echo 6000 ;;
+        *)           echo 4000 ;;
+    esac
+}
+
 check_ai() {
-    # make sure Ollama is running and the model is downloaded
+    # 1. Ollama running?
     if ! curl -fsS --max-time 2 "$OLLAMA_URL/api/tags" >/dev/null 2>&1; then
-        echo -e "${YELLOW}Ollama is not running, starting it...${NC}" >&2
+        echo -e "${YELLOW}$(t ollama_start)${NC}" >&2
         systemctl start ollama 2>/dev/null || sudo systemctl start ollama 2>/dev/null
         local i
         for i in 1 2 3 4 5; do
@@ -111,15 +271,21 @@ check_ai() {
         done
     fi
     if ! curl -fsS --max-time 2 "$OLLAMA_URL/api/tags" >/dev/null 2>&1; then
-        echo -e "${RED}Ollama is not running and could not be started.${NC}" >&2
-        echo -e "Check it with:  systemctl status ollama" >&2
+        echo -e "${RED}$(t ollama_fail)${NC}" >&2
         exit 1
     fi
+    # 2. model downloaded?
     if ! curl -fsS --max-time 5 "$OLLAMA_URL/api/tags" 2>/dev/null | grep -q "\"${MODEL#ollama:}\""; then
-        echo -e "${YELLOW}The model ${MODEL#ollama:} is not downloaded yet.${NC}" >&2
-        echo -e "Download it with:  ${GREEN}ollama pull ${MODEL#ollama:}${NC}" >&2
-        echo -e "(or run glia-hardware to see which model fits this machine)" >&2
+        echo -e "${YELLOW}$(t model_missing)${NC}" >&2
+        echo -e "$(t download_with)" >&2
         exit 1
+    fi
+    # 3. enough free RAM? (warning only)
+    local avail need
+    avail=$(awk '/MemAvailable/ {print int($2/1024)}' /proc/meminfo)
+    need=$(ram_needed_mb)
+    if [ -n "$avail" ] && [ "$avail" -lt "$need" ]; then
+        echo -e "${YELLOW}$(t low_ram) (${avail} MB / ~${need} MB)${NC}" >&2
     fi
 }
 
@@ -129,26 +295,39 @@ rename_assistant() {
         echo "Usage: $PROG --rename <newname>" >&2; exit 1
     fi
     if ! grep -qE '^[a-zA-Z][a-zA-Z0-9_-]*$' <<< "$newname"; then
-        echo "Invalid name '$newname' (use letters, numbers, - or _; must start with a letter)." >&2
-        exit 1
+        echo "$(t rename_invalid)" >&2; exit 1
     fi
     self="$(realpath "$0")"
     dest="$(dirname "$self")/$newname"
     if [ -e "$dest" ]; then
-        echo "A command named '$newname' already exists in $(dirname "$self")." >&2
-        exit 1
+        echo "$(t rename_exists)" >&2; exit 1
     fi
     if mv "$self" "$dest" 2>/dev/null; then
-        echo -e "${GREEN}Done. Your assistant is now called: $newname${NC}"
-        echo "Try:  $newname -h"
+        echo -e "${GREEN}$(t renamed) $newname${NC}"
+        echo "  $newname -h"
     else
-        echo -e "${RED}Permission denied. Try:  sudo $PROG --rename $newname${NC}" >&2
+        echo -e "${RED}$(t rename_denied) $newname${NC}" >&2
         exit 1
     fi
 }
 
+set_language() {
+    case "$1" in
+        it|en|de)
+            mkdir -p "$HOME/.config/glia"
+            echo "$1" > "$HOME/.config/glia/lang"
+            UILANG="$1"
+            case "$UILANG" in it) CONFIRM_WORD="SI" ;; de) CONFIRM_WORD="JA" ;; *) CONFIRM_WORD="YES" ;; esac
+            echo -e "${GREEN}$(t lang_set)$1${NC}"
+            ;;
+        *)
+            echo "$(t lang_usage)" >&2
+            exit 1
+            ;;
+    esac
+}
+
 needs_extra_confirm() {
-    # returns 0 if the command matches a sensitive pattern
     local cmd="$1" p
     for p in "${EXTRA_CONFIRM_PATTERNS[@]}"; do
         if grep -qiE "$p" <<< "$cmd"; then
@@ -158,12 +337,18 @@ needs_extra_confirm() {
     return 1
 }
 
+AI_ERR=""
 generate_command() {
-    # asks the model for a command and cleans the output
-    aichat --model "$MODEL" "$CONTEXT Request: $*" < /dev/null 2>/dev/null \
+    # asks the model for a command; real errors go to AI_ERR
+    local errfile out
+    errfile=$(mktemp)
+    out=$(aichat --model "$MODEL" "$CONTEXT Request: $*" < /dev/null 2>"$errfile" \
         | sed 's/^```[a-z]*//; s/```$//' \
         | grep -v '^\s*$' \
-        | head -n 1
+        | head -n 1)
+    AI_ERR=$(tail -n 3 "$errfile" 2>/dev/null)
+    rm -f "$errfile"
+    echo "$out"
 }
 
 run_command() {
@@ -177,30 +362,34 @@ run_command() {
 propose_and_run() {
     local request="$*" cmd answer
     while true; do
-        echo -e "${YELLOW}Thinking...${NC}" >&2
+        echo -e "${YELLOW}$(t thinking)${NC}" >&2
         cmd=$(generate_command "$request")
         if [ -z "$cmd" ]; then
-            echo -e "${RED}No command generated (the model gave an empty answer). Try again.${NC}" >&2
+            echo -e "${RED}$(t no_command)${NC}" >&2
+            if [ -n "$AI_ERR" ]; then
+                echo -e "${RED}$(t model_error)${NC}" >&2
+                echo "$AI_ERR" >&2
+            fi
             exit 1
         fi
         echo
-        echo -e "Proposed command:  ${GREEN}$cmd${NC}"
+        echo -e "$(t proposed) ${GREEN}$cmd${NC}"
         if needs_extra_confirm "$cmd"; then
-            echo -e "${RED}⚠ WARNING: potentially destructive command.${NC}"
-            read -r -p "Type YES (uppercase) to run, r to retry, anything else to cancel: " answer < /dev/tty \
-                || { write_log "CANCELLED (no tty)" "$cmd"; echo "Cancelled."; return; }
+            echo -e "${RED}$(t warn)${NC}"
+            read -r -p "$(t ask_danger)" answer < /dev/tty \
+                || { write_log "CANCELLED (no tty)" "$cmd"; echo "$(t cancelled)"; return; }
             case "$answer" in
-                YES) run_command "$cmd"; return ;;
+                "$CONFIRM_WORD") run_command "$cmd"; return ;;
                 r|R) continue ;;
-                *)   write_log "CANCELLED" "$cmd"; echo "Cancelled."; return ;;
+                *)   write_log "CANCELLED" "$cmd"; echo "$(t cancelled)"; return ;;
             esac
         else
-            read -r -p "Enter = run | n = cancel | r = retry: " answer < /dev/tty \
-                || { write_log "CANCELLED (no tty)" "$cmd"; echo "Cancelled."; return; }
+            read -r -p "$(t ask_normal)" answer < /dev/tty \
+                || { write_log "CANCELLED (no tty)" "$cmd"; echo "$(t cancelled)"; return; }
             case "$answer" in
                 "")  run_command "$cmd"; return ;;
                 r|R) continue ;;
-                *)   write_log "CANCELLED" "$cmd"; echo "Cancelled."; return ;;
+                *)   write_log "CANCELLED" "$cmd"; echo "$(t cancelled)"; return ;;
             esac
         fi
     done
@@ -215,16 +404,24 @@ case "$1" in
         shift
         rename_assistant "$1"
         ;;
+    --lang)
+        shift
+        set_language "$1"
+        ;;
     -d)
         shift
         check_ai
-        exec aichat --model "$MODEL" "$@"
+        case "$UILANG" in
+            it) exec aichat --model "$MODEL" "Rispondi in italiano. $*" ;;
+            de) exec aichat --model "$MODEL" "Antworte auf Deutsch. $*" ;;
+            *)  exec aichat --model "$MODEL" "$@" ;;
+        esac
         ;;
     -l)
         if [ -f "$LOGFILE" ]; then
             cat "$LOGFILE"
         else
-            echo "No log yet ($LOGFILE)."
+            echo "$(t no_log)"
         fi
         ;;
     *)
