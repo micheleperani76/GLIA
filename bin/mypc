@@ -52,10 +52,11 @@ LOGDIR="$HOME/.local/share/$PROG"
 LOGFILE="$LOGDIR/$PROG.log"
 OLLAMA_URL="http://localhost:11434"
 
-# Project mode: files can be written ONLY under this folder
+# Project mode: files can be written ONLY under this folder.
+# The folder carries the assistant's current name (e.g. ~/Documents/arx)
 DOCS="$(xdg-user-dir DOCUMENTS 2>/dev/null)"
 [ -z "$DOCS" ] || [ "$DOCS" = "$HOME" ] && DOCS="$HOME/Documents"
-PROJBASE="$DOCS/GLIA-Projects"
+PROJBASE="$DOCS/$PROG"
 
 # Patterns that require extra confirmation (they don't block: they ask to type the confirm word)
 EXTRA_CONFIRM_PATTERNS=(
@@ -451,6 +452,19 @@ strip_fences() {
     sed 's/^```[a-zA-Z]*$//; s/^```$//' | sed '/./,$!d'
 }
 
+strip_leaked_plan() {
+    # safety net: if the model echoed the JSON plan before the real
+    # content, drop everything up to (and including) the closing brace
+    local content
+    content=$(cat)
+    if head -n1 <<< "$content" | grep -qE '^[[:space:]]*\{' \
+       && head -n 40 <<< "$content" | grep -q '"project_name"'; then
+        sed '1,/^[[:space:]]*}[[:space:]]*$/d' <<< "$content" | sed '/./,$!d'
+    else
+        printf '%s\n' "$content"
+    fi
+}
+
 project_mode() {
     local REQUEST="$*"
     command -v jq >/dev/null || { echo "$(t need_jq)" >&2; exit 1; }
@@ -483,9 +497,19 @@ project_mode() {
     mkdir -p "$PROJDIR"
     write_log "PROJECT START" "$NAME | $REQUEST"
 
+    # Fresh conversation for the writing phase: the JSON plan stays out
+    # of the context, so the model does not echo it into the files.
+    local FILELIST
+    FILELIST=$(jq -r '.files[] | "- \(.path): \(.description)"' <<< "$PLAN")
+    MSGS='[]'
+    add_msg system "You are the GLIA project agent. You write complete, working files for a small project. Reply ONLY with raw file content: no explanations, no markdown fences, no JSON."
+    add_msg user "Project: $NAME. Request: $REQUEST. Files of the project: $FILELIST. I will ask you for one file at a time."
+    add_msg assistant "Understood. Ask me for each file and I will reply with its raw content only."
+
     local i=0 FPATH FDESC CONTENT LINES
     while [ "$i" -lt "$NFILES" ]; do
         FPATH=$(jq -r ".files[$i].path" <<< "$PLAN")
+        FPATH="${FPATH#./}"
         FDESC=$(jq -r ".files[$i].description" <<< "$PLAN")
         i=$((i+1))
         if ! safe_relpath "$FPATH"; then
@@ -498,7 +522,7 @@ project_mode() {
             echo -e "${YELLOW}$(t writing) [$i/$NFILES]: ${NC}${GREEN}$FPATH${NC}"
             add_msg user "Now write the COMPLETE content of the file '$FPATH' ($FDESC) for the project above. Reply ONLY with the raw file content. No explanations, no markdown fences."
             CONTENT=$(chat) || { echo -e "${RED}$(t plan_fail)${NC}"; break; }
-            CONTENT=$(strip_fences <<< "$CONTENT")
+            CONTENT=$(strip_fences <<< "$CONTENT" | strip_leaked_plan)
             echo -e "${BLUE}$(t preview)${NC}"
             head -n 20 <<< "$CONTENT"
             LINES=$(wc -l <<< "$CONTENT")
