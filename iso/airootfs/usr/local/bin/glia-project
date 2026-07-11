@@ -1,0 +1,258 @@
+#!/usr/bin/env bash
+# ============================================================
+#  glia-project - AI project agent for GLIA
+#  Version: 0.1 - 2026-07-12
+#  Author: Michele (with Claude)
+#  Project: GLIA (GNU Linux IA)
+#
+#  Plans a project in steps, then writes the files one by one,
+#  each with your confirmation. Files go ONLY inside:
+#      <Documents>/GLIA-Projects/<project-name>/
+#
+#  Usage:
+#    glia-project <description>    plan and create a project
+#    glia-project -l               list existing projects
+#    glia-project -h               this help
+# ============================================================
+
+# ----------------- CONFIGURATION -----------------
+OLLAMA_URL="http://localhost:11434"
+# Model chain: same as mypc
+DEFAULT_MODEL="qwen2.5-coder:7b"
+if [ -r "$HOME/.config/glia/model" ]; then
+    MODEL="$(head -n1 "$HOME/.config/glia/model")"
+elif [ -r /etc/glia/model ]; then
+    MODEL="$(head -n1 /etc/glia/model)"
+else
+    MODEL="$DEFAULT_MODEL"
+fi
+# Language chain: same as mypc
+if [ -r "$HOME/.config/glia/lang" ]; then
+    UILANG="$(head -n1 "$HOME/.config/glia/lang")"
+elif [ -r /etc/glia/lang ]; then
+    UILANG="$(head -n1 /etc/glia/lang)"
+else
+    case "${LANG:-en}" in it*) UILANG="it";; de*) UILANG="de";; *) UILANG="en";; esac
+fi
+case "$UILANG" in it|de|en) : ;; *) UILANG="en" ;; esac
+
+# Projects root (language-independent via xdg-user-dirs, safe fallback)
+DOCS="$(xdg-user-dir DOCUMENTS 2>/dev/null)"
+[ -z "$DOCS" ] || [ "$DOCS" = "$HOME" ] && DOCS="$HOME/Documents"
+BASE="$DOCS/GLIA-Projects"
+
+LOGDIR="$HOME/.local/share/glia-project"
+LOGFILE="$LOGDIR/history.log"
+# ---------------------------------------------------
+
+RED='\033[1;31m'; GREEN='\033[1;32m'; YELLOW='\033[1;33m'; BLUE='\033[1;34m'; NC='\033[0m'
+
+t() {
+    case "${UILANG}:${1}" in
+        it:planning)   echo "Preparo il piano del progetto..." ;;
+        de:planning)   echo "Erstelle den Projektplan..." ;;
+        *:planning)    echo "Preparing the project plan..." ;;
+        it:plan)       echo "PIANO DEL PROGETTO" ;;
+        de:plan)       echo "PROJEKTPLAN" ;;
+        *:plan)        echo "PROJECT PLAN" ;;
+        it:steps)      echo "Passi:" ;;
+        de:steps)      echo "Schritte:" ;;
+        *:steps)       echo "Steps:" ;;
+        it:files)      echo "File da creare:" ;;
+        de:files)      echo "Zu erstellende Dateien:" ;;
+        *:files)       echo "Files to create:" ;;
+        it:go)         echo "Invio = procedi | n = annulla: " ;;
+        de:go)         echo "Enter = weiter | n = abbrechen: " ;;
+        *:go)          echo "Enter = proceed | n = cancel: " ;;
+        it:writing)    echo "Genero il file" ;;
+        de:writing)    echo "Erzeuge Datei" ;;
+        *:writing)     echo "Generating file" ;;
+        it:preview)    echo "Anteprima (prime 20 righe):" ;;
+        de:preview)    echo "Vorschau (erste 20 Zeilen):" ;;
+        *:preview)     echo "Preview (first 20 lines):" ;;
+        it:save)       echo "Invio = salva | v = vedi tutto | r = rigenera | s = salta: " ;;
+        de:save)       echo "Enter = speichern | v = alles zeigen | r = neu | s = überspringen: " ;;
+        *:save)        echo "Enter = save | v = view all | r = regenerate | s = skip: " ;;
+        it:saved)      echo "Salvato:" ;;
+        de:saved)      echo "Gespeichert:" ;;
+        *:saved)       echo "Saved:" ;;
+        it:skipped)    echo "Saltato." ;;
+        de:skipped)    echo "Übersprungen." ;;
+        *:skipped)     echo "Skipped." ;;
+        it:cancelled)  echo "Annullato." ;;
+        de:cancelled)  echo "Abgebrochen." ;;
+        *:cancelled)   echo "Cancelled." ;;
+        it:done)       echo "Progetto creato in:" ;;
+        de:done)       echo "Projekt erstellt in:" ;;
+        *:done)        echo "Project created in:" ;;
+        it:plan_fail)  echo "Il modello non ha prodotto un piano valido. Riprova (magari riformula la richiesta)." ;;
+        de:plan_fail)  echo "Das Modell hat keinen gültigen Plan erzeugt. Versuche es erneut." ;;
+        *:plan_fail)   echo "The model did not produce a valid plan. Try again (maybe rephrase)." ;;
+        it:no_proj)    echo "Nessun progetto ancora in" ;;
+        de:no_proj)    echo "Noch keine Projekte in" ;;
+        *:no_proj)     echo "No projects yet in" ;;
+        it:badpath)    echo "Percorso file non sicuro, saltato:" ;;
+        de:badpath)    echo "Unsicherer Dateipfad, übersprungen:" ;;
+        *:badpath)     echo "Unsafe file path, skipped:" ;;
+    esac
+}
+
+show_help() {
+    cat <<EOF
+glia-project v0.1 - AI project agent (model: $MODEL)
+
+  glia-project <description>   plan a project, then create its files
+                               step by step, each one confirmed by you
+  glia-project -l              list existing projects
+  glia-project -h              this help
+
+Projects live in: $BASE
+The agent can ONLY write inside that folder.
+EOF
+}
+
+write_log() {
+    mkdir -p "$LOGDIR"
+    printf '%s | %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$1" >> "$LOGFILE"
+}
+
+# ---------- conversation state (JSON messages array) ----------
+MSGS='[]'
+add_msg() {
+    # $1 = role, $2 = content
+    MSGS=$(jq -c --arg r "$1" --arg c "$2" '. + [{"role":$r,"content":$c}]' <<< "$MSGS")
+}
+
+chat() {
+    # $1 = "json" to force JSON output, otherwise free text.
+    # Prints the assistant reply; also appends it to MSGS.
+    local body reply
+    body="{\"model\":\"$MODEL\",\"messages\":$MSGS,\"stream\":false"
+    [ "$1" = "json" ] && body="$body,\"format\":\"json\""
+    body="$body}"
+    reply=$(curl -fsS --max-time 600 "$OLLAMA_URL/api/chat" -d "$body" 2>/dev/null | jq -r '.message.content // empty')
+    [ -z "$reply" ] && return 1
+    add_msg assistant "$reply"
+    printf '%s' "$reply"
+}
+
+check_ai() {
+    if ! curl -fsS --max-time 2 "$OLLAMA_URL/api/tags" >/dev/null 2>&1; then
+        systemctl start ollama 2>/dev/null || sudo systemctl start ollama 2>/dev/null
+        sleep 2
+    fi
+    if ! curl -fsS --max-time 5 "$OLLAMA_URL/api/tags" 2>/dev/null | grep -q "\"$MODEL\""; then
+        echo -e "${RED}Model $MODEL not available. Run:  ollama pull $MODEL${NC}" >&2
+        exit 1
+    fi
+    command -v jq >/dev/null || { echo "jq is required (pacman -S jq)" >&2; exit 1; }
+}
+
+safe_relpath() {
+    # accept only simple relative paths
+    case "$1" in
+        ""|/*|*..*|*'~'*|*'$'*) return 1 ;;
+        *) return 0 ;;
+    esac
+}
+
+strip_fences() {
+    sed 's/^```[a-zA-Z]*$//; s/^```$//' | sed '/./,$!d'
+}
+
+# --------------------- MAIN ------------------------
+case "$1" in
+    -h|--help|"")
+        show_help; exit 0 ;;
+    -l)
+        if [ -d "$BASE" ] && [ -n "$(ls -A "$BASE" 2>/dev/null)" ]; then
+            ls -1 "$BASE"
+        else
+            echo "$(t no_proj) $BASE"
+        fi
+        exit 0 ;;
+esac
+
+check_ai
+REQUEST="$*"
+
+# ---------- phase 1: the plan ----------
+echo -e "${YELLOW}$(t planning)${NC}"
+add_msg system "You are the GLIA project agent. You plan small software or document projects and then write their files. Always reply in the exact format requested. Keep projects small and practical."
+add_msg user "Project request: ${REQUEST}. Reply ONLY with JSON in this exact shape: {\"project_name\":\"short-kebab-case-name\",\"steps\":[\"step 1\",\"step 2\"],\"files\":[{\"path\":\"relative/path.ext\",\"description\":\"what this file contains\"}]}. Between 1 and 8 files. No other text."
+
+PLAN=$(chat json) || { echo -e "${RED}$(t plan_fail)${NC}"; exit 1; }
+NAME=$(jq -r '.project_name // empty' <<< "$PLAN" 2>/dev/null | tr -cd 'a-zA-Z0-9_-' | cut -c1-40)
+NSTEPS=$(jq -r '.steps | length' <<< "$PLAN" 2>/dev/null)
+NFILES=$(jq -r '.files | length' <<< "$PLAN" 2>/dev/null)
+if [ -z "$NAME" ] || [ -z "$NFILES" ] || [ "$NFILES" = "0" ]; then
+    echo -e "${RED}$(t plan_fail)${NC}"; exit 1
+fi
+
+echo
+echo -e "${BLUE}=== $(t plan): $NAME ===${NC}"
+echo -e "${YELLOW}$(t steps)${NC}"
+jq -r '.steps[]' <<< "$PLAN" | nl -w2 -s'. '
+echo -e "${YELLOW}$(t files)${NC}"
+jq -r '.files[] | "  \(.path)  -  \(.description)"' <<< "$PLAN"
+echo
+read -r -p "$(t go)" A < /dev/tty || exit 1
+case "$A" in n|N) echo "$(t cancelled)"; exit 0 ;; esac
+
+PROJDIR="$BASE/$NAME"
+mkdir -p "$PROJDIR"
+write_log "PROJECT START | $NAME | $REQUEST"
+
+# ---------- phase 2: the files ----------
+i=0
+while [ "$i" -lt "$NFILES" ]; do
+    FPATH=$(jq -r ".files[$i].path" <<< "$PLAN")
+    FDESC=$(jq -r ".files[$i].description" <<< "$PLAN")
+    i=$((i+1))
+    if ! safe_relpath "$FPATH"; then
+        echo -e "${RED}$(t badpath) $FPATH${NC}"
+        write_log "SKIPPED (unsafe path) | $NAME/$FPATH"
+        continue
+    fi
+    while true; do
+        echo
+        echo -e "${YELLOW}$(t writing) [$i/$NFILES]: ${NC}${GREEN}$FPATH${NC}"
+        add_msg user "Now write the COMPLETE content of the file '$FPATH' ($FDESC) for the project above. Reply ONLY with the raw file content. No explanations, no markdown fences."
+        CONTENT=$(chat) || { echo -e "${RED}$(t plan_fail)${NC}"; break; }
+        CONTENT=$(strip_fences <<< "$CONTENT")
+        echo -e "${BLUE}$(t preview)${NC}"
+        head -n 20 <<< "$CONTENT"
+        LINES=$(wc -l <<< "$CONTENT")
+        echo -e "${BLUE}--- ($LINES lines) ---${NC}"
+        read -r -p "$(t save)" A < /dev/tty || A="s"
+        case "$A" in
+            "")
+                mkdir -p "$PROJDIR/$(dirname "$FPATH")"
+                printf '%s\n' "$CONTENT" > "$PROJDIR/$FPATH"
+                echo -e "${GREEN}$(t saved) $PROJDIR/$FPATH${NC}"
+                write_log "SAVED | $NAME/$FPATH ($LINES lines)"
+                break ;;
+            v|V)
+                echo "$CONTENT" | less
+                # ask again on the same content: emulate by re-looping preview
+                read -r -p "$(t save)" A2 < /dev/tty || A2="s"
+                case "$A2" in
+                    "") mkdir -p "$PROJDIR/$(dirname "$FPATH")"
+                        printf '%s\n' "$CONTENT" > "$PROJDIR/$FPATH"
+                        echo -e "${GREEN}$(t saved) $PROJDIR/$FPATH${NC}"
+                        write_log "SAVED | $NAME/$FPATH ($LINES lines)"
+                        break ;;
+                    r|R) continue ;;
+                    *)  echo "$(t skipped)"; write_log "SKIPPED | $NAME/$FPATH"; break ;;
+                esac ;;
+            r|R) continue ;;
+            *)  echo "$(t skipped)"; write_log "SKIPPED | $NAME/$FPATH"; break ;;
+        esac
+    done
+done
+
+# ---------- phase 3: summary ----------
+echo
+echo -e "${GREEN}$(t done) $PROJDIR${NC}"
+find "$PROJDIR" -type f | sed "s|$PROJDIR/|  |"
+write_log "PROJECT END | $NAME"
