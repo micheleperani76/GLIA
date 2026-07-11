@@ -3,10 +3,10 @@
   GLIA Live — Linux with a built-in AI terminal assistant
 ========================================================
 
-Your AI assistant is called  my_pc
+Your AI assistant is called  mypc
 
-  my_pc <request>        proposes a shell command (Enter = run)
-  my_pc -d <question>    plain-text answer, no command
+  mypc <request>        proposes a shell command (Enter = run)
+  mypc -d <question>    plain-text answer, no command
   glia-hardware          shows the recommended AI model for this machine
 
 First step (needs network):
