@@ -1,10 +1,18 @@
 #!/usr/bin/env bash
 # ============================================================
 #  mypc - AI terminal assistant (Ollama + aichat)
-#  Version: 1.5 - 2026-07-12
+#  Version: 1.6 - 2026-07-12
 #  Author: Michele (with Claude)
 #  Project: GLIA (GNU Linux IA)
 #
+#  What's new in v1.6 ("persistent memory"):
+#   - --remember "<fact>" stores short facts in ~/.config/glia/memory
+#     (max 20 lines, oldest dropped); facts are added to every prompt
+#   - --memory lists the stored facts, --forget <n> deletes one
+#   - conversation context: each terminal keeps its last exchanges
+#     (10 min expiry), so follow-ups like "now compress it" work
+#   - danger self-explanation: before the $CONFIRM_WORD prompt, the AI
+#     explains in one plain sentence what the command will do
 #  What's new in v1.5 ("look before acting, learn from errors"):
 #   - the model now sees the current directory and its contents,
 #     so commands fit the place you are in
@@ -24,6 +32,9 @@
 #    mypc -p <idea>        project mode: plan steps, write files
 #    mypc -d <question>    plain-text answer, no command
 #    mypc -l               show the command log
+#    mypc --remember <fact> store a fact in persistent memory
+#    mypc --memory         list stored facts
+#    mypc --forget <n>     delete fact number n
 #    mypc --rename <name>  rename the assistant
 #    mypc --lang <code>    set interface language (en, it, de)
 #    mypc -h               this help
@@ -56,6 +67,17 @@ PROG="$(basename "$0")"
 LOGDIR="$HOME/.local/share/$PROG"
 LOGFILE="$LOGDIR/$PROG.log"
 OLLAMA_URL="http://localhost:11434"
+
+# Persistent memory (v1.6): one fact per line, newest kept
+MEMFILE="$HOME/.config/glia/memory"
+MEMMAX=20
+
+# Conversation context (v1.6): per-terminal session file
+# $PPID = the shell of this terminal window, so each window has its own
+SESSDIR="${XDG_RUNTIME_DIR:-/tmp}"
+SESSFILE="$SESSDIR/glia-session-$USER-$PPID"
+SESSMAX=6        # lines kept = 3 exchanges (2 lines each)
+SESSTTL=600      # seconds: session forgotten after 10 minutes
 
 # Project mode: files can be written ONLY under this folder.
 # The folder carries the assistant's current name (e.g. ~/Documents/arx)
@@ -141,6 +163,21 @@ t() {
         it:no_log)          echo "Ancora nessun log ($LOGFILE)." ;;
         de:no_log)          echo "Noch kein Protokoll ($LOGFILE)." ;;
         *:no_log)           echo "No log yet ($LOGFILE)." ;;
+        it:mem_saved)       echo "Memorizzato." ;;
+        de:mem_saved)       echo "Gespeichert." ;;
+        *:mem_saved)        echo "Stored." ;;
+        it:mem_empty)       echo "Nessun fatto memorizzato ($MEMFILE)." ;;
+        de:mem_empty)       echo "Keine Fakten gespeichert ($MEMFILE)." ;;
+        *:mem_empty)        echo "No facts stored ($MEMFILE)." ;;
+        it:mem_usage)       echo "Uso: $PROG --remember \"<fatto>\"" ;;
+        de:mem_usage)       echo "Verwendung: $PROG --remember \"<Fakt>\"" ;;
+        *:mem_usage)        echo "Usage: $PROG --remember \"<fact>\"" ;;
+        it:forget_usage)    echo "Uso: $PROG --forget <numero>   (vedi: $PROG --memory)" ;;
+        de:forget_usage)    echo "Verwendung: $PROG --forget <Nummer>   (siehe: $PROG --memory)" ;;
+        *:forget_usage)     echo "Usage: $PROG --forget <number>   (see: $PROG --memory)" ;;
+        it:forgotten)       echo "Dimenticato:" ;;
+        de:forgotten)       echo "Vergessen:" ;;
+        *:forgotten)        echo "Forgotten:" ;;
         it:renamed)         echo "Fatto. Il tuo assistente ora si chiama:" ;;
         de:renamed)         echo "Fertig. Dein Assistent heißt jetzt:" ;;
         *:renamed)          echo "Done. Your assistant is now called:" ;;
@@ -202,6 +239,9 @@ t() {
         it:need_jq)         echo "La modalità progetto richiede jq:  sudo pacman -S jq" ;;
         de:need_jq)         echo "Der Projektmodus benötigt jq:  sudo pacman -S jq" ;;
         *:need_jq)          echo "Project mode requires jq:  sudo pacman -S jq" ;;
+        it:explaining)      echo "Chiedo all'IA cosa farà questo comando..." ;;
+        de:explaining)      echo "Frage die KI, was dieser Befehl tun wird..." ;;
+        *:explaining)       echo "Asking the AI what this command will do..." ;;
         it:cmd_failed)      echo "Il comando è fallito" ;;
         de:cmd_failed)      echo "Der Befehl ist fehlgeschlagen" ;;
         *:cmd_failed)       echo "The command failed" ;;
@@ -214,7 +254,7 @@ t() {
 show_help() {
     case "$UILANG" in
     it) cat <<EOF
-$PROG v1.5 - assistente IA da terminale (modello: ${MODEL#ollama:})
+$PROG v1.6 - assistente IA da terminale (modello: ${MODEL#ollama:})
 
 Uso:
   $PROG <richiesta>       propone un comando shell
@@ -223,6 +263,9 @@ Uso:
                           i file (con conferma) in $PROJBASE_SHOW
   $PROG -d <domanda>      risposta testuale, nessun comando
   $PROG -l                mostra il log dei comandi
+  $PROG --remember <fatto> memorizza un fatto (macchine, percorsi, abitudini)
+  $PROG --memory          mostra i fatti memorizzati
+  $PROG --forget <n>      dimentica il fatto numero n
   $PROG --rename <nome>   rinomina l'assistente (es: $PROG --rename jarvis)
   $PROG --lang <codice>   lingua dell'interfaccia: en, it, de
   $PROG -h                questo aiuto
@@ -238,7 +281,7 @@ Se l'IA non risponde:
 EOF
         ;;
     de) cat <<EOF
-$PROG v1.5 - KI-Terminal-Assistent (Modell: ${MODEL#ollama:})
+$PROG v1.6 - KI-Terminal-Assistent (Modell: ${MODEL#ollama:})
 
 Verwendung:
   $PROG <Anfrage>         schlägt einen Shell-Befehl vor
@@ -247,6 +290,9 @@ Verwendung:
                           Dateien (mit Bestätigung) in $PROJBASE_SHOW
   $PROG -d <Frage>        Textantwort, kein Befehl
   $PROG -l                Befehlsprotokoll anzeigen
+  $PROG --remember <Fakt> Fakt dauerhaft merken (Rechner, Pfade, Gewohnheiten)
+  $PROG --memory          gespeicherte Fakten anzeigen
+  $PROG --forget <n>      Fakt Nummer n vergessen
   $PROG --rename <Name>   Assistenten umbenennen (z.B.: $PROG --rename jarvis)
   $PROG --lang <Code>     Sprache der Oberfläche: en, it, de
   $PROG -h                diese Hilfe
@@ -262,7 +308,7 @@ Wenn die KI nicht antwortet:
 EOF
         ;;
     *) cat <<EOF
-$PROG v1.5 - AI terminal assistant (model: ${MODEL#ollama:})
+$PROG v1.6 - AI terminal assistant (model: ${MODEL#ollama:})
 
 Usage:
   $PROG <request>        propose a shell command
@@ -271,6 +317,9 @@ Usage:
                          the files (confirmed by you) in $PROJBASE_SHOW
   $PROG -d <question>    plain-text answer, no command
   $PROG -l               show the command log
+  $PROG --remember <fact> store a fact (machines, paths, habits)
+  $PROG --memory         list stored facts
+  $PROG --forget <n>     forget fact number n
   $PROG --rename <name>  rename the assistant (example: $PROG --rename jarvis)
   $PROG --lang <code>    interface language: en, it, de
   $PROG -h               this help
@@ -368,6 +417,78 @@ set_language() {
     esac
 }
 
+# ---- persistent memory (v1.6) ----
+memory_context() {
+    # prints the stored facts as one prompt line; nothing if memory is empty
+    [ -s "$MEMFILE" ] || return 0
+    printf 'Known facts about the user (from memory): %s. ' \
+        "$(paste -sd ';' "$MEMFILE" | sed 's/;/; /g')"
+}
+
+remember_fact() {
+    [ -z "$*" ] && { echo "$(t mem_usage)" >&2; exit 1; }
+    mkdir -p "$(dirname "$MEMFILE")"
+    printf '%s\n' "$*" >> "$MEMFILE"
+    if [ "$(wc -l < "$MEMFILE")" -gt "$MEMMAX" ]; then
+        tail -n "$MEMMAX" "$MEMFILE" > "$MEMFILE.tmp" && mv "$MEMFILE.tmp" "$MEMFILE"
+    fi
+    echo -e "${GREEN}$(t mem_saved)${NC}"
+}
+
+show_memory() {
+    if [ -s "$MEMFILE" ]; then
+        nl -w2 -s'. ' "$MEMFILE"
+    else
+        echo "$(t mem_empty)"
+    fi
+}
+
+forget_fact() {
+    local n="$1" total fact
+    if ! grep -qE '^[0-9]+$' <<< "$n" || [ ! -s "$MEMFILE" ]; then
+        echo "$(t forget_usage)" >&2; exit 1
+    fi
+    total=$(wc -l < "$MEMFILE")
+    if [ "$n" -lt 1 ] || [ "$n" -gt "$total" ]; then
+        echo "$(t forget_usage)" >&2; exit 1
+    fi
+    fact=$(sed -n "${n}p" "$MEMFILE")
+    sed -i "${n}d" "$MEMFILE"
+    echo -e "${GREEN}$(t forgotten)${NC} $fact"
+}
+
+# ---- conversation context (v1.6) ----
+session_context() {
+    # prints the recent exchanges of this terminal, if not expired
+    [ -f "$SESSFILE" ] || return 0
+    local age
+    age=$(( $(date +%s) - $(stat -c %Y "$SESSFILE" 2>/dev/null || echo 0) ))
+    if [ "$age" -gt "$SESSTTL" ]; then
+        rm -f "$SESSFILE"
+        return 0
+    fi
+    printf 'Recent conversation in this terminal (use it to resolve follow-ups like "it", "that file"): %s. ' \
+        "$(paste -sd ';' "$SESSFILE" | sed 's/;/; /g')"
+}
+
+session_add() {
+    # $1 = user request, $2 = executed command
+    printf 'User asked: %s | you ran: %s\n' "$1" "$2" >> "$SESSFILE" 2>/dev/null || return 0
+    tail -n "$SESSMAX" "$SESSFILE" > "$SESSFILE.tmp" && mv "$SESSFILE.tmp" "$SESSFILE"
+    chmod 600 "$SESSFILE" 2>/dev/null
+}
+
+# ---- danger self-explanation (v1.6) ----
+explain_danger() {
+    # one plain-language sentence about what a dangerous command will do
+    local cmd="$1" out
+    out=$(aichat --model "$MODEL" \
+        "Explain in ONE short sentence, in ${PLAN_LANG}, in plain language for a non-expert, what this bash command will do and what it could delete or change permanently. No markdown, no code, only the sentence. Command: $cmd" \
+        < /dev/null 2>/dev/null | grep -v '^\s*$' | head -n 2 | paste -sd ' ' -)
+    [ -n "$out" ] && printf '%s\n' "$out"
+    return 0
+}
+
 needs_extra_confirm() {
     local cmd="$1" p
     for p in "${EXTRA_CONFIRM_PATTERNS[@]}"; do
@@ -382,7 +503,7 @@ AI_ERR=""
 generate_command() {
     # "look before acting": the model sees where we are and what is here
     local errfile out ctx
-    ctx="$CONTEXT Current directory: $PWD. It contains: $(ls -1 2>/dev/null | head -n 15 | paste -sd ', ' -)."
+    ctx="$CONTEXT $(memory_context)$(session_context)Current directory: $PWD. It contains: $(ls -1 2>/dev/null | head -n 15 | paste -sd ', ' -)."
     errfile=$(mktemp)
     out=$(aichat --model "$MODEL" "$ctx Request: $*" < /dev/null 2>"$errfile" \
         | sed 's/^```[a-z]*//; s/```$//' \
@@ -407,7 +528,7 @@ run_command() {
 }
 
 propose_and_run() {
-    local original="$*" request="$*" cmd answer status fixes=0
+    local original="$*" request="$*" cmd answer status fixes=0 expl
     while true; do
         echo -e "${YELLOW}$(t thinking)${NC}" >&2
         cmd=$(generate_command "$request")
@@ -423,6 +544,9 @@ propose_and_run() {
         echo -e "$(t proposed) ${GREEN}$cmd${NC}"
         if needs_extra_confirm "$cmd"; then
             echo -e "${RED}$(t warn)${NC}"
+            echo -e "${YELLOW}$(t explaining)${NC}" >&2
+            expl=$(explain_danger "$cmd")
+            [ -n "$expl" ] && echo -e "${BLUE}➜ $expl${NC}"
             read -r -p "$(t ask_danger)" answer < /dev/tty \
                 || { write_log "CANCELLED (no tty)" "$cmd"; echo "$(t cancelled)"; return; }
             case "$answer" in
@@ -441,6 +565,7 @@ propose_and_run() {
         fi
 
         # ---- execute; on failure, learn from the error (max 2 fixes) ----
+        session_add "$original" "$cmd"
         run_command "$cmd"
         status=$?
         [ "$status" -eq 0 ] && return 0
@@ -605,13 +730,25 @@ case "$1" in
         shift
         set_language "$1"
         ;;
+    --remember)
+        shift
+        remember_fact "$@"
+        ;;
+    --memory)
+        show_memory
+        ;;
+    --forget)
+        shift
+        forget_fact "$1"
+        ;;
     -d)
         shift
         check_ai
+        MEMCTX="$(memory_context)"
         case "$UILANG" in
-            it) exec aichat --model "$MODEL" "Rispondi in italiano. $*" ;;
-            de) exec aichat --model "$MODEL" "Antworte auf Deutsch. $*" ;;
-            *)  exec aichat --model "$MODEL" "$@" ;;
+            it) exec aichat --model "$MODEL" "${MEMCTX}Rispondi in italiano. $*" ;;
+            de) exec aichat --model "$MODEL" "${MEMCTX}Antworte auf Deutsch. $*" ;;
+            *)  exec aichat --model "$MODEL" "${MEMCTX}$*" ;;
         esac
         ;;
     -l)
