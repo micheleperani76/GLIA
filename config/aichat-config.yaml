@@ -1,0 +1,13 @@
+# ============================================================
+# aichat - configuration for local Ollama
+# Version: 1.1 - 2026-07-11
+# Project: GLIA — used by command: my_pc
+# Target: ~/.config/aichat/config.yaml
+# ============================================================
+model: ollama:qwen2.5-coder:7b
+clients:
+  - type: openai-compatible
+    name: ollama
+    api_base: http://localhost:11434/v1
+    models:
+      - name: qwen2.5-coder:7b

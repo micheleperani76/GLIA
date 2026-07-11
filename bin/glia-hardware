@@ -1,0 +1,133 @@
+#!/usr/bin/env bash
+# ============================================================
+#  glia-hardware - Hardware detection and AI model recommendation
+#  Version: 1.0 - 2026-07-11
+#  Author: Michele (with Claude)
+#  Project: GLIA / LinuxIA
+#
+#  Detects RAM and GPU and recommends the right Ollama model tier.
+#  Used: manually, by the installer, and to switch AI engine.
+#
+#  Usage:
+#    glia-hardware          full report with recommended models
+#    glia-hardware -m       print only the recommended model (for scripts)
+#    glia-hardware -j       JSON output (for installer/Calamares)
+#    glia-hardware -h       this help
+# ============================================================
+
+# ----------------- CONFIGURATION -----------------
+# Models per tier: the first of each list is the recommended one
+TIER1_MODELS=("qwen3:4b" "gemma3:4b" "llama3.2:3b")                 # base (<16 GB RAM, no GPU)
+TIER2_MODELS=("qwen2.5-coder:7b" "qwen3:8b" "mistral:7b")           # mid  (>=16 GB RAM, no GPU)
+TIER3_MODELS=("qwen2.5-coder:14b" "phi4:14b" "deepseek-r1:14b")     # high (GPU >=12 GB VRAM)
+TIER4_MODELS=("qwen3-coder:30b" "qwen2.5-coder:32b" "devstral:24b") # top  (GPU >=20 GB VRAM)
+# ---------------------------------------------------
+
+# ------------------- FUNCTIONS ----------------------
+GREEN='\033[1;32m'; YELLOW='\033[1;33m'; BLUE='\033[1;34m'; NC='\033[0m'
+
+show_help() {
+    cat <<EOF
+glia-hardware v1.0 - detects hardware and recommends the AI model for my_pc
+
+Usage:
+  glia-hardware       full report
+  glia-hardware -m    recommended model only
+  glia-hardware -j    JSON output
+  glia-hardware -h    this help
+EOF
+}
+
+detect_ram_gb() {
+    awk '/MemTotal/ {printf "%.0f", $2/1024/1024}' /proc/meminfo
+}
+
+detect_gpu() {
+    # sets: GPU_TYPE (nvidia|amd|intel|none) and GPU_VRAM_GB (0 if unknown)
+    GPU_TYPE="none"; GPU_VRAM_GB=0; GPU_NAME="no dedicated GPU"
+    local line
+    line=$(lspci 2>/dev/null | grep -Ei 'vga|3d controller' | head -n 5)
+
+    if grep -qi nvidia <<< "$line"; then
+        GPU_TYPE="nvidia"
+        GPU_NAME=$(grep -i nvidia <<< "$line" | head -n1 | cut -d: -f3- | sed 's/^ //')
+        if command -v nvidia-smi >/dev/null 2>&1; then
+            GPU_VRAM_GB=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null \
+                          | head -n1 | awk '{printf "%.0f", $1/1024}')
+        fi
+    elif grep -qi 'amd\|radeon' <<< "$line" && ! grep -qi 'raphael\|rembrandt\|phoenix\|granite ridge' <<< "$line"; then
+        GPU_TYPE="amd"
+        GPU_NAME=$(grep -Ei 'amd|radeon' <<< "$line" | head -n1 | cut -d: -f3- | sed 's/^ //')
+        # AMD VRAM: first drm device with dedicated memory
+        local f
+        for f in /sys/class/drm/card*/device/mem_info_vram_total; do
+            [ -r "$f" ] && GPU_VRAM_GB=$(awk '{printf "%.0f", $1/1024/1024/1024}' "$f") && break
+        done
+    elif grep -qi intel <<< "$line"; then
+        GPU_TYPE="intel"
+        GPU_NAME=$(grep -i intel <<< "$line" | head -n1 | cut -d: -f3- | sed 's/^ //')
+    fi
+    [ -z "$GPU_VRAM_GB" ] && GPU_VRAM_GB=0
+}
+
+pick_tier() {
+    # sets TIER (1-4), MODELS[] and REASON
+    if [ "$GPU_VRAM_GB" -ge 20 ]; then
+        TIER=4; MODELS=("${TIER4_MODELS[@]}")
+        REASON="$GPU_TYPE GPU with ${GPU_VRAM_GB} GB VRAM"
+    elif [ "$GPU_VRAM_GB" -ge 12 ]; then
+        TIER=3; MODELS=("${TIER3_MODELS[@]}")
+        REASON="$GPU_TYPE GPU with ${GPU_VRAM_GB} GB VRAM"
+    elif [ "$RAM_GB" -ge 16 ]; then
+        TIER=2; MODELS=("${TIER2_MODELS[@]}")
+        REASON="${RAM_GB} GB RAM, CPU inference"
+    else
+        TIER=1; MODELS=("${TIER1_MODELS[@]}")
+        REASON="${RAM_GB} GB RAM, CPU inference"
+    fi
+    RECOMMENDED="${MODELS[0]}"
+}
+
+report() {
+    echo -e "${BLUE}=== GLIA - hardware detection ===${NC}"
+    echo -e "CPU:    $(grep -m1 'model name' /proc/cpuinfo | cut -d: -f2 | sed 's/^ //') ($(nproc) threads)"
+    echo -e "RAM:    ${RAM_GB} GB"
+    echo -e "GPU:    ${GPU_NAME}$( [ "$GPU_VRAM_GB" -gt 0 ] && echo " (${GPU_VRAM_GB} GB VRAM)" )"
+    echo
+    echo -e "Recommended tier: ${YELLOW}${TIER}${NC} (${REASON})"
+    echo -e "Suitable models:"
+    local m
+    for m in "${MODELS[@]}"; do
+        if [ "$m" = "$RECOMMENDED" ]; then
+            echo -e "  ${GREEN}* $m   <- recommended${NC}"
+        else
+            echo -e "    $m"
+        fi
+    done
+    echo
+    echo "To install:  ollama pull $RECOMMENDED"
+}
+
+output_json() {
+    local list m first=1
+    for m in "${MODELS[@]}"; do
+        [ $first -eq 0 ] && list+=","
+        list+="\"$m\""; first=0
+    done
+    cat <<EOF
+{"ram_gb":$RAM_GB,"gpu_type":"$GPU_TYPE","gpu_vram_gb":$GPU_VRAM_GB,"tier":$TIER,"recommended":"$RECOMMENDED","models":[$list]}
+EOF
+}
+
+# --------------------- MAIN ------------------------
+RAM_GB=$(detect_ram_gb)
+detect_gpu
+pick_tier
+
+case "$1" in
+    -h|--help) show_help ;;
+    -m)        echo "$RECOMMENDED" ;;
+    -j)        output_json ;;
+    "")        report ;;
+    *)         show_help; exit 1 ;;
+esac

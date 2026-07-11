@@ -1,0 +1,155 @@
+#!/usr/bin/env bash
+# ============================================================
+#  my_pc - AI terminal assistant (Ollama + aichat)
+#  Version: 1.0 - 2026-07-11 (based on arx v2.1)
+#  Author: Michele (with Claude)
+#  Project: GLIA / LinuxIA
+#
+#  Features:
+#   - proposes a shell command from a natural-language request
+#     Enter = run | n = cancel | r = retry
+#   - destructive-command protection: reinforced confirmation (type YES)
+#   - command log in ~/.local/share/my_pc/my_pc.log
+#   - system context in the prompt for more accurate commands
+#
+#  Usage:
+#    my_pc <request>       propose a command (Enter = run)
+#    my_pc -d <question>   plain-text answer, no command
+#    my_pc -l              show the command log
+#    my_pc -h              this help
+# ============================================================
+
+# ----------------- CONFIGURATION -----------------
+MODEL="ollama:qwen2.5-coder:7b"
+LOGDIR="$HOME/.local/share/my_pc"
+LOGFILE="$LOGDIR/my_pc.log"
+
+# Patterns that require extra confirmation (they don't block: they ask to type YES)
+# Extended regexes, one per line: add/remove freely
+EXTRA_CONFIRM_PATTERNS=(
+    'rm .*-[a-zA-Z]*[rf]'
+    '\bdd\b'
+    '\bmkfs'
+    '\bshred\b'
+    '\bwipefs\b'
+    '>\s*/dev/(sd|nvme|mmcblk)'
+    'chmod .*(777|-R)'
+    'chown .*-R'
+    '\bparted\b|\bfdisk\b|\bcfdisk\b|\bsgdisk\b'
+    '\btruncate\b'
+    '\bmv\b.*/dev/null'
+    ':\(\)\s*\{'
+    '\b(curl|wget)\b.*\|\s*(ba|z|da)?sh'
+    '\bsudo\b'
+)
+
+# Context given to the model to generate correct commands
+CONTEXT="System: CachyOS (Arch Linux) on Dell XPS17, user: michele. \
+Commands will be executed with bash. Reply ONLY with a single-line bash \
+command, no explanations, no markdown, no backticks."
+# ---------------------------------------------------
+
+# ------------------- FUNCTIONS ----------------------
+RED='\033[1;31m'; GREEN='\033[1;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
+
+show_help() {
+    cat <<EOF
+my_pc v1.0 - AI terminal assistant (model: ${MODEL#ollama:})
+
+Usage:
+  my_pc <request>       propose a shell command
+                        Enter = run | n = cancel | r = retry
+  my_pc -d <question>   plain-text answer, no command
+  my_pc -l              show the command log
+  my_pc -h              this help
+
+Potentially destructive commands require typing YES.
+Log: $LOGFILE
+EOF
+}
+
+write_log() {
+    # $1 = status, $2 = command
+    mkdir -p "$LOGDIR"
+    printf '%s | %s | %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$1" "$2" >> "$LOGFILE"
+}
+
+needs_extra_confirm() {
+    # returns 0 if the command matches a sensitive pattern
+    local cmd="$1" p
+    for p in "${EXTRA_CONFIRM_PATTERNS[@]}"; do
+        if grep -qiE "$p" <<< "$cmd"; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+generate_command() {
+    # asks the model for a command and cleans the output
+    aichat --model "$MODEL" "$CONTEXT Request: $*" < /dev/null 2>/dev/null \
+        | sed 's/^```[a-z]*//; s/```$//' \
+        | grep -v '^\s*$' \
+        | head -n 1
+}
+
+run_command() {
+    local cmd="$1"
+    bash -c "$cmd"
+    local status=$?
+    write_log "EXECUTED (exit=$status)" "$cmd"
+    return $status
+}
+
+propose_and_run() {
+    local request="$*" cmd answer
+    while true; do
+        echo -e "${YELLOW}Thinking...${NC}" >&2
+        cmd=$(generate_command "$request")
+        if [ -z "$cmd" ]; then
+            echo -e "${RED}No command generated. Is Ollama running?${NC}" >&2
+            exit 1
+        fi
+        echo
+        echo -e "Proposed command:  ${GREEN}$cmd${NC}"
+        if needs_extra_confirm "$cmd"; then
+            echo -e "${RED}⚠ WARNING: potentially destructive command.${NC}"
+            read -r -p "Type YES (uppercase) to run, r to retry, anything else to cancel: " answer < /dev/tty \
+                || { write_log "CANCELLED (no tty)" "$cmd"; echo "Cancelled."; return; }
+            case "$answer" in
+                YES) run_command "$cmd"; return ;;
+                r|R) continue ;;
+                *)   write_log "CANCELLED" "$cmd"; echo "Cancelled."; return ;;
+            esac
+        else
+            read -r -p "Enter = run | n = cancel | r = retry: " answer < /dev/tty \
+                || { write_log "CANCELLED (no tty)" "$cmd"; echo "Cancelled."; return; }
+            case "$answer" in
+                "")  run_command "$cmd"; return ;;
+                r|R) continue ;;
+                *)   write_log "CANCELLED" "$cmd"; echo "Cancelled."; return ;;
+            esac
+        fi
+    done
+}
+
+# --------------------- MAIN ------------------------
+case "$1" in
+    -h|--help|"")
+        show_help
+        ;;
+    -d)
+        shift
+        exec aichat --model "$MODEL" "$@"
+        ;;
+    -l)
+        if [ -f "$LOGFILE" ]; then
+            cat "$LOGFILE"
+        else
+            echo "No log yet ($LOGFILE)."
+        fi
+        ;;
+    *)
+        propose_and_run "$@"
+        ;;
+esac
