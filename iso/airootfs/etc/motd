@@ -9,9 +9,9 @@ Your AI assistant is called  mypc
   mypc -d <question>    plain-text answer, no command
   glia-hardware          shows the recommended AI model for this machine
 
-First step (needs network):
+The AI model is preinstalled - try right away:
 
-  ollama pull qwen3:4b   # or the model suggested by glia-hardware
+  mypc set the keyboard layout to italian
 
 Dangerous commands always require typing YES.
 Project: https://github.com/micheleperani76/GLIA

@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
 # ============================================================
 #  mypc - AI terminal assistant (Ollama + aichat)
-#  Version: 1.1 - 2026-07-11
+#  Version: 1.2 - 2026-07-11
 #  Author: Michele (with Claude)
 #  Project: GLIA (GNU Linux IA)
 #
+#  What's new in v1.2:
+#   - model read from config: ~/.config/glia/model, then /etc/glia/model
+#     (written by the installer), then built-in default
 #  What's new in v1.1:
 #   - startup self-check: starts Ollama if stopped, tells you
 #     exactly what to do if the model is missing
@@ -20,7 +23,18 @@
 # ============================================================
 
 # ----------------- CONFIGURATION -----------------
-MODEL="ollama:qwen2.5-coder:7b"
+# Model selection (first match wins):
+#   1. ~/.config/glia/model   (per-user choice)
+#   2. /etc/glia/model        (system default, written by the installer)
+#   3. DEFAULT_MODEL below
+DEFAULT_MODEL="qwen2.5-coder:7b"
+if [ -r "$HOME/.config/glia/model" ]; then
+    MODEL="ollama:$(head -n1 "$HOME/.config/glia/model")"
+elif [ -r /etc/glia/model ]; then
+    MODEL="ollama:$(head -n1 /etc/glia/model)"
+else
+    MODEL="ollama:$DEFAULT_MODEL"
+fi
 PROG="$(basename "$0")"
 LOGDIR="$HOME/.local/share/$PROG"
 LOGFILE="$LOGDIR/$PROG.log"
@@ -59,7 +73,7 @@ RED='\033[1;31m'; GREEN='\033[1;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
 
 show_help() {
     cat <<EOF
-$PROG v1.1 - AI terminal assistant (model: ${MODEL#ollama:})
+$PROG v1.2 - AI terminal assistant (model: ${MODEL#ollama:})
 
 Usage:
   $PROG <request>        propose a shell command
