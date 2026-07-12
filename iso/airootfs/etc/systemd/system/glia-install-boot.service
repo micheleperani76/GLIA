@@ -2,13 +2,23 @@
 Description=GLIA installer (selected from the boot menu)
 ConditionKernelCommandLine=glia_install
 After=multi-user.target systemd-user-sessions.service
-Conflicts=getty@tty1.service
+# getty@tty1 va mascherato dalla riga kernel (systemd.mask=getty@tty1.service
+# nella voce di boot installer): un Conflicts qui lo spegnerebbe anche
+# nella live normale, dato che il service e' sempre abilitato
 
 [Service]
 Type=simple
 ExecStart=/usr/local/bin/glia-install
+# Sessione logind vera (PAM) sul tty1: senza, cage/libseat non ottiene il seat
+PAMName=login
 TTYPath=/dev/tty1
+TTYReset=yes
+TTYVHangup=yes
+TTYVTDisallocate=yes
+StandardInput=tty-fail
 StandardOutput=journal
+StandardError=journal
+UtmpIdentifier=tty1
 
 [Install]
 WantedBy=multi-user.target

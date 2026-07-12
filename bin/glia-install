@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ============================================================
 #  glia-install - Launch the GLIA installer (Calamares)
-#  Version: 1.0 - 2026-07-12
+#  Version: 1.1 - 2026-07-12 (layout tastiera it per la sessione cage)
 #  Author: Michele (with Claude)
 #  Project: GLIA (GNU Linux IA)
 #
@@ -29,6 +29,10 @@ export XDG_RUNTIME_DIR="/run/user/$EUID"
 mkdir -p "$XDG_RUNTIME_DIR"
 chmod 700 "$XDG_RUNTIME_DIR"
 export QT_QPA_PLATFORM=wayland
+# Italian layout for the live session: Calamares' keyboard page can't
+# change the compositor layout under Wayland (setxkbmap is X11-only)
+export XKB_DEFAULT_LAYOUT=it
+export XKB_DEFAULT_MODEL=pc105
 
 echo "Starting the GLIA installer..."
 exec cage -s -- calamares

@@ -1,0 +1,13 @@
+# mkinitcpio preset file for the 'linux' package
+# GLIA: clean preset restored on the installed system by
+# shellprocess_postclean (the live one is archiso-specific)
+
+ALL_config="/etc/mkinitcpio.conf"
+ALL_kver="/boot/vmlinuz-linux"
+
+PRESETS=('default' 'fallback')
+
+default_image="/boot/initramfs-linux.img"
+
+fallback_image="/boot/initramfs-linux-fallback.img"
+fallback_options="-S autodetect"
