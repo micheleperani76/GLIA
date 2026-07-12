@@ -73,6 +73,32 @@ qemu-system-x86_64 -enable-kvm -cpu host -smp 6 -m 12G \
 Boot the first menu entry for the live environment, or *Install GLIA
 (Calamares)* to install to disk.
 
+### Building from Debian, Fedora or any non-Arch distro
+
+`mkarchiso` only runs on Arch, but you can build inside an Arch container
+with podman (or docker). You still need ~15 GB free and a network
+connection; the ISO appears in `out/` on your host as usual.
+
+```bash
+# Debian/Ubuntu: sudo apt install podman git
+# Fedora:        sudo dnf install podman git
+
+git clone https://github.com/micheleperani76/GLIA glia
+cd glia
+sudo podman run --rm -it --privileged -v "$PWD:/glia" docker.io/archlinux:latest \
+  bash -c "pacman -Syu --noconfirm archiso && bash /glia/scripts/glia-build.sh"
+```
+
+Notes:
+
+- `--privileged` is required: mkarchiso needs loop devices and mounts.
+- With docker, replace `podman` with `docker` (same arguments).
+- On Fedora, if the mount is denied by SELinux, use `-v "$PWD:/glia:z"`.
+- To test the ISO in QEMU on Debian/Fedora, install `qemu-system-x86` and
+  `ovmf` (Debian) or `qemu-kvm` and `edk2-ovmf` (Fedora); the OVMF firmware
+  path in the QEMU command above may differ (e.g.
+  `/usr/share/OVMF/OVMF_CODE.fd`).
+
 ## Quick install (Arch/CachyOS)
 
 ```bash
