@@ -81,3 +81,6 @@ Implemented in mypc v1.6:
   `OLLAMA_VULKAN=1` (experimental; known garbage-output issues on Intel
   iGPUs; weak iGPUs are usually not worth it vs CPU).
 - Btrfs snapshots as safety net (phase 5), branding, docs.
+- **Branding**: naming is "GLIA — GNU/Linux + AI" (AI in English) everywhere;
+  texts updated 2026-07-12, the Calamares logo.png still says "IA" and must
+  be regenerated.

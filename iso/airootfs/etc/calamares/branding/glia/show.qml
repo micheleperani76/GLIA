@@ -14,7 +14,7 @@ Presentation {
                 anchors.centerIn: parent
                 spacing: 24
                 Text {
-                    text: "GLIA — GNU/Linux + IA"
+                    text: "GLIA — GNU/Linux + AI"
                     color: "#4fd1c5"
                     font.pixelSize: 40
                     font.bold: true
