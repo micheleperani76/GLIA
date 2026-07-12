@@ -66,6 +66,14 @@ Implemented in mypc v1.6:
 
 ## TODO
 
+- **glia-firstboot robustness** (found in VM test 2026-07-12): the one-time
+  setup runs on every login until finished, so two concurrent logins (console
+  + SSH) run it twice and inputs desync (the assistant name ended up as
+  "Installation_guide" from a stray answer). Write the done-flag early or use
+  a lock file; re-prompt only if setup was interrupted.
+- **Localize GLIA texts**: motd, firstboot and mypc messages are hardcoded
+  English; pick it/en from $LANG (Calamares already sets the locale).
+
 - **mypc v1.3**: show the real aichat/ollama error instead of "empty answer"
   (drop `2>/dev/null`, log stderr); check available RAM in `check_ai`
   before loading the model (7B needs ~6 GB free).
