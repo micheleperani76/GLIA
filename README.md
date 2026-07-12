@@ -1,4 +1,4 @@
-# GLIA — GNU/Linux + AI
+# GLIA — GNU/Linux + IA
 
 **A Linux distribution with a built-in AI terminal assistant.**
 
