@@ -1,10 +1,16 @@
 #!/usr/bin/env bash
 # ============================================================
 #  mypc - AI terminal assistant (Ollama + aichat)
-#  Version: 1.6 - 2026-07-12
+#  Version: 1.7 - 2026-07-12
 #  Author: Michele (with Claude)
 #  Project: GLIA (GNU Linux IA)
 #
+#  What's new in v1.7 ("command cache"):
+#   - a request already answered is served instantly from cache; only
+#     commands that ran successfully (exit 0) are cached, the command
+#     itself is always re-executed (fresh output every time)
+#   - at a cache hit, r = bypass the cache and ask the AI again
+#   - --cache-clear empties the cache
 #  What's new in v1.6 ("persistent memory"):
 #   - --remember "<fact>" stores short facts in ~/.config/glia/memory
 #     (max 20 lines, oldest dropped); facts are added to every prompt
@@ -35,6 +41,7 @@
 #    mypc --remember <fact> store a fact in persistent memory
 #    mypc --memory         list stored facts
 #    mypc --forget <n>     delete fact number n
+#    mypc --cache-clear    empty the command cache
 #    mypc --rename <name>  rename the assistant
 #    mypc --lang <code>    set interface language (en, it, de)
 #    mypc -h               this help
@@ -71,6 +78,10 @@ OLLAMA_URL="http://localhost:11434"
 # Persistent memory (v1.6): one fact per line, newest kept
 MEMFILE="$HOME/.config/glia/memory"
 MEMMAX=20
+
+# Command cache (v1.7): request+directory -> last command that worked
+CACHEFILE="$LOGDIR/cache"
+CACHEMAX=200
 
 # Conversation context (v1.6): per-terminal session file
 # $PPID = the shell of this terminal window, so each window has its own
@@ -244,6 +255,12 @@ t() {
         it:need_jq)         echo "La modalità progetto richiede jq:  sudo pacman -S jq" ;;
         de:need_jq)         echo "Der Projektmodus benötigt jq:  sudo pacman -S jq" ;;
         *:need_jq)          echo "Project mode requires jq:  sudo pacman -S jq" ;;
+        it:cache_hit)       echo "[dalla cache, r = richiedi all'IA]" ;;
+        de:cache_hit)       echo "[aus dem Cache, r = KI erneut fragen]" ;;
+        *:cache_hit)        echo "[from cache, r = ask the AI again]" ;;
+        it:cache_cleared)   echo "Cache dei comandi svuotata." ;;
+        de:cache_cleared)   echo "Befehls-Cache geleert." ;;
+        *:cache_cleared)    echo "Command cache cleared." ;;
         it:explaining)      echo "Chiedo all'IA cosa farà questo comando..." ;;
         de:explaining)      echo "Frage die KI, was dieser Befehl tun wird..." ;;
         *:explaining)       echo "Asking the AI what this command will do..." ;;
@@ -259,7 +276,7 @@ t() {
 show_help() {
     case "$UILANG" in
     it) cat <<EOF
-$PROG v1.6 - assistente IA da terminale (modello: ${MODEL#ollama:})
+$PROG v1.7 - assistente IA da terminale (modello: ${MODEL#ollama:})
 
 Uso:
   $PROG <richiesta>       propone un comando shell
@@ -271,6 +288,8 @@ Uso:
   $PROG --remember <fatto> memorizza un fatto (macchine, percorsi, abitudini)
   $PROG --memory          mostra i fatti memorizzati
   $PROG --forget <n>      dimentica il fatto numero n
+  $PROG --cache-clear     svuota la cache dei comandi riusciti
+                          (richieste ripetute = risposta immediata, senza IA)
   $PROG --rename <nome>   rinomina l'assistente (es: $PROG --rename jarvis)
   $PROG --lang <codice>   lingua dell'interfaccia: en, it, de
   $PROG -h                questo aiuto
@@ -287,7 +306,7 @@ Se l'IA non risponde:
 EOF
         ;;
     de) cat <<EOF
-$PROG v1.6 - KI-Terminal-Assistent (Modell: ${MODEL#ollama:})
+$PROG v1.7 - KI-Terminal-Assistent (Modell: ${MODEL#ollama:})
 
 Verwendung:
   $PROG <Anfrage>         schlägt einen Shell-Befehl vor
@@ -299,6 +318,8 @@ Verwendung:
   $PROG --remember <Fakt> Fakt dauerhaft merken (Rechner, Pfade, Gewohnheiten)
   $PROG --memory          gespeicherte Fakten anzeigen
   $PROG --forget <n>      Fakt Nummer n vergessen
+  $PROG --cache-clear     Befehls-Cache leeren
+                          (wiederholte Anfragen = sofortige Antwort, ohne KI)
   $PROG --rename <Name>   Assistenten umbenennen (z.B.: $PROG --rename jarvis)
   $PROG --lang <Code>     Sprache der Oberfläche: en, it, de
   $PROG -h                diese Hilfe
@@ -315,7 +336,7 @@ Wenn die KI nicht antwortet:
 EOF
         ;;
     *) cat <<EOF
-$PROG v1.6 - AI terminal assistant (model: ${MODEL#ollama:})
+$PROG v1.7 - AI terminal assistant (model: ${MODEL#ollama:})
 
 Usage:
   $PROG <request>        propose a shell command
@@ -327,6 +348,8 @@ Usage:
   $PROG --remember <fact> store a fact (machines, paths, habits)
   $PROG --memory         list stored facts
   $PROG --forget <n>     forget fact number n
+  $PROG --cache-clear    empty the cache of successful commands
+                         (repeated requests = instant answer, no AI)
   $PROG --rename <name>  rename the assistant (example: $PROG --rename jarvis)
   $PROG --lang <code>    interface language: en, it, de
   $PROG -h               this help
@@ -486,6 +509,26 @@ session_add() {
     chmod 600 "$SESSFILE" 2>/dev/null
 }
 
+# ---- command cache (v1.7) ----
+cache_key() {
+    # same request in the same directory = same key (case/space insensitive)
+    printf '%s|%s' "$PWD" "$(tr -s ' ' <<< "${*,,}")" | sha256sum | cut -d' ' -f1
+}
+
+cache_lookup() {
+    [ -f "$CACHEFILE" ] || return 0
+    grep "^$(cache_key "$@")|" "$CACHEFILE" 2>/dev/null | tail -n 1 | cut -d'|' -f2-
+}
+
+cache_store() {
+    # $1 = request, $2 = command that just ran with exit 0
+    local key; key=$(cache_key "$1")
+    mkdir -p "$(dirname "$CACHEFILE")"
+    { grep -v "^$key|" "$CACHEFILE" 2>/dev/null; printf '%s|%s\n' "$key" "$2"; } > "$CACHEFILE.tmp"
+    tail -n "$CACHEMAX" "$CACHEFILE.tmp" > "$CACHEFILE"
+    rm -f "$CACHEFILE.tmp"
+}
+
 # ---- danger self-explanation (v1.6) ----
 explain_danger() {
     # one plain-language sentence about what a dangerous command will do
@@ -536,10 +579,17 @@ run_command() {
 }
 
 propose_and_run() {
-    local original="$*" request="$*" cmd answer status fixes=0 expl
+    local original="$*" request="$*" cmd answer status fixes=0 expl use_cache=1 from_cache
     while true; do
-        echo -e "${YELLOW}$(t thinking)${NC}" >&2
-        cmd=$(generate_command "$request")
+        from_cache=0
+        if [ "$use_cache" -eq 1 ] && [ "$fixes" -eq 0 ]; then
+            cmd=$(cache_lookup "$original")
+            [ -n "$cmd" ] && from_cache=1
+        fi
+        if [ "$from_cache" -eq 0 ]; then
+            echo -e "${YELLOW}$(t thinking)${NC}" >&2
+            cmd=$(generate_command "$request")
+        fi
         if [ -z "$cmd" ]; then
             echo -e "${RED}$(t no_command)${NC}" >&2
             if [ -n "$AI_ERR" ]; then
@@ -549,7 +599,11 @@ propose_and_run() {
             exit 1
         fi
         echo
-        echo -e "$(t proposed) ${GREEN}$cmd${NC}"
+        if [ "$from_cache" -eq 1 ]; then
+            echo -e "$(t proposed) ${GREEN}$cmd${NC} ${BLUE}$(t cache_hit)${NC}"
+        else
+            echo -e "$(t proposed) ${GREEN}$cmd${NC}"
+        fi
         if needs_extra_confirm "$cmd"; then
             echo -e "${RED}$(t warn)${NC}"
             echo -e "${YELLOW}$(t explaining)${NC}" >&2
@@ -559,7 +613,7 @@ propose_and_run() {
                 || { write_log "CANCELLED (no tty)" "$cmd"; echo "$(t cancelled)"; return; }
             case "$answer" in
                 "$CONFIRM_WORD") : ;;
-                r|R) continue ;;
+                r|R) use_cache=0; continue ;;
                 *)   write_log "CANCELLED" "$cmd"; echo "$(t cancelled)"; return ;;
             esac
         else
@@ -567,7 +621,7 @@ propose_and_run() {
                 || { write_log "CANCELLED (no tty)" "$cmd"; echo "$(t cancelled)"; return; }
             case "$answer" in
                 "")  : ;;
-                r|R) continue ;;
+                r|R) use_cache=0; continue ;;
                 *)   write_log "CANCELLED" "$cmd"; echo "$(t cancelled)"; return ;;
             esac
         fi
@@ -576,7 +630,7 @@ propose_and_run() {
         session_add "$original" "$cmd"
         run_command "$cmd"
         status=$?
-        [ "$status" -eq 0 ] && return 0
+        [ "$status" -eq 0 ] && { cache_store "$original" "$cmd"; return 0; }
         if [ "$fixes" -ge 2 ]; then
             return "$status"
         fi
@@ -748,6 +802,10 @@ case "$1" in
     --forget)
         shift
         forget_fact "$1"
+        ;;
+    --cache-clear)
+        rm -f "$CACHEFILE"
+        echo -e "${GREEN}$(t cache_cleared)${NC}"
         ;;
     -d)
         shift
