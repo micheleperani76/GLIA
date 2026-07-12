@@ -27,7 +27,7 @@ requests into shell commands, with configurable approval levels.
 | 1. `mypc` assistant with safety levels | ✅ working |
 | 2. Hardware detection → model recommendation | ✅ `glia-hardware` v1.0 |
 | 3. Live ISO (archiso) with AI preinstalled | ✅ 5.8 GB ISO, model embedded, tested in QEMU |
-| 4. Calamares installer with AI setup step | 🔜 next step |
+| 4. Calamares installer with AI setup step | 🧪 working, final test in progress |
 | 5. Btrfs snapshots, branding, polish | ⏳ |
 
 ## Components
@@ -40,6 +40,38 @@ requests into shell commands, with configurable approval levels.
   AI model tier. JSON output (`-j`) designed for the installer.
 - **`config/aichat-config.yaml`** — aichat configuration for local Ollama
   (target: `~/.config/aichat/config.yaml`).
+
+## Build the ISO yourself
+
+There are no prebuilt ISO downloads: if you want to try GLIA, you build a
+fresh ISO from this repo. You need an Arch-based host (Arch, CachyOS, ...),
+the `archiso` package, ~15 GB of free disk space and a network connection
+(the AI model, ~5 GB, is downloaded once and embedded in the ISO).
+
+```bash
+sudo pacman -S archiso qemu-desktop edk2-ovmf   # qemu/ovmf only needed for testing
+git clone https://github.com/micheleperani76/GLIA glia
+cd glia
+sudo bash scripts/glia-build.sh
+```
+
+The ISO lands in `out/glia-YYYY.MM.DD-x86_64.iso` (~6 GB). The build works
+in `/var/tmp/glia-build` and cleans up after itself.
+
+Test it in QEMU (UEFI, needs ~12 GB of free RAM for the embedded 7B model):
+
+```bash
+qemu-img create -f qcow2 out/test-disk.qcow2 40G
+qemu-system-x86_64 -enable-kvm -cpu host -smp 6 -m 12G \
+  -drive if=pflash,format=raw,readonly=on,file=/usr/share/edk2/x64/OVMF_CODE.4m.fd \
+  -drive file=out/glia-*.iso,media=cdrom,if=none,id=cd0 \
+  -device ide-cd,drive=cd0,bootindex=0 \
+  -drive file=out/test-disk.qcow2,format=qcow2,if=virtio \
+  -vga virtio
+```
+
+Boot the first menu entry for the live environment, or *Install GLIA
+(Calamares)* to install to disk.
 
 ## Quick install (Arch/CachyOS)
 
