@@ -31,7 +31,7 @@ requests into shell commands, with configurable approval levels.
 | 1. `mypc` assistant with safety levels | ✅ working |
 | 2. Hardware detection → model recommendation | ✅ `glia-hardware` v1.0 |
 | 3. Live ISO (archiso) with AI preinstalled | ✅ 5.8 GB ISO, model embedded, tested in QEMU |
-| 4. Calamares installer with AI setup step | 🧪 working, final test in progress |
+| 4. Calamares installer with AI setup step | ✅ working, full install tested in QEMU (UEFI) |
 | 5. Btrfs snapshots, branding, polish | ⏳ |
 
 ## Components

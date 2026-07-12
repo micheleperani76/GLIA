@@ -54,7 +54,8 @@ Implemented in mypc v1.6:
    (run_archiso ignores extra args and defaults to 3 GB RAM: not enough
    for the 7B model).
 
-## Next: Calamares installer (phase 4)
+## Done: Calamares installer (phase 4) — full QEMU install verified 2026-07-12
+(UEFI: systemd-boot; BIOS grub untested on real hardware yet)
 
 - Minimal graphical environment on the live ISO
 - calamares package from the CachyOS repo
