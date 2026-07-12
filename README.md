@@ -41,10 +41,21 @@ requests into shell commands, with configurable approval levels.
 - **`config/aichat-config.yaml`** — aichat configuration for local Ollama
   (target: `~/.config/aichat/config.yaml`).
 
-## Build the ISO yourself
+## Install GLIA — three ways
 
-There are no prebuilt ISO downloads: if you want to try GLIA, you build a
-fresh ISO from this repo. You need an Arch-based host (Arch, CachyOS, ...),
+1. **Full install on a real PC** — build the ISO (step 1), write it to a
+   USB stick and install (way 1).
+2. **Try it in a virtual machine** — build the ISO (step 1), boot it in
+   QEMU (way 2).
+3. **Only the assistant** — add `mypc` to the Linux you already use
+   (way 3, no ISO needed).
+
+There are no prebuilt ISO downloads: the ISO is always built fresh from
+this repo.
+
+### Step 1 — build the ISO (needed for ways 1 and 2)
+
+You need an Arch-based host (Arch, CachyOS, ...),
 the `archiso` package, ~15 GB of free disk space and a network connection
 (the AI model, ~5 GB, is downloaded once and embedded in the ISO).
 
@@ -58,22 +69,7 @@ sudo bash scripts/glia-build.sh
 The ISO lands in `out/glia-YYYY.MM.DD-x86_64.iso` (~6 GB). The build works
 in `/var/tmp/glia-build` and cleans up after itself.
 
-Test it in QEMU (UEFI, needs ~12 GB of free RAM for the embedded 7B model):
-
-```bash
-qemu-img create -f qcow2 out/test-disk.qcow2 40G
-qemu-system-x86_64 -enable-kvm -cpu host -smp 6 -m 12G \
-  -drive if=pflash,format=raw,readonly=on,file=/usr/share/edk2/x64/OVMF_CODE.4m.fd \
-  -drive file=out/glia-*.iso,media=cdrom,if=none,id=cd0 \
-  -device ide-cd,drive=cd0,bootindex=0 \
-  -drive file=out/test-disk.qcow2,format=qcow2,if=virtio \
-  -vga virtio
-```
-
-Boot the first menu entry for the live environment, or *Install GLIA
-(Calamares)* to install to disk.
-
-### Building from Debian, Fedora or any non-Arch distro
+#### Building from Debian, Fedora or any non-Arch distro
 
 `mkarchiso` only runs on Arch, but you can build inside an Arch container
 with podman (or docker). You still need ~15 GB free and a network
@@ -96,14 +92,70 @@ Notes:
 - On Fedora, if the mount is denied by SELinux, use `-v "$PWD:/glia:z"`.
 - To test the ISO in QEMU on Debian/Fedora, install `qemu-system-x86` and
   `ovmf` (Debian) or `qemu-kvm` and `edk2-ovmf` (Fedora); the OVMF firmware
-  path in the QEMU command above may differ (e.g.
+  path in the QEMU command of way 2 may differ (e.g.
   `/usr/share/OVMF/OVMF_CODE.fd`).
 
-## Quick install (Arch/CachyOS)
+### Way 1 — install on a real PC
+
+Write the ISO to a USB stick. **Careful: everything on the stick is
+erased — double-check the device name with `lsblk` first.**
+
+```bash
+lsblk                                                    # find the stick, e.g. /dev/sdb (NOT sdb1)
+sudo dd if=out/glia-*.iso of=/dev/sdX bs=4M status=progress oflag=sync
+```
+
+Boot the PC from the USB stick (usually F12, F8 or Esc for the boot menu;
+both UEFI and legacy BIOS work), pick **Install GLIA (Calamares)** and
+follow the installer: language, keyboard, disk, user, AI model. After the
+reboot, log in: the one-time setup asks the name of your assistant and,
+if needed, downloads the chosen model.
+
+Hardware: 40+ GB disk; 16 GB RAM for the default 7B model, or pick the
+4B model in the installer for 8 GB machines.
+
+### Way 2 — try it in QEMU
+
+UEFI, needs ~12 GB of free RAM for the embedded 7B model:
+
+```bash
+qemu-img create -f qcow2 out/test-disk.qcow2 40G
+qemu-system-x86_64 -enable-kvm -cpu host -smp 6 -m 12G \
+  -drive if=pflash,format=raw,readonly=on,file=/usr/share/edk2/x64/OVMF_CODE.4m.fd \
+  -drive file=out/glia-*.iso,media=cdrom,if=none,id=cd0 \
+  -device ide-cd,drive=cd0,bootindex=0 \
+  -drive file=out/test-disk.qcow2,format=qcow2,if=virtio \
+  -vga virtio
+```
+
+Boot the first menu entry for the live environment, or *Install GLIA
+(Calamares)* to install to the virtual disk. After installing, relaunch
+QEMU without the two cdrom lines to boot the installed system.
+
+### Way 3 — only the assistant, on the Linux you already use
+
+`mypc` is a bash script: it only needs `ollama` and `aichat`.
+
+On Arch/CachyOS:
 
 ```bash
 sudo pacman -S ollama aichat
 sudo systemctl enable --now ollama
+./bin/glia-hardware              # recommends the model for your hardware
+ollama pull qwen2.5-coder:7b     # or the recommended one
+install -m 755 bin/mypc bin/glia-hardware ~/.local/bin/
+mkdir -p ~/.config/aichat && cp config/aichat-config.yaml ~/.config/aichat/config.yaml
+```
+
+On Debian, Fedora and other distros:
+
+```bash
+curl -fsSL https://ollama.com/install.sh | sh    # official Ollama installer
+                                                 # (yes, mypc would ask you to type YES for a curl|sh — read scripts before running them!)
+# aichat: grab the binary for your arch from https://github.com/sigoden/aichat/releases
+# and put it in ~/.local/bin/
+
+git clone https://github.com/micheleperani76/GLIA glia && cd glia
 ./bin/glia-hardware              # recommends the model for your hardware
 ollama pull qwen2.5-coder:7b     # or the recommended one
 install -m 755 bin/mypc bin/glia-hardware ~/.local/bin/
