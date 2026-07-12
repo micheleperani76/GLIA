@@ -2,7 +2,11 @@
 
 **A Linux distribution with a built-in AI terminal assistant.**
 
-*GLIA stands for GNU Linux IA (Intelligenza Artificiale — Italian for AI).*
+**The name**: **G**NU + **LI**nux + **A**I → **GLIA**. It reads the same
+in Italian, where AI is "IA". And it's no accident that it sounds
+biological: in the brain, *glia* are the cells that support, feed and
+protect the neurons — they don't think in their place. That's exactly
+what GLIA wants to be for you at the terminal: support, not substitution.
 
 ## Philosophy
 
