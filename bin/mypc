@@ -277,6 +277,7 @@ Uso:
 
 I comandi potenzialmente distruttivi richiedono di digitare $CONFIRM_WORD.
 Consiglio per -p: elenca esplicitamente i file che vuoi nel progetto.
+Esempio: $PROG -p uno script bash di backup con rsync e un README che spiega come usarlo
 Log: $LOGFILE
 
 Se l'IA non risponde:
@@ -304,6 +305,7 @@ Verwendung:
 
 Potenziell zerstörerische Befehle erfordern die Eingabe von $CONFIRM_WORD.
 Tipp für -p: liste die gewünschten Dateien explizit auf.
+Beispiel: $PROG -p ein Bash-Backup-Skript mit rsync und eine README, die die Nutzung erklärt
 Protokoll: $LOGFILE
 
 Wenn die KI nicht antwortet:
@@ -331,6 +333,7 @@ Usage:
 
 Potentially destructive commands require typing $CONFIRM_WORD.
 Tip for -p: list the files you want explicitly.
+Example: $PROG -p a bash backup script with rsync and a README explaining how to use it
 Log: $LOGFILE
 
 If the AI does not answer:

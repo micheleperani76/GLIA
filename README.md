@@ -57,6 +57,7 @@ mkdir -p ~/.config/aichat && cp config/aichat-config.yaml ~/.config/aichat/confi
 ```bash
 mypc find the largest files in /home   # proposes the command → Enter runs it
 mypc -d what does rsync do             # plain-text explanation only
+mypc -p a bash backup script with rsync and a README explaining how to use it   # project mode: plans the steps, then writes the files (with confirmation)
 mypc -l                                # log of executed commands
 glia-hardware                           # hardware report and recommended models
 ```
