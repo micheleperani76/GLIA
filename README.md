@@ -2,6 +2,12 @@
 
 **A Linux distribution with a built-in AI terminal assistant.**
 
+> ⚠️ **Development status — Debian & Fedora are work in progress.**
+> The assistant is built to run on **Arch, Debian and Fedora**, but so far it
+> has been **fully tested only on Arch/CachyOS**. **Debian and Fedora support
+> is under active development and not yet tested.** Testers and contributors are
+> very welcome — please open an issue or a pull request with your results.
+
 **The name**: **G**NU + **LI**nux + **A**I → **GLIA**. It reads the same
 in Italian, where AI is "IA". And it's no accident that it sounds
 biological: in the brain, *glia* are the cells that support, feed and
