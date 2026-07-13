@@ -215,11 +215,18 @@ mkdir -p ~/.config/aichat && cp config/aichat-config.yaml ~/.config/aichat/confi
 
 ```bash
 glia find the largest files in /home   # proposes the command → Enter runs it
+glia                                   # interactive REPL: request after request, any symbol allowed; empty line quits
 glia -d what does rsync do             # plain-text explanation only
+cat error.log | glia why does it fail  # piped input becomes context for the AI
 glia -p a bash backup script with rsync and a README explaining how to use it   # project mode: plans the steps, then writes the files (with confirmation)
 glia -l                                # log of executed commands
+glia --doctor                          # one-shot health check (engine, model, RAM, config)
 glia-hardware                           # hardware report and recommended models
 ```
+
+At every proposed command you can also press `m` to edit it in place before
+running, or `e` to have the AI explain what it does. Bash tab-completion is in
+`completions/glia.bash` (source it from `~/.bashrc`).
 
 ## Model tiers by hardware
 
@@ -246,6 +253,13 @@ GLIA is actively evolving. Planned and in-progress work:
 
 Full details and history in [docs/ROADMAP.md](docs/ROADMAP.md).
 Contributions are welcome — open an issue or a pull request.
+
+## ☕ Support GLIA
+
+GLIA is free and open source, built in my spare time. If it's useful to you
+and you'd like to help, buy me a coffee — you choose the amount. Thank you!
+
+[![Buy me a coffee](https://img.shields.io/badge/%E2%98%95_Buy_me_a_coffee-support_GLIA-2dd4bf?style=for-the-badge)](https://checkout.revolut.com/pay/9b1a8a04-2740-4141-b351-bebb0f3e5b70)
 
 ---
 *Author: Michele (with Claude) — 2026*
