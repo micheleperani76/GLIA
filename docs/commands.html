@@ -138,12 +138,14 @@ footer .fbrand{font-weight:800;color:var(--white);font-size:1.05rem;margin-botto
     <div class="grp-h"><span class="n">01</span><h2>The basics</h2></div>
     <p class="why"><b>What it is:</b> you type a request in plain language and GLIA turns it into a real shell command. <b>Why it exists:</b> you should always see the command before it runs — you read it, approve it, and little by little you learn it. The AI proposes, you decide.</p>
     <table class="cmds">
-      <tr><td class="c">glia &lt;request&gt;</td><td class="d">Proposes a command. <b>Enter</b> runs it, <b>n</b> cancels, <b>r</b> retries.</td></tr>
+      <tr><td class="c">glia &lt;request&gt;</td><td class="d">Proposes a command. <b>Enter</b> runs it, <b>n</b> cancels, <b>r</b> retries, <b>m</b> edits it in place before running, <b>e</b> asks the AI to explain it.</td></tr>
       <tr><td class="c">glia</td><td class="d">On its own, opens the interactive prompt (see <a href="#interactive" style="color:var(--teal)">Interactive mode</a>).</td></tr>
-      <tr><td class="c">rm -rf · dd · mkfs · sudo · curl|sh</td><td class="d">Destructive commands ask a short <b>s / y / j</b> confirmation first (Enter = no).</td></tr>
+      <tr><td class="c">cat file | glia &lt;request&gt;</td><td class="d">Piped input becomes context for the AI — e.g. <code>cat error.log | glia why does it fail</code>.</td></tr>
+      <tr><td class="c">rm -rf · dd · mkfs · curl|sh</td><td class="d">Destructive commands are explained by the AI first, then ask a short <b>s / y / j</b> confirmation (Enter = no). Routine <code>sudo</code> commands don't trip this — only genuinely destructive patterns do.</td></tr>
       <tr><td class="c">(root needed)</td><td class="d">Commands that need root get <b>sudo</b> added automatically.</td></tr>
+      <tr><td class="c">(on failure)</td><td class="d">Enter = ask for a fix, or <b>type a hint</b> to guide the AI (hints accumulate, up to 5 tries).</td></tr>
     </table>
-    <div class="note">Every executed command is logged to <code>~/.local/share/glia/glia.log</code>.</div>
+    <div class="note">Every executed command is logged to <code>~/.local/share/glia/glia.log</code>, together with the request that produced it.</div>
   </section>
 
   <section class="grp" id="ask">
@@ -153,7 +155,7 @@ footer .fbrand{font-weight:800;color:var(--white);font-size:1.05rem;margin-botto
       <tr><td class="c">glia -d &lt;question&gt;</td><td class="d">Explains in words, runs nothing.</td></tr>
       <tr><td class="c">glia --ask &lt;question&gt;</td><td class="d">Same as <code style="font-family:var(--mono);color:var(--teal)">-d</code>, long form.</td></tr>
     </table>
-    <div class="note">Example: <code>glia -d what does rsync do</code></div>
+    <div class="note">Example: <code>glia -d what does rsync do</code> · follow-ups work (it remembers the recent conversation of this terminal) · piped input is understood here too: <code>cat script.sh | glia -d what does this do</code></div>
   </section>
 
   <section class="grp" id="alias">
@@ -199,6 +201,8 @@ footer .fbrand{font-weight:800;color:var(--white);font-size:1.05rem;margin-botto
     <p class="why"><b>What it is:</b> plan a small project and write its files, with your confirmation at every step. <b>Why it exists:</b> for multi-file tasks that go beyond a single command — still transparent, still one approval at a time.</p>
     <table class="cmds">
       <tr><td class="c">glia -p &lt;idea&gt;</td><td class="d">Plan the steps and write the files (you confirm each one).</td></tr>
+      <tr><td class="c">(at the plan prompt)</td><td class="d">Enter = proceed, <b>n</b> = cancel, or <b>type a hint</b> — the plan is revised with it, without losing what the original request asked for. Hints accumulate.</td></tr>
+      <tr><td class="c">(at each file)</td><td class="d">Enter = save, <b>v</b> = view all, <b>r</b> = regenerate, <b>type a hint</b> = regenerate following it, <b>s</b> = skip.</td></tr>
     </table>
     <div class="note">List the files you want <b>explicitly</b>, so the AI doesn't forget them · files are written only inside the projects folder <code>~/Documenti/glia</code> · requires <code>jq</code>.<br><br>Example: <code>glia -p a backup script with rsync and a README explaining it</code></div>
   </section>
@@ -207,7 +211,7 @@ footer .fbrand{font-weight:800;color:var(--white);font-size:1.05rem;margin-botto
     <div class="grp-h"><span class="n">07</span><h2>Interactive mode</h2></div>
     <p class="why"><b>What it is:</b> a dedicated prompt where special characters are taken literally. <b>Why it exists:</b> the shell interprets <code>'  "  $  |  ;  &amp;  *  ( )  `</code> before GLIA ever sees them, breaking a sentence that contains them. The interactive prompt reads your request character by character instead.</p>
     <table class="cmds">
-      <tr><td class="c">glia</td><td class="d">On its own, enters the prompt <code style="font-family:var(--mono);color:var(--teal)">glia&gt;</code>.</td></tr>
+      <tr><td class="c">glia</td><td class="d">On its own, enters the prompt <code style="font-family:var(--mono);color:var(--teal)">glia&gt;</code> — a real REPL: type request after request, the conversation context carries over.</td></tr>
       <tr><td class="c">glia -i</td><td class="d">Same, explicit form. Empty Enter = exit.</td></tr>
     </table>
     <div class="note">Use it whenever the request contains <code>'  "  $  |  ;  &amp;  *</code>. Type at the <code>glia&gt;</code> prompt, e.g. <code>count the *.log files in the current folder</code> or <code>how much space does $HOME use</code>. Simple sentences with no symbols still work inline: <code>glia find the largest files in /home</code>.</div>
@@ -229,6 +233,7 @@ footer .fbrand{font-weight:800;color:var(--white);font-size:1.05rem;margin-botto
     <table class="cmds">
       <tr><td class="c">glia --rename &lt;name&gt;</td><td class="d">Give the assistant a new name (e.g. <code style="font-family:var(--mono);color:var(--teal)">mypc</code>). The <code style="font-family:var(--mono);color:var(--teal)">glia</code> command always stays as a fallback.</td></tr>
       <tr><td class="c">glia --lang &lt;it|en|de&gt;</td><td class="d">Change the interface language.</td></tr>
+      <tr><td class="c">glia --doctor</td><td class="d">One-shot health check: engine, model, RAM, dependencies, PATH, folders — with a fix hint for anything wrong.</td></tr>
       <tr><td class="c">glia --clear-cache</td><td class="d">Empty the answer cache.</td></tr>
       <tr><td class="c">glia -V · --version</td><td class="d">Show the version.</td></tr>
       <tr><td class="c">glia -h</td><td class="d">Show the built-in help.</td></tr>

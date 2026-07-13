@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ============================================================
 #  glia-firstboot - First-boot wizard for GLIA
-#  Version: 1.0 - 2026-07-12
+#  Version: 1.1 - 2026-07-13 (robust current-name detection, anchored model check)
 #  Author: Michele (with Claude)
 #  Project: GLIA (GNU Linux IA)
 #
@@ -27,8 +27,19 @@ else
 fi
 
 # ---------- 1. assistant name ----------
+# current name: the name file if present, else 'glia' if the anchor exists,
+# else the first symlink in /usr/local/bin that points to glia (never a
+# random file: v1.0 guessed from the whole directory listing)
 CURRENT="glia"
-[ -x /usr/local/bin/glia ] || CURRENT="$(basename "$(ls /usr/local/bin/ 2>/dev/null | head -n1)")"
+if [ -r "$HOME/.config/glia/name" ]; then
+    CURRENT="$(head -n1 "$HOME/.config/glia/name")"
+elif [ ! -x /usr/local/bin/glia ]; then
+    for f in /usr/local/bin/*; do
+        [ -L "$f" ] && [ "$(readlink "$f" 2>/dev/null)" = "glia" ] \
+            && { CURRENT="$(basename "$f")"; break; }
+    done
+fi
+[ -z "$CURRENT" ] && CURRENT="glia"
 echo
 read -r -p "What do you want to call your AI assistant? [${CURRENT}] " NAME < /dev/tty
 NAME="${NAME:-$CURRENT}"
@@ -44,8 +55,12 @@ if [ "$NAME" != "$CURRENT" ]; then
 fi
 
 # ---------- 2. model check ----------
+# anchored: a bare name means :latest, so "qwen3" does not falsely
+# match an installed "qwen3:8b"
 MODEL="$(head -n1 /etc/glia/model 2>/dev/null)"
-if [ -n "$MODEL" ] && ! ollama list 2>/dev/null | grep -q "$MODEL"; then
+M2="$MODEL"
+case "$MODEL" in *:*) : ;; *) M2="$MODEL:latest" ;; esac
+if [ -n "$MODEL" ] && ! ollama list 2>/dev/null | awk 'NR>1{print $1}' | grep -qx -e "$MODEL" -e "$M2"; then
     echo
     echo -e "${YELLOW}The model you chose ($MODEL) is not on disk yet.${NC}"
     read -r -p "Download it now? Needs network. [Y/n] " A < /dev/tty
