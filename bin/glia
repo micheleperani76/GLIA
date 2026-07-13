@@ -1,12 +1,22 @@
 #!/usr/bin/env bash
 # ============================================================
 #  glia - AI terminal assistant (Ollama + aichat)
-#  Version: 2.5 - 2026-07-13
+#  Version: 2.6 - 2026-07-13
 #  Author: Michele (with Claude)
 #  Project: GLIA (GNU Linux IA)
 #
 #  Design pillar: commands follow standard terminal conventions, so
 #  what you learn here you can reuse in other programs (and vice versa).
+#
+#  What's new in v2.6 ("interactive input, special chars safe"):
+#   - the assistant with NO arguments (just `arx`) now opens an interactive
+#     prompt: type the request there and it is read with `read -r`, so the
+#     interactive shell (fish, zsh, bash...) never parses it. You can type
+#     ' " $ | ; & * literally, with no quoting. Empty line = quit.
+#   - `-i` / `--interactive` is the explicit synonym; `-i help` shows a
+#     dedicated guide with examples. `-h` still shows the general help.
+#   - everything after (proposal, confirm, guided fix, cache, memory) is
+#     unchanged - only WHERE the request comes from is new.
 #
 #  What's new in v2.5 ("leaner help, deeper sub-helps"):
 #   - the general `-h` is now slim: common use, the most common management
@@ -98,7 +108,9 @@
 #  v1.1: AI self-check, --rename, dynamic program name
 #
 #  Usage:
+#    glia (no args)        interactive prompt: type request with special chars
 #    glia <request>        propose a command (Enter = run)
+#    glia -i|--interactive same as no-args; `-i help` shows a guide
 #    glia -p <idea>        project mode: plan steps, write files
 #    glia -d|--ask <q>     plain-text answer, no command
 #    glia -l|--log         show the command log
@@ -487,16 +499,21 @@ t() {
         it:model_oneoff)    echo "Solo per questo comando uso:" ;;
         de:model_oneoff)    echo "Nur für diesen Befehl nutze ich:" ;;
         *:model_oneoff)     echo "For this command only I use:" ;;
+        # ---- interactive mode (v2.6) ----
+        it:int_hint)        echo "Modalità interattiva: scrivi la richiesta con qualunque simbolo. Invio vuoto = esci." ;;
+        de:int_hint)        echo "Interaktiver Modus: gib die Anfrage mit beliebigen Zeichen ein. Leere Eingabe = beenden." ;;
+        *:int_hint)         echo "Interactive mode: type your request with any characters. Empty line = quit." ;;
     esac
 }
 
 show_help() {
     case "$UILANG" in
     it) cat <<EOF
-$ASSIST_NAME v2.5 - assistente IA da terminale (modello in uso: ${MODEL#ollama:})
+$ASSIST_NAME v2.6 - assistente IA da terminale (modello in uso: ${MODEL#ollama:})
 Assistente: $ASSIST_NAME  ·  comando di emergenza sempre attivo: glia
 
 Uso comune:
+  $ASSIST_NAME                 (da solo) apre il prompt: scrivi la richiesta con QUALSIASI simbolo (' " \$ | ; & *)
   $ASSIST_NAME <richiesta>     propone ed esegue un comando (Invio = esegui, n = annulla, r = riprova)
   $ASSIST_NAME -d|--ask <dom>  risponde a parole, senza eseguire nulla
   $ASSIST_NAME -a <nome>       esegue una scorciatoia salvata
@@ -512,6 +529,7 @@ Aiuto dettagliato per gruppo:
   $ASSIST_NAME -m help         quale IA usare
   $ASSIST_NAME --memory help   memoria (fatti ricordati)
   $ASSIST_NAME -p help         modalità progetto
+  $ASSIST_NAME -i help         modalità interattiva (frasi con caratteri speciali)
 
 Impostazioni:
   $ASSIST_NAME --rename <nome>     dai un nuovo nome all'assistente (glia resta sempre)
@@ -533,10 +551,11 @@ Se l'IA non risponde:
 EOF
         ;;
     de) cat <<EOF
-$ASSIST_NAME v2.5 - KI-Terminal-Assistent (aktives Modell: ${MODEL#ollama:})
+$ASSIST_NAME v2.6 - KI-Terminal-Assistent (aktives Modell: ${MODEL#ollama:})
 Assistent: $ASSIST_NAME  ·  Notfallbefehl immer aktiv: glia
 
 Häufige Nutzung:
+  $ASSIST_NAME                (allein) öffnet den Prompt: Anfrage mit BELIEBIGEN Zeichen (' " \$ | ; & *)
   $ASSIST_NAME <Anfrage>      schlägt einen Befehl vor und führt ihn aus (Enter = ausführen, n = abbrechen, r = wiederholen)
   $ASSIST_NAME -d|--ask <Fr>  antwortet in Worten, führt nichts aus
   $ASSIST_NAME -a <Name>      führt einen gespeicherten Shortcut aus
@@ -552,6 +571,7 @@ Ausführliche Hilfe pro Gruppe:
   $ASSIST_NAME -m help         welche KI
   $ASSIST_NAME --memory help   Gedächtnis (gemerkte Fakten)
   $ASSIST_NAME -p help         Projektmodus
+  $ASSIST_NAME -i help         interaktiver Modus (Anfragen mit Sonderzeichen)
 
 Einstellungen:
   $ASSIST_NAME --rename <Name>    dem Assistenten einen neuen Namen geben (glia bleibt immer)
@@ -573,10 +593,11 @@ Wenn die KI nicht antwortet:
 EOF
         ;;
     *) cat <<EOF
-$ASSIST_NAME v2.5 - AI terminal assistant (model in use: ${MODEL#ollama:})
+$ASSIST_NAME v2.6 - AI terminal assistant (model in use: ${MODEL#ollama:})
 Assistant: $ASSIST_NAME  ·  emergency command always on: glia
 
 Common use:
+  $ASSIST_NAME                 (alone) opens the prompt: type your request with ANY symbol (' " \$ | ; & *)
   $ASSIST_NAME <request>       propose and run a command (Enter = run, n = cancel, r = retry)
   $ASSIST_NAME -d|--ask <q>    answer in words, run nothing
   $ASSIST_NAME -a <name>       run a saved shortcut
@@ -592,6 +613,7 @@ Detailed help per group:
   $ASSIST_NAME -m help         which AI to use
   $ASSIST_NAME --memory help   memory (remembered facts)
   $ASSIST_NAME -p help         project mode
+  $ASSIST_NAME -i help         interactive mode (requests with special characters)
 
 Settings:
   $ASSIST_NAME --rename <name>    give the assistant a new name (glia always stays)
@@ -1398,6 +1420,112 @@ EOF
     esac
 }
 
+interactive_mode() {
+    # neophyte-friendly input: read the whole request at a dedicated prompt
+    # with `read -r`, so the interactive shell never parses special chars.
+    check_ai
+    printf '%s\n' "$(t int_hint)" >&2
+    printf '%s> ' "$ASSIST_NAME" >&2
+    IFS= read -r req
+    [ -z "$req" ] && { echo "$(t cancelled)"; exit 0; }
+    propose_and_run "$req"
+}
+
+int_help() {
+    case "$UILANG" in
+    it) cat <<EOF
+Modalità interattiva - $ASSIST_NAME (da solo) oppure $ASSIST_NAME -i
+
+A cosa serve:
+  La shell (fish, bash, zsh) interpreta alcuni caratteri PRIMA di passarli
+  a $ASSIST_NAME:   '   "   \$   |   ;   &   *   ( )   \`
+  Se scrivi una frase con questi simboli sulla stessa riga del comando, la
+  shell si blocca o ne cambia il senso. In modalità interattiva la richiesta
+  viene letta a un prompt dedicato, dove ogni carattere è preso alla lettera.
+
+Come si usa:
+  $ASSIST_NAME              (da solo)   entra nel prompt  $ASSIST_NAME>
+  $ASSIST_NAME -i           lo stesso, in forma esplicita
+  poi scrivi la frase al prompt e premi Invio   ·   Invio a vuoto = esci
+
+Quando serve:
+  ogni volta che la richiesta contiene   '   "   \$   |   ;   &   *
+  Esempio tipico:  mostrami l'uso del disco   (l'apostrofo rompe la shell)
+
+Esempi (scrivili AL PROMPT $ASSIST_NAME>, non sulla riga della shell):
+  mostrami l'uso del disco
+  conta i file *.log nella cartella corrente
+  cerca "errore 500" nei log e contali
+  quanto spazio occupa \$HOME
+  comprimi /etc & salvalo in /tmp
+
+Le frasi semplici (senza simboli) puoi ancora scriverle dirette:
+  $ASSIST_NAME trova i file più grandi in /home
+EOF
+        ;;
+    de) cat <<EOF
+Interaktiver Modus - $ASSIST_NAME (allein) oder $ASSIST_NAME -i
+
+Wozu:
+  Die Shell (fish, bash, zsh) interpretiert manche Zeichen, BEVOR sie an
+  $ASSIST_NAME gehen:   '   "   \$   |   ;   &   *   ( )   \`
+  Schreibst du einen Satz mit diesen Zeichen in dieselbe Befehlszeile,
+  blockiert die Shell oder verändert den Sinn. Im interaktiven Modus wird
+  die Anfrage an einem eigenen Prompt gelesen, Zeichen für Zeichen wörtlich.
+
+Verwendung:
+  $ASSIST_NAME              (allein)   öffnet den Prompt  $ASSIST_NAME>
+  $ASSIST_NAME -i           dasselbe, explizit
+  dann die Anfrage am Prompt eingeben und Enter   ·   leere Zeile = beenden
+
+Wann:
+  immer wenn die Anfrage   '   "   \$   |   ;   &   *   enthält
+  Typisches Beispiel:  zeig mir die Plattennutzung   (Apostroph bricht die Shell)
+
+Beispiele (am Prompt $ASSIST_NAME> eingeben, nicht in der Shell-Zeile):
+  zeig mir die Plattennutzung
+  zähle die *.log-Dateien im aktuellen Ordner
+  suche "Fehler 500" in den Logs und zähle sie
+  wie viel Platz braucht \$HOME
+  komprimiere /etc & lege es in /tmp ab
+
+Einfache Sätze (ohne Sonderzeichen) gehen weiterhin direkt:
+  $ASSIST_NAME finde die größten Dateien in /home
+EOF
+        ;;
+    *) cat <<EOF
+Interactive mode - $ASSIST_NAME (alone) or $ASSIST_NAME -i
+
+What it is for:
+  The shell (fish, bash, zsh) interprets some characters BEFORE they reach
+  $ASSIST_NAME:   '   "   \$   |   ;   &   *   ( )   \`
+  If you type a request with these symbols on the command line, the shell
+  blocks or changes its meaning. In interactive mode the request is read at
+  a dedicated prompt, where every character is taken literally.
+
+How to use it:
+  $ASSIST_NAME              (alone)   opens the prompt  $ASSIST_NAME>
+  $ASSIST_NAME -i           the same, explicit form
+  then type the request at the prompt and press Enter   ·   empty line = quit
+
+When you need it:
+  whenever the request contains   '   "   \$   |   ;   &   *
+  Typical case:  show me the disk usage   (the apostrophe breaks the shell)
+
+Examples (type them AT the prompt $ASSIST_NAME>, not on the shell line):
+  show me the disk usage
+  count the *.log files in the current folder
+  find "error 500" in the logs and count them
+  how much space does \$HOME use
+  compress /etc & save it to /tmp
+
+Simple requests (no symbols) can still go inline:
+  $ASSIST_NAME find the largest files in /home
+EOF
+        ;;
+    esac
+}
+
 # ---- danger self-explanation (v1.6) ----
 explain_danger() {
     # one plain-language sentence about what a dangerous command will do
@@ -1720,17 +1848,21 @@ project_mode() {
 # chosen name, so there are never two active names doing actual work.
 if [ "$PROG" = "glia" ] && [ "$ASSIST_NAME" != "glia" ]; then
     case "${1:-}" in
-        -h|--help|-V|--version|"") : ;;
+        -h|--help|-V|--version) : ;;
+        "")  show_help_paged; exit 0 ;;
         *) echo -e "${YELLOW}$(t glia_inhibited)${NC}" >&2; exit 1 ;;
     esac
 fi
 
 case "$1" in
-    -h|--help|"")
+    -h|--help)
         show_help_paged
         ;;
+    "")
+        interactive_mode
+        ;;
     -V|--version)
-        echo "$ASSIST_NAME 2.5 (GLIA)"
+        echo "$ASSIST_NAME 2.6 (GLIA)"
         ;;
     -p|--project)
         shift
@@ -1794,6 +1926,13 @@ case "$1" in
             edit)           alias_edit ;;
             help|-h|--help) page alias_help ;;
             *)              alias_run "$1" ;;
+        esac
+        ;;
+    -i|--interactive)
+        shift
+        case "${1:-}" in
+            help|-h|--help) page int_help ;;
+            *)              interactive_mode ;;
         esac
         ;;
     -d|--ask)
