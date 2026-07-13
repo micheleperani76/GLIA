@@ -26,6 +26,7 @@ Every request in natural language becomes a real shell command, shown to you *be
 - **Learning by doing**: each interaction is a small terminal lesson.
 - **Safety**: dangerous commands (rm -rf, dd, mkfs, ...) require reinforced confirmation.
 - **You stay in control**: the AI proposes, you decide.
+- **No lock-in — you build your own system**: GLIA ships a minimal base that boots straight to the terminal with the assistant onboard; you add a desktop environment, a browser or a dev stack yourself, by asking `glia`. You are never bound to a distribution’s defaults from day one — and since the assistant runs on Arch, Debian and Fedora, you are just as free to bring it to the distro you already prefer.
 - **Standard conventions**: GLIA's own commands mirror normal terminal usage —
   `--help`/`-h`, `--version`/`-V`, matching short/long flags, `-a`/`--alias` for
   saved shortcuts. What you learn in GLIA transfers to every other tool, and what
@@ -77,6 +78,8 @@ result into a saved shortcut.
 
 There are no prebuilt ISO downloads: the ISO is always built fresh from
 this repo.
+
+**Why there’s no ready-made ISO.** Because the machine should be yours, not ours — and you shouldn’t be locked into one distribution from day one. GLIA gives you a minimal base that boots straight to the terminal with the assistant already onboard, nothing you didn’t choose. From there you build the system you want, at your own pace and skill level: need a desktop environment, a browser, a dev stack? You ask `glia`, and you install it together. And since the assistant runs on Arch, Debian and Fedora, you are just as free to bring it to the distro you already prefer. Either way you start bound to nothing, and you understand your computer because you built it yourself.
 
 ### Step 1 — build the ISO (needed for ways 1 and 2)
 

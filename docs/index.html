@@ -79,6 +79,13 @@ nav{position:sticky;top:0;z-index:50;backdrop-filter:blur(12px);background:rgba(
 .status-box h3{color:var(--amber);font-size:1.05rem;margin-bottom:5px}
 .status-box p{color:var(--text);font-size:.96rem}
 .status-box p b{color:var(--white)}
+.why{background:linear-gradient(90deg,rgba(45,212,191,.08),rgba(45,212,191,.02));border:1px solid rgba(45,212,191,.32);border-radius:12px;padding:20px 24px;display:flex;gap:16px;align-items:flex-start;margin-bottom:26px}
+.why .wi{color:var(--teal);flex-shrink:0;margin-top:2px}
+.why h3{color:var(--teal);font-size:1.05rem;margin-bottom:6px}
+.why p{color:var(--text);font-size:.96rem}
+.why p code{font-family:var(--mono);color:var(--teal);font-size:.88em;background:var(--panel2);padding:1px 5px;border-radius:4px}
+.card.full{grid-column:1/-1;display:flex;gap:16px;align-items:flex-start}
+.card.full .ci{margin-bottom:0;flex-shrink:0;margin-top:3px}
 /* feature grid */
 .grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px}
 .card{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:24px;transition:.18s}
@@ -205,6 +212,7 @@ footer .fbrand{font-weight:800;color:var(--white);font-size:1.1rem;margin-bottom
       <div class="card"><svg class="ci" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#2dd4bf" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="3" width="20" height="7" rx="1.5"/><rect x="2" y="14" width="20" height="7" rx="1.5"/><line x1="6" y1="6.5" x2="6.01" y2="6.5"/><line x1="6" y1="17.5" x2="6.01" y2="17.5"/></svg><h3>Fully local</h3><p>Runs on <code>Ollama</code> + <code>aichat</code> on your own machine. No cloud, no API keys, offline.</p></div>
       <div class="card"><svg class="ci" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#2dd4bf" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg><h3>Standard conventions</h3><p>Flags mirror real tools: <code>-h</code>, <code>-V</code>, <code>-a</code>. Never bespoke syntax when a standard exists.</p></div>
       <div class="card"><svg class="ci" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#2dd4bf" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/></svg><h3>Everything logged</h3><p>Every executed command is saved to <code>~/.local/share/glia/glia.log</code> for review.</p></div>
+      <div class="card full"><svg class="ci" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#2dd4bf" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg><div><h3>No lock-in — build your own</h3><p>GLIA boots to a minimal terminal with the assistant already onboard. You add a desktop environment, a browser or a dev stack yourself, by asking <code>glia</code> — never bound to a distribution's defaults from day one, and just as free to bring the assistant to the Arch, Debian or Fedora you already prefer.</p></div></div>
     </div>
   </div>
 </section>
@@ -245,6 +253,7 @@ footer .fbrand{font-weight:800;color:var(--white);font-size:1.1rem;margin-bottom
     <div class="eyebrow">Get started</div>
     <h2>Install GLIA — <span class="accent">three ways</span></h2>
     <p class="lead">There are no prebuilt ISO downloads: the ISO is always built fresh from the repo. The quickest way to try GLIA is to add the assistant to the Linux you already run.</p>
+    <div class="why"><div class="wi"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg></div><div><h3>Why there's no ready-made ISO</h3><p>Because the machine should be yours, not ours — and you shouldn't be locked into one distribution from day one. GLIA gives you a minimal base that boots straight to the terminal with the assistant already onboard, nothing you didn't choose. From there you build the system you want, at your own pace and skill level: need a desktop environment, a browser, a dev stack? You ask <code>glia</code>, and you install it together. And since the assistant runs on Arch, Debian and Fedora, you're just as free to bring it to the distro you already prefer. Either way you start bound to nothing, and you understand your computer because you built it yourself.</p></div></div>
     <div class="ways">
       <div class="way">
         <div class="num">Way 1</div><h3>Full install on a real PC</h3>
