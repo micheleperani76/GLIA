@@ -395,9 +395,9 @@ t() {
         it:al_req_q)        echo "Richiesta da girare all'IA (Invio = usa il comando): " ;;
         de:al_req_q)        echo "Anfrage fuer die KI (Enter = Befehl verwenden): " ;;
         *:al_req_q)         echo "Request to send to the AI (Enter = use the command): " ;;
-        it:al_invalid)      echo "Nome non valido o riservato (lettere/numeri/-/_, non: add list rm edit)." ;;
-        de:al_invalid)      echo "Ungueltiger oder reservierter Name (Buchstaben/Zahlen/-/_, nicht: add list rm edit)." ;;
-        *:al_invalid)       echo "Invalid or reserved name (letters/digits/-/_, not: add list rm edit)." ;;
+        it:al_invalid)      echo "Nome non valido: usa una sola parola, senza spazi (lettere, numeri, - o _; inizia con una lettera). Riservati: add list rm edit." ;;
+        de:al_invalid)      echo "Ungueltiger Name: nur ein Wort, keine Leerzeichen (Buchstaben, Zahlen, - oder _; beginnt mit einem Buchstaben). Reserviert: add list rm edit." ;;
+        *:al_invalid)       echo "Invalid name: use a single word, no spaces (letters, digits, - or _; start with a letter). Reserved: add list rm edit." ;;
         it:al_run_ask)      echo "Invio = usa l'alias | a = chiedo all'IA: " ;;
         de:al_run_ask)      echo "Enter = Alias verwenden | a = KI fragen: " ;;
         *:al_run_ask)       echo "Enter = use the alias | a = ask the AI: " ;;
