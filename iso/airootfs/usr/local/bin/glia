@@ -1,9 +1,111 @@
 #!/usr/bin/env bash
 # ============================================================
 #  glia - AI terminal assistant (Ollama + aichat)
-#  Version: 1.9 - 2026-07-13
+#  Version: 2.9.1 - 2026-07-13
 #  Author: Michele (with Claude)
 #  Project: GLIA (GNU Linux IA)
+#
+#  Design pillar: commands follow standard terminal conventions, so
+#  what you learn here you can reuse in other programs (and vice versa).
+#
+#  What's new in v2.9.1 ("never touch an existing folder"):
+#   - if a folder with the project's name already exists, a FREE name is
+#     picked (<name>-2, <name>-3, ...): the assistant never writes into a
+#     folder it did not create; the chosen folder is shown before writing
+#   - the assistant's fallback folder moves from <Documents>/<name> to
+#     ~/<name>-projects in the HOME: a suffixed name is far less likely to
+#     collide with a folder of yours (an existing <Documents>/<name> keeps
+#     being used, for compatibility)
+#
+#  What's new in v2.9 ("projects where you are"):
+#   - project mode creates the project in the CURRENT directory
+#     ($PWD/<project-name>): this is a textual desktop, you must not lose
+#     the context of where you are. The old projects folder
+#     (<Documents>/<name>) is only a fallback when $PWD is not writable
+#   - the planner is told to keep file paths relative to the project root,
+#     so no more double nesting like <project>/<project>_dir/file
+#
+#  What's new in v2.8 ("guide the plan"):
+#   - project mode (-p) now uses the SAME guided-hint procedure as the
+#     fix loop (v2.4): at the plan prompt you can TYPE extra context
+#     (e.g. "I also want a backup.sh script, source is /home") and the
+#     plan is redone with it; hints accumulate across attempts
+#   - the same at each file: type a hint at the save prompt and the file
+#     is regenerated following it (r still regenerates plain, s skips)
+#   - plan hints are also passed to the writing phase, so the files
+#     respect what you asked for in the plan refinement
+#
+#  What's new in v2.7 ("smarter loop, lighter friction"):
+#   - interactive mode is now a real REPL: keep asking request after
+#     request in the same session (context carries over); empty line = quit
+#   - m = edit the proposed command in place (readline, prefilled) before
+#     running it - often you only need to change a path
+#   - e = explain: ask on demand what ANY proposed command does, not only
+#     the dangerous ones
+#   - piped input becomes context:  cat error.log | glia why does it fail
+#   - -d/--ask now uses the conversation context, so follow-ups work there too
+#   - --doctor: one-shot health check (engine, model, RAM, deps, PATH, dirs)
+#   - plain sudo no longer triggers the heavy danger confirmation: auto-sudo
+#     (v1.8) made every trivial install noisy; truly destructive patterns
+#     still get the full warning + AI explanation
+#   - new danger patterns: find -delete, rsync --delete, git reset --hard,
+#     crontab -r
+#   - the log now records the original request next to the executed command
+#   - bash completion shipped in completions/glia.bash
+#   - fixes: model presence check is anchored (qwen3 no longer matches
+#     qwen3:8b), single VERSION variable instead of 5 hardcoded spots
+#
+#  What's new in v2.6 ("interactive input, special chars safe"):
+#   - the assistant with NO arguments (just `arx`) now opens an interactive
+#     prompt: type the request there and it is read with `read -r`, so the
+#     interactive shell (fish, zsh, bash...) never parses it. You can type
+#     ' " $ | ; & * literally, with no quoting. Empty line = quit.
+#   - `-i` / `--interactive` is the explicit synonym; `-i help` shows a
+#     dedicated guide with examples. `-h` still shows the general help.
+#   - everything after (proposal, confirm, guided fix, cache, memory) is
+#     unchanged - only WHERE the request comes from is new.
+#
+#  What's new in v2.5 ("leaner help, deeper sub-helps"):
+#   - the general `-h` is now slim: common use, the most common management
+#     commands, examples, and an index of per-group detailed helps
+#   - detailed help per group: `-a help` (shortcuts), `-m help` (AI/models),
+#     `--memory help` (facts), `-p help` (project mode) - all paged
+#
+#  What's new in v2.4 ("guide the fix"):
+#   - when a command fails, at the fix prompt you can now TYPE an extra hint
+#     (e.g. "it's an ssh host") and it is fed to the AI to refine the command;
+#     hints accumulate across attempts. Enter = plain fix, n = quit. Up to 5 tries.
+#
+#  What's new in v2.3 ("choose your AI"):
+#   - `-m` / `--model`: pick which downloaded Ollama model the assistant uses.
+#       * `-m`               guided: numbered list of AIs, pick the default
+#       * `-m <n|name>`      set the default permanently (by number or name)
+#       * `-m <n|name> ...`  use that AI for THIS request only (default unchanged)
+#
+#  What's new in v2.2 ("shortcut on the fly"):
+#   - `-a save` turns the LAST successful command into a shortcut, when YOU
+#     decide (never automatic)
+#   - on a quick repeat of the same request (within 10 min) it offers ONCE to
+#     save it as a shortcut; a decline is remembered, so it never nags
+#
+#  What's new in v2.1 ("alias polish"):
+#   - `-a list` is numbered; `-a rm <n|name>` removes by number or name,
+#     names are case-insensitive, and removal asks for confirmation
+#   - `-a rm` with no argument is guided (shows the list, asks the number)
+#   - `-a help` gives a detailed help focused only on aliases
+#   - long help is paged (less) so it stays readable on a bare server console
+#
+#  What's new in v2.0 ("aliases + standard flags"):
+#   - --alias / -a: save a named shortcut for a command you use often,
+#     so you don't ask the AI every time. Two kinds:
+#       * direct : runs the saved command instantly (e.g. Bangkok time)
+#       * ask    : shows the saved command and asks "use the alias, or
+#                  ask the AI?" - for requests that were a bit fuzzy
+#     Manage with:  -a add | -a list | -a rm <name> | -a edit
+#   - standard conformance: every short flag now has a long twin
+#     (-d/--ask, -l/--log), there is a --version / -V like any normal
+#     terminal program, and --cache-clear is now --clear-cache
+#     (the old spelling still works)
 #
 #  What's new in v1.9 ("one name: glia, with a safety net"):
 #   - the default command is now 'glia', which is also a permanent
@@ -53,20 +155,27 @@
 #  v1.1: AI self-check, --rename, dynamic program name
 #
 #  Usage:
+#    glia (no args)        interactive prompt: type request with special chars
 #    glia <request>        propose a command (Enter = run)
+#    glia -i|--interactive same as no-args; `-i help` shows a guide
 #    glia -p <idea>        project mode: plan steps, write files
-#    glia -d <question>    plain-text answer, no command
-#    glia -l               show the command log
+#    glia -d|--ask <q>     plain-text answer, no command
+#    glia -l|--log         show the command log
+#    glia -a <name>        run a saved alias (shortcut)
+#    glia -a add [name cmd] create an alias  (list | rm <name> | edit)
 #    glia --remember <fact> store a fact in persistent memory
 #    glia --memory         list stored facts
 #    glia --forget <n>     delete fact number n
-#    glia --cache-clear    empty the command cache
+#    glia --clear-cache    empty the command cache
+#    glia --doctor         one-shot health check (engine, model, RAM, config)
 #    glia --rename <name>  rename the assistant (glia always stays too)
 #    glia --lang <code>    set interface language (en, it, de)
+#    glia -V|--version     show the version
 #    glia -h               this help
 # ============================================================
 
 # ----------------- CONFIGURATION -----------------
+VERSION="2.9.1"
 DEFAULT_MODEL="qwen2.5-coder:7b"
 if [ -r "$HOME/.config/glia/model" ]; then
     MODEL="ollama:$(head -n1 "$HOME/.config/glia/model")"
@@ -107,6 +216,15 @@ MEMMAX=20
 CACHEFILE="$LOGDIR/cache"
 CACHEMAX=200
 
+# Aliases (v2.0): user shortcuts, one per line
+#   name<TAB>type<TAB>request<TAB>command   (type = run | ask)
+ALIASFILE="$HOME/.config/glia/aliases"
+
+# Save-last / repeat proposal (v2.2)
+LASTFILE="$LOGDIR/last"        # last successful command   request<TAB>command
+REPEATFILE="$LOGDIR/repeat"    # repeat tracker            key<TAB>epoch<TAB>declined
+REPEAT_WINDOW=600              # seconds: propose a shortcut when a request repeats within this
+
 # Conversation context (v1.6): per-terminal session file
 # $PPID = the shell of this terminal window, so each window has its own
 SESSDIR="${XDG_RUNTIME_DIR:-/tmp}"
@@ -114,15 +232,27 @@ SESSFILE="$SESSDIR/glia-session-$USER-$PPID"
 SESSMAX=6        # lines kept = 3 exchanges (2 lines each)
 SESSTTL=600      # seconds: session forgotten after 10 minutes
 
-# Project mode: files can be written ONLY under this folder.
-# The folder carries the assistant's configured name (e.g. ~/Documents/arx);
-# --rename offers to migrate it to the new name.
+# Project mode (v2.9): projects are created in the CURRENT directory
+# ($PWD/<project-name>), so you keep the context of where you are.
+# This folder is only the FALLBACK when $PWD is not writable. It carries
+# the assistant's configured name (e.g. ~/Documents/arx); --rename offers
+# to migrate it to the new name.
 DOCS="$(xdg-user-dir DOCUMENTS 2>/dev/null)"
 [ -z "$DOCS" ] || [ "$DOCS" = "$HOME" ] && DOCS="$HOME/Documents"
-PROJBASE="$DOCS/$ASSIST_NAME"
+# v2.9.1: the assistant's own folder lives in the HOME as ~/<name>-projects:
+# the -projects suffix makes a collision with a folder of yours unlikely.
+# An existing <Documents>/<name> (the old location) keeps being used.
+if [ -d "$DOCS/$ASSIST_NAME" ]; then
+    PROJBASE="$DOCS/$ASSIST_NAME"
+else
+    PROJBASE="$HOME/$ASSIST_NAME-projects"
+fi
 PROJBASE_SHOW="${PROJBASE/#$HOME/\~}"   # short form for help/messages
 
-# Patterns that require extra confirmation (they don't block: they ask to type the confirm word)
+# Patterns that require extra confirmation (they don't block: they ask to type the confirm word).
+# NOTE (v2.7): plain 'sudo' is NOT in this list anymore - auto-sudo (v1.8)
+# made every routine install/systemctl trip the heavy warning. Destructive
+# actions are matched by what they DO, with or without sudo in front.
 EXTRA_CONFIRM_PATTERNS=(
     'rm .*-[a-zA-Z]*[rf]'
     '\bdd\b'
@@ -137,7 +267,11 @@ EXTRA_CONFIRM_PATTERNS=(
     '\bmv\b.*/dev/null'
     ':\(\)\s*\{'
     '\b(curl|wget)\b.*\|\s*(ba|z|da)?sh'
-    '\bsudo\b'
+    '\bfind\b.*-delete'
+    '\brsync\b.*--delete'
+    '\bgit\b.*\breset\b.*--hard'
+    '\bcrontab\b.*-r'
+    '\buserdel\b'
 )
 
 # Binaries that need root to CHANGE the system (v1.8 auto-sudo).
@@ -190,15 +324,18 @@ t() {
         it:warn)            echo "⚠ ATTENZIONE: comando potenzialmente distruttivo." ;;
         de:warn)            echo "⚠ ACHTUNG: potenziell zerstörerischer Befehl." ;;
         *:warn)             echo "⚠ WARNING: potentially destructive command." ;;
-        it:ask_danger)      echo "$YES_KEY = esegui | Invio o n = annulla | r = riprova: " ;;
-        de:ask_danger)      echo "$YES_KEY = ausführen | Enter oder n = abbrechen | r = wiederholen: " ;;
-        *:ask_danger)       echo "$YES_KEY = run | Enter or n = cancel | r = retry: " ;;
-        it:ask_reboot)      echo "Questo RIAVVIA/SPEGNE la macchina. $YES_KEY = procedi | Invio o n = annulla | r = riprova: " ;;
-        de:ask_reboot)      echo "Dies STARTET/SCHALTET die Maschine. $YES_KEY = fortfahren | Enter oder n = abbrechen | r = wiederholen: " ;;
-        *:ask_reboot)       echo "This will REBOOT/SHUT DOWN the machine. $YES_KEY = proceed | Enter or n = cancel | r = retry: " ;;
-        it:ask_normal)      echo "Invio = esegui | n = annulla | r = riprova: " ;;
-        de:ask_normal)      echo "Enter = ausführen | n = abbrechen | r = wiederholen: " ;;
-        *:ask_normal)       echo "Enter = run | n = cancel | r = retry: " ;;
+        it:ask_danger)      echo "$YES_KEY = esegui | Invio o n = annulla | r = riprova | m = modifica: " ;;
+        de:ask_danger)      echo "$YES_KEY = ausführen | Enter oder n = abbrechen | r = wiederholen | m = bearbeiten: " ;;
+        *:ask_danger)       echo "$YES_KEY = run | Enter or n = cancel | r = retry | m = edit: " ;;
+        it:ask_reboot)      echo "Questo RIAVVIA/SPEGNE la macchina. $YES_KEY = procedi | Invio o n = annulla | r = riprova | m = modifica: " ;;
+        de:ask_reboot)      echo "Dies STARTET/SCHALTET die Maschine. $YES_KEY = fortfahren | Enter oder n = abbrechen | r = wiederholen | m = bearbeiten: " ;;
+        *:ask_reboot)       echo "This will REBOOT/SHUT DOWN the machine. $YES_KEY = proceed | Enter or n = cancel | r = retry | m = edit: " ;;
+        it:ask_normal)      echo "Invio = esegui | n = annulla | r = riprova | m = modifica | e = spiega: " ;;
+        de:ask_normal)      echo "Enter = ausführen | n = abbrechen | r = wiederholen | m = bearbeiten | e = erklären: " ;;
+        *:ask_normal)       echo "Enter = run | n = cancel | r = retry | m = edit | e = explain: " ;;
+        it:edit_cmd)        echo "Modifica il comando e premi Invio (vuoto = annulla):" ;;
+        de:edit_cmd)        echo "Befehl bearbeiten und Enter drücken (leer = abbrechen):" ;;
+        *:edit_cmd)         echo "Edit the command and press Enter (empty = cancel):" ;;
         it:cancelled)       echo "Annullato." ;;
         de:cancelled)       echo "Abgebrochen." ;;
         *:cancelled)        echo "Cancelled." ;;
@@ -293,24 +430,27 @@ t() {
         it:files)           echo "File da creare:" ;;
         de:files)           echo "Zu erstellende Dateien:" ;;
         *:files)            echo "Files to create:" ;;
-        it:go)              echo "Invio = procedi | n = annulla: " ;;
-        de:go)              echo "Enter = weiter | n = abbrechen: " ;;
-        *:go)               echo "Enter = proceed | n = cancel: " ;;
+        it:go)              echo "Invio = procedi | scrivi un indizio per rifare il piano | n = annulla: " ;;
+        de:go)              echo "Enter = weiter | schreibe einen Hinweis für einen neuen Plan | n = abbrechen: " ;;
+        *:go)               echo "Enter = proceed | type a hint to redo the plan | n = cancel: " ;;
         it:writing)         echo "Genero il file" ;;
         de:writing)         echo "Erzeuge Datei" ;;
         *:writing)          echo "Generating file" ;;
         it:preview)         echo "Anteprima (prime 20 righe):" ;;
         de:preview)         echo "Vorschau (erste 20 Zeilen):" ;;
         *:preview)          echo "Preview (first 20 lines):" ;;
-        it:save)            echo "Invio = salva | v = vedi tutto | r = rigenera | s = salta: " ;;
-        de:save)            echo "Enter = speichern | v = alles zeigen | r = neu | s = überspringen: " ;;
-        *:save)             echo "Enter = save | v = view all | r = regenerate | s = skip: " ;;
+        it:save)            echo "Invio = salva | v = vedi tutto | r = rigenera | scrivi un indizio | s = salta: " ;;
+        de:save)            echo "Enter = speichern | v = alles zeigen | r = neu | schreibe einen Hinweis | s = überspringen: " ;;
+        *:save)             echo "Enter = save | v = view all | r = regenerate | type a hint | s = skip: " ;;
         it:saved)           echo "Salvato:" ;;
         de:saved)           echo "Gespeichert:" ;;
         *:saved)            echo "Saved:" ;;
         it:skipped)         echo "Saltato." ;;
         de:skipped)         echo "Übersprungen." ;;
         *:skipped)          echo "Skipped." ;;
+        it:proj_dir)        echo "Cartella del progetto:" ;;
+        de:proj_dir)        echo "Projektordner:" ;;
+        *:proj_dir)         echo "Project folder:" ;;
         it:proj_done)       echo "Progetto creato in:" ;;
         de:proj_done)       echo "Projekt erstellt in:" ;;
         *:proj_done)        echo "Project created in:" ;;
@@ -335,45 +475,180 @@ t() {
         it:cmd_failed)      echo "Il comando è fallito" ;;
         de:cmd_failed)      echo "Der Befehl ist fehlgeschlagen" ;;
         *:cmd_failed)       echo "The command failed" ;;
-        it:ask_fix)         echo "Invio = chiedo all'IA una correzione | altro = esco: " ;;
-        de:ask_fix)         echo "Enter = KI um Korrektur bitten | sonst = beenden: " ;;
-        *:ask_fix)          echo "Enter = ask the AI for a fix | anything else = quit: " ;;
+        it:ask_fix)         echo "Invio = correzione | scrivi un indizio per l'IA | n = esci: " ;;
+        de:ask_fix)         echo "Enter = Korrektur | schreibe einen Hinweis für die KI | n = beenden: " ;;
+        *:ask_fix)          echo "Enter = fix | type a hint for the AI | n = quit: " ;;
+        # ---- aliases (v2.0) ----
+        it:al_empty)        echo "Nessun alias salvato ($ALIASFILE)." ;;
+        de:al_empty)        echo "Keine Aliase gespeichert ($ALIASFILE)." ;;
+        *:al_empty)         echo "No aliases saved ($ALIASFILE)." ;;
+        it:al_saved)        echo "Alias salvato:" ;;
+        de:al_saved)        echo "Alias gespeichert:" ;;
+        *:al_saved)         echo "Alias saved:" ;;
+        it:al_updated)      echo "Alias aggiornato:" ;;
+        de:al_updated)      echo "Alias aktualisiert:" ;;
+        *:al_updated)       echo "Alias updated:" ;;
+        it:al_removed)      echo "Alias rimosso:" ;;
+        de:al_removed)      echo "Alias entfernt:" ;;
+        *:al_removed)       echo "Alias removed:" ;;
+        it:al_notfound)     echo "Alias non trovato:" ;;
+        de:al_notfound)     echo "Alias nicht gefunden:" ;;
+        *:al_notfound)      echo "Alias not found:" ;;
+        it:al_name_q)       echo "Parola per l'alias: " ;;
+        de:al_name_q)       echo "Wort fuer den Alias: " ;;
+        *:al_name_q)        echo "Word for the alias: " ;;
+        it:al_cmd_q)        echo "Comando da salvare: " ;;
+        de:al_cmd_q)        echo "Zu speichernder Befehl: " ;;
+        *:al_cmd_q)         echo "Command to save: " ;;
+        it:al_ai_q)         echo "Chiedere conferma all'IA a ogni uso? [$YES_KEY/N]: " ;;
+        de:al_ai_q)         echo "Bei jeder Nutzung die KI fragen? [$YES_KEY/N]: " ;;
+        *:al_ai_q)          echo "Ask the AI on every use? [$YES_KEY/N]: " ;;
+        it:al_req_q)        echo "Richiesta da girare all'IA (Invio = usa il comando): " ;;
+        de:al_req_q)        echo "Anfrage fuer die KI (Enter = Befehl verwenden): " ;;
+        *:al_req_q)         echo "Request to send to the AI (Enter = use the command): " ;;
+        it:al_invalid)      echo "Nome non valido: usa una sola parola, senza spazi (lettere, numeri, - o _; inizia con una lettera). Riservati: add list rm edit." ;;
+        de:al_invalid)      echo "Ungueltiger Name: nur ein Wort, keine Leerzeichen (Buchstaben, Zahlen, - oder _; beginnt mit einem Buchstaben). Reserviert: add list rm edit." ;;
+        *:al_invalid)       echo "Invalid name: use a single word, no spaces (letters, digits, - or _; start with a letter). Reserved: add list rm edit." ;;
+        it:al_run_ask)      echo "Invio = usa l'alias | a = chiedo all'IA: " ;;
+        de:al_run_ask)      echo "Enter = Alias verwenden | a = KI fragen: " ;;
+        *:al_run_ask)       echo "Enter = use the alias | a = ask the AI: " ;;
+        it:al_usage)        echo "Uso: $PROG -a add|list|rm|edit   ·   $PROG -a <nome>" ;;
+        de:al_usage)        echo "Verwendung: $PROG -a add|list|rm|edit   ·   $PROG -a <Name>" ;;
+        *:al_usage)         echo "Usage: $PROG -a add|list|rm|edit   ·   $PROG -a <name>" ;;
+        it:al_c_name)       echo "NOME" ;;
+        de:al_c_name)       echo "NAME" ;;
+        *:al_c_name)        echo "NAME" ;;
+        it:al_c_type)       echo "TIPO" ;;
+        de:al_c_type)       echo "TYP" ;;
+        *:al_c_type)        echo "TYPE" ;;
+        it:al_c_cmd)        echo "COMANDO" ;;
+        de:al_c_cmd)        echo "BEFEHL" ;;
+        *:al_c_cmd)         echo "COMMAND" ;;
+        it:al_rm_which)     echo "Quale numero o nome rimuovere? (Invio = annulla): " ;;
+        de:al_rm_which)     echo "Welche Nummer oder welchen Namen entfernen? (Enter = abbrechen): " ;;
+        *:al_rm_which)      echo "Which number or name to remove? (Enter = cancel): " ;;
+        it:al_rm_confirm)   echo "Confermi la rimozione? [$YES_KEY/N]: " ;;
+        de:al_rm_confirm)   echo "Entfernung bestaetigen? [$YES_KEY/N]: " ;;
+        *:al_rm_confirm)    echo "Confirm removal? [$YES_KEY/N]: " ;;
+        it:al_save_none)    echo "Nessun comando recente da salvare (lanciane uno prima)." ;;
+        de:al_save_none)    echo "Kein aktueller Befehl zum Speichern (fuehre zuerst einen aus)." ;;
+        *:al_save_none)     echo "No recent command to save (run one first)." ;;
+        it:al_save_show)    echo "Ultimo comando riuscito:" ;;
+        de:al_save_show)    echo "Letzter erfolgreicher Befehl:" ;;
+        *:al_save_show)     echo "Last successful command:" ;;
+        it:al_exists)       echo "Questo comando è già una scorciatoia:" ;;
+        de:al_exists)       echo "Dieser Befehl ist bereits ein Shortcut:" ;;
+        *:al_exists)        echo "This command is already a shortcut:" ;;
+        it:al_propose)      echo "Comando già usato di recente:" ;;
+        de:al_propose)      echo "Kuerzlich schon benutzter Befehl:" ;;
+        *:al_propose)       echo "Command already used recently:" ;;
+        it:al_propose_q)    echo "Ne faccio una scorciatoia? scrivi un nome (Invio = no): " ;;
+        de:al_propose_q)    echo "Daraus einen Shortcut machen? Name eingeben (Enter = nein): " ;;
+        *:al_propose_q)     echo "Make it a shortcut? type a name (Enter = no): " ;;
+        # ---- AI model selection (v2.3) ----
+        it:model_avail)     echo "IA disponibili (già scaricate):" ;;
+        de:model_avail)     echo "Verfügbare KIs (bereits geladen):" ;;
+        *:model_avail)      echo "Available AIs (already downloaded):" ;;
+        it:model_inuse)     echo "← in uso ora" ;;
+        de:model_inuse)     echo "← aktiv" ;;
+        *:model_inuse)      echo "← in use" ;;
+        it:model_pick)      echo "Quale vuoi usare sempre? scrivi il numero (Invio = lascia com'è): " ;;
+        de:model_pick)      echo "Welche willst du immer nutzen? Nummer eingeben (Enter = so lassen): " ;;
+        *:model_pick)       echo "Which one to always use? type the number (Enter = keep current): " ;;
+        it:model_kept)      echo "Lasciato invariato." ;;
+        de:model_kept)      echo "Unverändert gelassen." ;;
+        *:model_kept)       echo "Left unchanged." ;;
+        it:model_set)       echo "Modello predefinito impostato:" ;;
+        de:model_set)       echo "Standardmodell gesetzt:" ;;
+        *:model_set)        echo "Default model set:" ;;
+        it:model_none)      echo "Nessuna IA scaricata (ollama pull <nome>) oppure Ollama non è in esecuzione." ;;
+        de:model_none)      echo "Keine KI geladen (ollama pull <Name>) oder Ollama läuft nicht." ;;
+        *:model_none)       echo "No AI downloaded (ollama pull <name>) or Ollama is not running." ;;
+        it:model_badsel)    echo "Selezione non valida. Vedi le IA con: $PROG -m" ;;
+        de:model_badsel)    echo "Ungültige Auswahl. KIs anzeigen mit: $PROG -m" ;;
+        *:model_badsel)     echo "Invalid selection. See the AIs with: $PROG -m" ;;
+        it:model_oneoff)    echo "Solo per questo comando uso:" ;;
+        de:model_oneoff)    echo "Nur für diesen Befehl nutze ich:" ;;
+        *:model_oneoff)     echo "For this command only I use:" ;;
+        # ---- interactive mode (v2.6, REPL since v2.7) ----
+        it:int_hint)        echo "Modalità interattiva: scrivi una richiesta dopo l'altra, con qualunque simbolo. Invio vuoto = esci." ;;
+        de:int_hint)        echo "Interaktiver Modus: eine Anfrage nach der anderen, mit beliebigen Zeichen. Leere Eingabe = beenden." ;;
+        *:int_hint)         echo "Interactive mode: type request after request, with any characters. Empty line = quit." ;;
+        # ---- doctor (v2.7) ----
+        it:doc_title)       echo "Diagnostica $ASSIST_NAME (GLIA v$VERSION)" ;;
+        de:doc_title)       echo "Diagnose $ASSIST_NAME (GLIA v$VERSION)" ;;
+        *:doc_title)        echo "$ASSIST_NAME diagnostics (GLIA v$VERSION)" ;;
+        it:doc_aichat)      echo "aichat installato" ;;
+        de:doc_aichat)      echo "aichat installiert" ;;
+        *:doc_aichat)       echo "aichat installed" ;;
+        it:doc_jq)          echo "jq installato (serve alla modalità progetto)" ;;
+        de:doc_jq)          echo "jq installiert (für den Projektmodus)" ;;
+        *:doc_jq)           echo "jq installed (needed by project mode)" ;;
+        it:doc_ollama)      echo "ollama installato" ;;
+        de:doc_ollama)      echo "ollama installiert" ;;
+        *:doc_ollama)       echo "ollama installed" ;;
+        it:doc_api)         echo "motore Ollama raggiungibile ($OLLAMA_URL)" ;;
+        de:doc_api)         echo "Ollama-Engine erreichbar ($OLLAMA_URL)" ;;
+        *:doc_api)          echo "Ollama engine reachable ($OLLAMA_URL)" ;;
+        it:doc_model)       echo "modello scaricato: ${MODEL#ollama:}" ;;
+        de:doc_model)       echo "Modell geladen: ${MODEL#ollama:}" ;;
+        *:doc_model)        echo "model downloaded: ${MODEL#ollama:}" ;;
+        it:doc_ram)         echo "RAM libera sufficiente per il modello" ;;
+        de:doc_ram)         echo "genug freier RAM für das Modell" ;;
+        *:doc_ram)          echo "enough free RAM for the model" ;;
+        it:doc_name)        echo "comando '$ASSIST_NAME' presente nel PATH" ;;
+        de:doc_name)        echo "Befehl '$ASSIST_NAME' im PATH vorhanden" ;;
+        *:doc_name)         echo "command '$ASSIST_NAME' found in PATH" ;;
+        it:doc_dirs)        echo "cartelle di config e log scrivibili" ;;
+        de:doc_dirs)        echo "Config- und Log-Ordner beschreibbar" ;;
+        *:doc_dirs)         echo "config and log folders writable" ;;
+        it:doc_all_ok)      echo "Tutto a posto." ;;
+        de:doc_all_ok)      echo "Alles in Ordnung." ;;
+        *:doc_all_ok)       echo "All good." ;;
+        it:doc_issues)      echo "problema/i: sistemali con i suggerimenti qui sopra." ;;
+        de:doc_issues)      echo "Problem(e): mit den Hinweisen oben beheben." ;;
+        *:doc_issues)       echo "issue(s): fix them with the hints above." ;;
     esac
 }
 
 show_help() {
     case "$UILANG" in
     it) cat <<EOF
-$ASSIST_NAME v1.9 - assistente IA da terminale (modello: ${MODEL#ollama:})
+$ASSIST_NAME v$VERSION - assistente IA da terminale (modello in uso: ${MODEL#ollama:})
 Assistente: $ASSIST_NAME  ·  comando di emergenza sempre attivo: glia
 
-Uso:
-  $ASSIST_NAME <richiesta>   propone un comando shell (Invio = esegui, n = annulla, r = riprova)
-  $ASSIST_NAME -d <domanda>  risponde a parole, senza eseguire nulla
-  $ASSIST_NAME -p <idea>     modalità progetto: pianifica e scrive i file (con conferma)
-  $ASSIST_NAME -l            mostra il log dei comandi eseguiti
+Uso comune:
+  $ASSIST_NAME                 (da solo) apre il prompt: scrivi la richiesta con QUALSIASI simbolo (' " \$ | ; & *)
+  $ASSIST_NAME <richiesta>     propone ed esegue un comando (Invio = esegui, n = annulla, r = riprova)
+  $ASSIST_NAME -d|--ask <dom>  risponde a parole, senza eseguire nulla
+  $ASSIST_NAME -a <nome>       esegue una scorciatoia salvata
+  $ASSIST_NAME -l|--log        mostra il log dei comandi
 
-Gestione:
-  $ASSIST_NAME --remember <fatto>  ricorda un fatto (macchine, percorsi, abitudini)
-  $ASSIST_NAME --memory            elenca i fatti ricordati
-  $ASSIST_NAME --forget <n>        dimentica il fatto n
-  $ASSIST_NAME --cache-clear       svuota la cache delle risposte
-  $ASSIST_NAME --rename <nome>     dà un nuovo nome all'assistente (glia resta sempre)
+Gestione (i più comuni):
+  $ASSIST_NAME -a add <nome> <cmd>  crea una scorciatoia
+  $ASSIST_NAME --remember <fatto>   ricorda un fatto (macchine, percorsi, abitudini)
+  $ASSIST_NAME -m                   scegli quale IA usare (guidato)
+
+Aiuto dettagliato per gruppo:
+  $ASSIST_NAME -a help         scorciatoie (alias)
+  $ASSIST_NAME -m help         quale IA usare
+  $ASSIST_NAME --memory help   memoria (fatti ricordati)
+  $ASSIST_NAME -p help         modalità progetto
+  $ASSIST_NAME -i help         modalità interattiva (frasi con caratteri speciali)
+
+Impostazioni:
+  $ASSIST_NAME --rename <nome>     dai un nuovo nome all'assistente (glia resta sempre)
   $ASSIST_NAME --lang <it|en|de>   cambia la lingua dell'interfaccia
+  $ASSIST_NAME --doctor            controllo rapido: motore, modello, RAM, config
+  $ASSIST_NAME --clear-cache       svuota la cache delle risposte
+  $ASSIST_NAME -V, --version       mostra la versione
   $ASSIST_NAME -h                  questo aiuto
 
 Esempi:
   $ASSIST_NAME trova i file più grandi in /home
   $ASSIST_NAME -d cosa fa il comando rsync
-  $ASSIST_NAME -p uno script di backup con rsync e un README che lo spiega
-
-Note:
-  · i comandi pericolosi chiedono conferma con "$YES_KEY" (Invio o n = annulla)
-  · in -p elenca esplicitamente i file che vuoi, così l'IA non li dimentica
-
-Cartelle:
-  progetti   $PROJBASE_SHOW
-  log        $LOGFILE
+  $ASSIST_NAME -a add bangkok "TZ=Asia/Bangkok date"
+  $ASSIST_NAME -m 2 riscrivi questo script in modo più chiaro   (usa l'IA #2 solo qui)
 
 Se l'IA non risponde:
   systemctl start ollama          avvia il motore IA
@@ -382,36 +657,41 @@ Se l'IA non risponde:
 EOF
         ;;
     de) cat <<EOF
-$ASSIST_NAME v1.9 - KI-Terminal-Assistent (Modell: ${MODEL#ollama:})
+$ASSIST_NAME v$VERSION - KI-Terminal-Assistent (aktives Modell: ${MODEL#ollama:})
 Assistent: $ASSIST_NAME  ·  Notfallbefehl immer aktiv: glia
 
-Verwendung:
-  $ASSIST_NAME <Anfrage>   schlägt einen Shell-Befehl vor (Enter = ausführen, n = abbrechen, r = wiederholen)
-  $ASSIST_NAME -d <Frage>  antwortet in Worten, führt nichts aus
-  $ASSIST_NAME -p <Idee>   Projektmodus: plant und schreibt die Dateien (mit Bestätigung)
-  $ASSIST_NAME -l          Protokoll der ausgeführten Befehle
+Häufige Nutzung:
+  $ASSIST_NAME                (allein) öffnet den Prompt: Anfrage mit BELIEBIGEN Zeichen (' " \$ | ; & *)
+  $ASSIST_NAME <Anfrage>      schlägt einen Befehl vor und führt ihn aus (Enter = ausführen, n = abbrechen, r = wiederholen)
+  $ASSIST_NAME -d|--ask <Fr>  antwortet in Worten, führt nichts aus
+  $ASSIST_NAME -a <Name>      führt einen gespeicherten Shortcut aus
+  $ASSIST_NAME -l|--log       zeigt das Befehlsprotokoll
 
-Verwaltung:
-  $ASSIST_NAME --remember <Fakt>  einen Fakt merken (Rechner, Pfade, Gewohnheiten)
-  $ASSIST_NAME --memory           gemerkte Fakten auflisten
-  $ASSIST_NAME --forget <n>       Fakt n vergessen
-  $ASSIST_NAME --cache-clear      Antwort-Cache leeren
+Verwaltung (die häufigsten):
+  $ASSIST_NAME -a add <Name> <cmd>  einen Shortcut anlegen
+  $ASSIST_NAME --remember <Fakt>    einen Fakt merken (Rechner, Pfade, Gewohnheiten)
+  $ASSIST_NAME -m                   KI wählen (geführt)
+
+Ausführliche Hilfe pro Gruppe:
+  $ASSIST_NAME -a help         Shortcuts (Aliase)
+  $ASSIST_NAME -m help         welche KI
+  $ASSIST_NAME --memory help   Gedächtnis (gemerkte Fakten)
+  $ASSIST_NAME -p help         Projektmodus
+  $ASSIST_NAME -i help         interaktiver Modus (Anfragen mit Sonderzeichen)
+
+Einstellungen:
   $ASSIST_NAME --rename <Name>    dem Assistenten einen neuen Namen geben (glia bleibt immer)
   $ASSIST_NAME --lang <it|en|de>  Sprache der Oberfläche ändern
+  $ASSIST_NAME --doctor           Schnellcheck: Engine, Modell, RAM, Config
+  $ASSIST_NAME --clear-cache      Antwort-Cache leeren
+  $ASSIST_NAME -V, --version      Version anzeigen
   $ASSIST_NAME -h                 diese Hilfe
 
 Beispiele:
   $ASSIST_NAME finde die größten Dateien in /home
   $ASSIST_NAME -d was macht der Befehl rsync
-  $ASSIST_NAME -p ein Backup-Skript mit rsync und eine README, die es erklärt
-
-Hinweise:
-  · gefährliche Befehle fragen mit "$YES_KEY" nach (Enter oder n = abbrechen)
-  · bei -p die gewünschten Dateien explizit auflisten, sonst vergisst sie die KI
-
-Ordner:
-  Projekte   $PROJBASE_SHOW
-  Protokoll  $LOGFILE
+  $ASSIST_NAME -a add bangkok "TZ=Asia/Bangkok date"
+  $ASSIST_NAME -m 2 schreibe dieses Skript klarer   (nutzt KI #2 nur hier)
 
 Wenn die KI nicht antwortet:
   systemctl start ollama          KI-Engine starten
@@ -420,36 +700,41 @@ Wenn die KI nicht antwortet:
 EOF
         ;;
     *) cat <<EOF
-$ASSIST_NAME v1.9 - AI terminal assistant (model: ${MODEL#ollama:})
+$ASSIST_NAME v$VERSION - AI terminal assistant (model in use: ${MODEL#ollama:})
 Assistant: $ASSIST_NAME  ·  emergency command always on: glia
 
-Usage:
-  $ASSIST_NAME <request>      propose a shell command (Enter = run, n = cancel, r = retry)
-  $ASSIST_NAME -d <question>  answer in words, run nothing
-  $ASSIST_NAME -p <idea>      project mode: plan and write the files (with confirmation)
-  $ASSIST_NAME -l             show the log of executed commands
+Common use:
+  $ASSIST_NAME                 (alone) opens the prompt: type your request with ANY symbol (' " \$ | ; & *)
+  $ASSIST_NAME <request>       propose and run a command (Enter = run, n = cancel, r = retry)
+  $ASSIST_NAME -d|--ask <q>    answer in words, run nothing
+  $ASSIST_NAME -a <name>       run a saved shortcut
+  $ASSIST_NAME -l|--log        show the command log
 
-Manage:
-  $ASSIST_NAME --remember <fact>  remember a fact (machines, paths, habits)
-  $ASSIST_NAME --memory           list remembered facts
-  $ASSIST_NAME --forget <n>       forget fact n
-  $ASSIST_NAME --cache-clear      empty the answer cache
+Manage (most common):
+  $ASSIST_NAME -a add <name> <cmd>  create a shortcut
+  $ASSIST_NAME --remember <fact>    remember a fact (machines, paths, habits)
+  $ASSIST_NAME -m                   choose which AI to use (guided)
+
+Detailed help per group:
+  $ASSIST_NAME -a help         shortcuts (aliases)
+  $ASSIST_NAME -m help         which AI to use
+  $ASSIST_NAME --memory help   memory (remembered facts)
+  $ASSIST_NAME -p help         project mode
+  $ASSIST_NAME -i help         interactive mode (requests with special characters)
+
+Settings:
   $ASSIST_NAME --rename <name>    give the assistant a new name (glia always stays)
   $ASSIST_NAME --lang <it|en|de>  change the interface language
+  $ASSIST_NAME --doctor           quick check: engine, model, RAM, config
+  $ASSIST_NAME --clear-cache      empty the answer cache
+  $ASSIST_NAME -V, --version      show the version
   $ASSIST_NAME -h                 this help
 
 Examples:
   $ASSIST_NAME find the largest files in /home
   $ASSIST_NAME -d what does the rsync command do
-  $ASSIST_NAME -p a backup script with rsync and a README explaining it
-
-Notes:
-  · dangerous commands ask for confirmation with "$YES_KEY" (Enter or n = cancel)
-  · with -p list the files you want explicitly, so the AI doesn't forget them
-
-Folders:
-  projects  $PROJBASE_SHOW
-  log       $LOGFILE
+  $ASSIST_NAME -a add bangkok "TZ=Asia/Bangkok date"
+  $ASSIST_NAME -m 2 rewrite this script more clearly   (uses AI #2 for this only)
 
 If the AI does not answer:
   systemctl start ollama          start the AI engine
@@ -459,6 +744,23 @@ EOF
         ;;
     esac
 }
+
+# Show the help through a pager when writing to a terminal, so long help
+# stays readable on a bare server console (the first lines don't scroll
+# off the top). Piped/redirected output stays plain, for scripts.
+page() {
+    # run "$@" and page its output when writing to a terminal, so long text
+    # stays readable on a bare server console; plain when piped, for scripts.
+    if [ -t 1 ]; then
+        if [ -n "${PAGER:-}" ] && command -v "${PAGER%% *}" >/dev/null 2>&1; then
+            "$@" | $PAGER; return
+        elif command -v less >/dev/null 2>&1; then
+            "$@" | less -FRX; return
+        fi
+    fi
+    "$@"
+}
+show_help_paged() { page show_help; }
 
 # ------------------- FUNCTIONS ----------------------
 write_log() {
@@ -489,7 +791,11 @@ check_ai() {
         echo -e "${RED}$(t ollama_fail)${NC}" >&2
         exit 1
     fi
-    if ! curl -fsS --max-time 5 "$OLLAMA_URL/api/tags" 2>/dev/null | grep -q "\"${MODEL#ollama:}\""; then
+    # anchored check: a bare name means :latest, so "qwen3" does not
+    # falsely match an installed "qwen3:8b" (v2.7)
+    local mname="${MODEL#ollama:}"
+    case "$mname" in *:*) : ;; *) mname="$mname:latest" ;; esac
+    if ! curl -fsS --max-time 5 "$OLLAMA_URL/api/tags" 2>/dev/null | grep -q "\"$mname\""; then
         echo -e "${YELLOW}$(t model_missing)${NC}" >&2
         echo -e "$(t download_with)" >&2
         exit 1
@@ -530,8 +836,15 @@ rename_assistant() {
     mkdir -p "$(dirname "$NAMEFILE")"; printf '%s\n' "$newname" > "$NAMEFILE"
     echo -e "${GREEN}$(t renamed) $newname${NC}"
     echo "  $newname -h        ($(t rename_anchor))"
-    # offer to migrate the projects folder to the new name (no = leave the old one)
-    local oldproj="$DOCS/$old" newproj="$DOCS/$newname" a
+    # offer to migrate the projects folder to the new name (no = leave the old one).
+    # v2.9.1: the folder may live in <Documents>/<name> (old) or ~/<name>-projects
+    # (new); migrate keeping the same style.
+    local oldproj newproj a
+    if [ -d "$DOCS/$old" ]; then
+        oldproj="$DOCS/$old"; newproj="$DOCS/$newname"
+    else
+        oldproj="$HOME/$old-projects"; newproj="$HOME/$newname-projects"
+    fi
     if [ -d "$oldproj" ] && [ "$oldproj" != "$newproj" ]; then
         if [ -e "$newproj" ]; then
             echo -e "${YELLOW}$(t proj_target_exists) ${newproj/#$HOME/\~}${NC}"
@@ -561,6 +874,56 @@ set_language() {
             exit 1
             ;;
     esac
+}
+
+# ---- AI model selection (v2.3): pick which downloaded Ollama model to use ----
+model_names() {
+    # downloaded Ollama model names, one per line, sorted for STABLE numbering
+    ollama list 2>/dev/null | awk 'NR>1 && $1!="" {print $1}' | sort
+}
+
+model_resolve() {
+    # $1 = a number (from the -m list) OR a model name -> prints the model name
+    local q="$1" list n
+    list=$(model_names)
+    [ -z "$list" ] && return 1
+    if [[ "$q" =~ ^[0-9]+$ ]]; then
+        n=$(printf '%s\n' "$list" | sed -n "${q}p")
+        [ -n "$n" ] && { printf '%s\n' "$n"; return 0; }
+        return 1
+    fi
+    printf '%s\n' "$list" | grep -Fxq "$q" && { printf '%s\n' "$q"; return 0; }
+    return 1
+}
+
+set_model() {
+    # $1 = model name -> becomes the permanent default (per-user)
+    mkdir -p "$HOME/.config/glia"
+    printf '%s\n' "$1" > "$HOME/.config/glia/model"
+    echo -e "${GREEN}$(t model_set) $1${NC}"
+}
+
+model_menu() {
+    # list the downloaded AIs numbered, mark the active one, and (with a real
+    # terminal) let you pick one as the permanent default.
+    local list active name i=1 choice sel
+    list=$(model_names)
+    [ -z "$list" ] && { echo "$(t model_none)"; return; }
+    active="${MODEL#ollama:}"
+    echo "$(t model_avail)"
+    while IFS= read -r name; do
+        if [ "$name" = "$active" ]; then
+            printf '  %d) %s   %s\n' "$i" "$name" "$(t model_inuse)"
+        else
+            printf '  %d) %s\n' "$i" "$name"
+        fi
+        i=$((i+1))
+    done <<< "$list"
+    (exec 3</dev/tty) 2>/dev/null || return 0
+    read -r -p "$(t model_pick)" choice < /dev/tty || return 0
+    [ -z "$choice" ] && { echo "$(t model_kept)"; return 0; }
+    sel=$(model_resolve "$choice") || { echo -e "${RED}$(t model_badsel)${NC}" >&2; return 1; }
+    set_model "$sel"
 }
 
 # ---- persistent memory (v1.6) ----
@@ -644,6 +1007,708 @@ cache_store() {
     rm -f "$CACHEFILE.tmp"
 }
 
+# ---- aliases (v2.0): named shortcuts, no AI needed ----
+# storage: name<TAB>type<TAB>request<TAB>command   (type = run | ask)
+ALIAS_RESERVED=" add list ls rm remove edit help save "   # sub-actions, not valid names
+
+alias_valid_name() {
+    # correct shape AND not one of the -a sub-actions
+    grep -qE '^[a-zA-Z][a-zA-Z0-9_-]*$' <<< "$1" || return 1
+    case "$ALIAS_RESERVED" in *" $1 "*) return 1 ;; esac
+    return 0
+}
+
+alias_get() {
+    # print the line whose name == $1, exit 1 if none
+    [ -f "$ALIASFILE" ] || return 1
+    awk -F'\t' -v n="$1" '$1==n {print; f=1} END{exit !f}' "$ALIASFILE"
+}
+
+alias_resolve() {
+    # $1 = a line number (as shown by -a list) OR a name (case-insensitive).
+    # Prints the real stored name, exit 1 if nothing matches.
+    [ -s "$ALIASFILE" ] || return 1
+    local q="$1" total
+    if [[ "$q" =~ ^[0-9]+$ ]]; then
+        total=$(wc -l < "$ALIASFILE")
+        [ "$q" -ge 1 ] && [ "$q" -le "$total" ] || return 1
+        sed -n "${q}p" "$ALIASFILE" | cut -f1
+        return 0
+    fi
+    awk -F'\t' -v n="$q" 'tolower($1)==tolower(n){print $1; f=1; exit} END{exit !f}' "$ALIASFILE"
+}
+
+alias_store() {
+    # $1 name  $2 type  $3 request  $4 command  (replaces an existing name)
+    local existed=0
+    mkdir -p "$(dirname "$ALIASFILE")"; touch "$ALIASFILE"
+    grep -qE "^$1"$'\t' "$ALIASFILE" && existed=1
+    { grep -vE "^$1"$'\t' "$ALIASFILE" 2>/dev/null
+      printf '%s\t%s\t%s\t%s\n' "$1" "$2" "$3" "$4"; } > "$ALIASFILE.tmp"
+    mv "$ALIASFILE.tmp" "$ALIASFILE"
+    if [ "$existed" -eq 1 ]; then
+        echo -e "${GREEN}$(t al_updated) $1${NC}"
+    else
+        echo -e "${GREEN}$(t al_saved) $1${NC}"
+    fi
+}
+
+alias_list() {
+    if [ ! -s "$ALIASFILE" ]; then echo "$(t al_empty)"; return; fi
+    printf '%-3s %-16s %-5s %s\n' "#" "$(t al_c_name)" "$(t al_c_type)" "$(t al_c_cmd)"
+    # awk keeps empty fields (unlike read+IFS=tab, which collapses them); NR = row number
+    awk -F'\t' 'NF {printf "%-3s %-16s %-5s %s\n", NR, $1, $2, $4}' "$ALIASFILE"
+}
+
+alias_add() {
+    local name="$1" cmd req ans
+    # quick form: -a add <name> <command...>  -> direct alias
+    if [ -n "$name" ] && [ "$#" -ge 2 ]; then
+        shift; cmd="$*"
+        alias_valid_name "$name" || { echo "$(t al_invalid)" >&2; return 1; }
+        alias_store "$name" "run" "" "$cmd"; return
+    fi
+    # interactive form: ask for the word (name), then the command
+    if [ -z "$name" ]; then
+        read -r -p "$(t al_name_q)" name < /dev/tty || return 1
+    fi
+    alias_valid_name "$name" || { echo "$(t al_invalid)" >&2; return 1; }
+    read -r -p "$(t al_cmd_q)" cmd < /dev/tty || return 1
+    [ -z "$cmd" ] && { echo "$(t cancelled)"; return 1; }
+    read -r -p "$(t al_ai_q)" ans < /dev/tty || ans=""
+    case "${ans,,}" in
+        "$YES_KEY"|s|y|j)
+            read -r -p "$(t al_req_q)" req < /dev/tty || req=""
+            [ -z "$req" ] && req="$cmd"
+            alias_store "$name" "ask" "$req" "$cmd" ;;
+        *)  alias_store "$name" "run" "" "$cmd" ;;
+    esac
+}
+
+alias_rm() {
+    local arg="$1" name cmd answer
+    # guided mode: no argument -> show the numbered list and ask which one
+    if [ -z "$arg" ]; then
+        [ -s "$ALIASFILE" ] || { echo "$(t al_empty)"; return; }
+        alias_list
+        read -r -p "$(t al_rm_which)" arg < /dev/tty || return 1
+        [ -z "$arg" ] && { echo "$(t cancelled)"; return; }
+    fi
+    # accept a number (from the list) or a name (case-insensitive)
+    name=$(alias_resolve "$arg") || { echo -e "${RED}$(t al_notfound) $arg${NC}" >&2; return 1; }
+    cmd=$(awk -F'\t' -v n="$name" '$1==n{print $4; exit}' "$ALIASFILE")
+    # confirm before deleting, so a wrong number/name can't wipe the wrong one.
+    # only when a real terminal is available; non-interactive (scripts) proceed.
+    if (exec 3</dev/tty) 2>/dev/null; then
+        echo -e "  ${GREEN}$name${NC}  ->  $cmd"
+        read -r -p "$(t al_rm_confirm)" answer < /dev/tty || answer=""
+        case "${answer,,}" in "$YES_KEY"|s|y|j) : ;; *) echo "$(t cancelled)"; return ;; esac
+    fi
+    # no '&&': removing the last line makes grep -v empty and exit 1,
+    # which would otherwise skip the mv and leave the alias in place
+    grep -vE "^$name"$'\t' "$ALIASFILE" > "$ALIASFILE.tmp"
+    mv "$ALIASFILE.tmp" "$ALIASFILE"
+    echo -e "${GREEN}$(t al_removed) $name${NC}"
+}
+
+alias_edit() {
+    local ed="${EDITOR:-${VISUAL:-}}"
+    [ -z "$ed" ] && { command -v nano >/dev/null 2>&1 && ed=nano || ed=vi; }
+    mkdir -p "$(dirname "$ALIASFILE")"; touch "$ALIASFILE"
+    "$ed" "$ALIASFILE" < /dev/tty > /dev/tty 2>&1
+}
+
+alias_execute() {
+    # run a saved command, keeping the usual safety confirmations
+    local cmd="$1" answer
+    if is_reboot_cmd "$cmd"; then
+        echo -e "$(t proposed) ${GREEN}$cmd${NC}"
+        echo -e "${RED}$(t warn)${NC}"
+        read -r -p "$(t ask_reboot)" answer < /dev/tty || { echo "$(t cancelled)"; return; }
+        case "${answer,,}" in "$YES_KEY") : ;; *) echo "$(t cancelled)"; return ;; esac
+    elif needs_extra_confirm "$cmd"; then
+        echo -e "$(t proposed) ${GREEN}$cmd${NC}"
+        echo -e "${RED}$(t warn)${NC}"
+        read -r -p "$(t ask_danger)" answer < /dev/tty || { echo "$(t cancelled)"; return; }
+        case "${answer,,}" in "$YES_KEY") : ;; *) echo "$(t cancelled)"; return ;; esac
+    fi
+    run_command "$cmd"
+}
+
+alias_run() {
+    # $1 = alias name (case-insensitive) or list number to execute
+    local name line type req cmd answer
+    name=$(alias_resolve "$1") || { echo -e "${RED}$(t al_notfound) $1${NC}" >&2; return 1; }
+    line=$(alias_get "$name") || { echo -e "${RED}$(t al_notfound) $1${NC}" >&2; return 1; }
+    # cut keeps empty fields (unlike read+IFS=tab); fields: name type req command
+    type=$(cut -f2 <<< "$line"); req=$(cut -f3 <<< "$line"); cmd=$(cut -f4 <<< "$line")
+    if [ "$type" = "ask" ]; then
+        echo -e "$(t proposed) ${GREEN}$cmd${NC}"
+        read -r -p "$(t al_run_ask)" answer < /dev/tty || answer=""
+        case "${answer,,}" in
+            a)  check_ai; propose_and_run "$req"; return ;;
+            *)  alias_execute "$cmd" ;;
+        esac
+    else
+        alias_execute "$cmd"
+    fi
+}
+
+# ---- save-last & repeat proposal (v2.2) ----
+alias_has_command() {
+    # 0 if some alias already stores this exact command (field 4)
+    [ -f "$ALIASFILE" ] || return 1
+    awk -F'\t' -v c="$1" '$4==c {f=1} END{exit !f}' "$ALIASFILE"
+}
+
+save_last() {
+    # remember the last successful  request<TAB>command  (only the last one)
+    mkdir -p "$LOGDIR"
+    printf '%s\t%s\n' "$1" "$2" > "$LASTFILE"
+}
+
+repeat_update() {
+    # upsert  key<TAB>epoch<TAB>declined  (keep the last 200 entries)
+    local key="$1" ts="$2" dec="$3"
+    mkdir -p "$LOGDIR"; touch "$REPEATFILE"
+    { grep -vE "^$key"$'\t' "$REPEATFILE" 2>/dev/null
+      printf '%s\t%s\t%s\n' "$key" "$ts" "$dec"; } > "$REPEATFILE.tmp"
+    tail -n 200 "$REPEATFILE.tmp" > "$REPEATFILE"
+    rm -f "$REPEATFILE.tmp"
+}
+
+maybe_propose_alias() {
+    # $1 request, $2 command (already succeeded). Offer to save it as a shortcut
+    # ONLY on a quick repeat (same request within REPEAT_WINDOW), once, never
+    # nagging: a decline is remembered, an existing alias is never re-proposed.
+    local req="$1" cmd="$2" key now prev declined line name
+    [ -z "$cmd" ] && return 0
+    (exec 3</dev/tty) 2>/dev/null || return 0        # need a real terminal to ask
+    alias_has_command "$cmd" && return 0             # already a shortcut
+    key=$(cache_key "$req")
+    now=$(date +%s)
+    prev=""; declined=0
+    if [ -f "$REPEATFILE" ]; then
+        line=$(awk -F'\t' -v k="$key" '$1==k{print; exit}' "$REPEATFILE")
+        [ -n "$line" ] && { prev=$(cut -f2 <<< "$line"); declined=$(cut -f3 <<< "$line"); }
+    fi
+    if [ -n "$prev" ] && [ "$declined" != "1" ] && [ $((now - prev)) -le "$REPEAT_WINDOW" ]; then
+        echo -e "${BLUE}$(t al_propose)${NC} ${GREEN}$cmd${NC}"
+        read -r -p "$(t al_propose_q)" name < /dev/tty || name=""
+        if [ -n "$name" ] && alias_valid_name "$name"; then
+            alias_store "$name" "run" "" "$cmd"
+        else
+            [ -n "$name" ] && echo "$(t al_invalid)" >&2
+            declined=1                               # said no (or invalid) -> stop asking
+        fi
+    fi
+    repeat_update "$key" "$now" "$declined"
+}
+
+alias_save_last() {
+    # turn the last successful command into a shortcut (you decide, on demand).
+    # $1 = optional name; if missing, ask for it (needs a terminal).
+    local name="$1" req cmd
+    [ -s "$LASTFILE" ] || { echo "$(t al_save_none)"; return; }
+    req=$(cut -f1 "$LASTFILE"); cmd=$(cut -f2 "$LASTFILE")
+    [ -z "$cmd" ] && { echo "$(t al_save_none)"; return; }
+    if alias_has_command "$cmd"; then
+        echo -e "${YELLOW}$(t al_exists)${NC} $cmd"; return
+    fi
+    echo -e "$(t al_save_show) ${GREEN}$cmd${NC}"
+    if [ -z "$name" ]; then
+        (exec 3</dev/tty) 2>/dev/null || { echo "$(t al_usage)"; return 1; }
+        read -r -p "$(t al_name_q)" name < /dev/tty || return 1
+    fi
+    [ -z "$name" ] && { echo "$(t cancelled)"; return; }
+    alias_valid_name "$name" || { echo "$(t al_invalid)" >&2; return 1; }
+    alias_store "$name" "run" "" "$cmd"
+}
+
+alias_help() {
+    case "$UILANG" in
+    it) cat <<EOF
+Scorciatoie (alias) - $ASSIST_NAME -a
+
+Cosa sono:
+  una scorciatoia salva un comando che usi spesso, così lo richiami per
+  nome senza interpellare l'IA (es. l'ora di Bangkok).
+
+Comandi:
+  $ASSIST_NAME -a                    elenca le scorciatoie (numerate)
+  $ASSIST_NAME -a <nome|n>           esegue la scorciatoia (per nome o numero)
+  $ASSIST_NAME -a add                crea guidato (chiede nome, comando, tipo)
+  $ASSIST_NAME -a add <nome> <cmd>   crea al volo una scorciatoia diretta
+  $ASSIST_NAME -a rm                 rimuove guidato (mostra la lista, chiedi il numero)
+  $ASSIST_NAME -a rm <n|nome>        rimuove per numero o nome (con conferma)
+  $ASSIST_NAME -a save               salva l'ultimo comando riuscito come scorciatoia
+  $ASSIST_NAME -a edit               apre il file delle scorciatoie nell'editor
+  $ASSIST_NAME -a help               questo aiuto
+
+Due tipi:
+  diretta   esegue subito il comando salvato
+  con-IA    mostra il comando e chiede: Invio = usa la scorciatoia,
+            a = chiedo all'IA (utile se la richiesta era poco precisa)
+
+Esempio:
+  $ASSIST_NAME -a add bangkok "TZ=Asia/Bangkok date"
+  $ASSIST_NAME -a bangkok
+
+Note:
+  · nel richiamo e nella rimozione i nomi NON distinguono maiuscole/minuscole
+  · la rimozione chiede sempre conferma (Invio = no)
+  · se rilanci la stessa richiesta entro 10 min, a fine esecuzione ti propongo
+    (una volta) di salvarla come scorciatoia; con -a save la salvi quando vuoi
+  · file: $ALIASFILE
+EOF
+        ;;
+    de) cat <<EOF
+Shortcuts (Aliase) - $ASSIST_NAME -a
+
+Was sie sind:
+  ein Alias speichert einen oft genutzten Befehl, den du dann per Name
+  aufrufst, ohne die KI zu fragen (z. B. die Uhrzeit von Bangkok).
+
+Befehle:
+  $ASSIST_NAME -a                    Aliase auflisten (nummeriert)
+  $ASSIST_NAME -a <Name|n>           Alias ausführen (per Name oder Nummer)
+  $ASSIST_NAME -a add                geführt anlegen (fragt Name, Befehl, Typ)
+  $ASSIST_NAME -a add <Name> <cmd>   direkt einen Alias anlegen
+  $ASSIST_NAME -a rm                 geführt entfernen (Liste, dann Nummer)
+  $ASSIST_NAME -a rm <n|Name>        per Nummer oder Name entfernen (mit Bestätigung)
+  $ASSIST_NAME -a save               letzten erfolgreichen Befehl als Shortcut speichern
+  $ASSIST_NAME -a edit               Alias-Datei im Editor öffnen
+  $ASSIST_NAME -a help               diese Hilfe
+
+Zwei Typen:
+  direkt    führt den gespeicherten Befehl sofort aus
+  mit-KI    zeigt den Befehl und fragt: Enter = Alias verwenden,
+            a = KI fragen (nützlich bei unklarer Anfrage)
+
+Beispiel:
+  $ASSIST_NAME -a add bangkok "TZ=Asia/Bangkok date"
+  $ASSIST_NAME -a bangkok
+
+Hinweise:
+  · beim Aufruf und Entfernen sind Namen NICHT case-sensitiv
+  · das Entfernen fragt immer nach (Enter = nein)
+  · wiederholst du dieselbe Anfrage binnen 10 min, schlage ich am Ende (einmal)
+    vor, sie als Shortcut zu speichern; mit -a save speicherst du jederzeit
+  · Datei: $ALIASFILE
+EOF
+        ;;
+    *) cat <<EOF
+Shortcuts (aliases) - $ASSIST_NAME -a
+
+What they are:
+  an alias saves a command you use often, so you recall it by name
+  without asking the AI (e.g. the time in Bangkok).
+
+Commands:
+  $ASSIST_NAME -a                    list aliases (numbered)
+  $ASSIST_NAME -a <name|n>           run an alias (by name or number)
+  $ASSIST_NAME -a add                create it guided (asks name, command, type)
+  $ASSIST_NAME -a add <name> <cmd>   create a direct alias in one go
+  $ASSIST_NAME -a rm                 remove it guided (shows the list, asks the number)
+  $ASSIST_NAME -a rm <n|name>        remove by number or name (with confirmation)
+  $ASSIST_NAME -a save               save the last successful command as a shortcut
+  $ASSIST_NAME -a edit               open the aliases file in your editor
+  $ASSIST_NAME -a help               this help
+
+Two kinds:
+  direct    runs the saved command immediately
+  with-AI   shows the command and asks: Enter = use the alias,
+            a = ask the AI (handy when the request was fuzzy)
+
+Example:
+  $ASSIST_NAME -a add bangkok "TZ=Asia/Bangkok date"
+  $ASSIST_NAME -a bangkok
+
+Notes:
+  · on recall and removal, names are NOT case-sensitive
+  · removal always asks for confirmation (Enter = no)
+  · repeat the same request within 10 min and I offer (once) to save it as a
+    shortcut when it finishes; use -a save to save it whenever you want
+  · file: $ALIASFILE
+EOF
+        ;;
+    esac
+}
+
+model_help() {
+    case "$UILANG" in
+    it) cat <<EOF
+IA / modelli - $ASSIST_NAME -m
+
+Le IA le scarica e le tiene Ollama; l'assistente ne usa UNA alla volta.
+
+Comandi:
+  $ASSIST_NAME -m                  elenca le IA scaricate (numerate) e scegli la predefinita (guidato)
+  $ASSIST_NAME -m <n|nome>         imposta la predefinita (per numero o nome)
+  $ASSIST_NAME -m <n|nome> <task>  usa quella IA solo per quel comando (predefinita invariata)
+  $ASSIST_NAME -m help             questo aiuto
+
+Con Ollama:
+  ollama list          vedi le IA installate
+  ollama pull <nome>   scaricane una nuova (es. llama3.1:8b)
+  ollama rm <nome>     rimuovine una
+
+Esempio:
+  $ASSIST_NAME -m 2 riscrivi questo script in modo più chiaro
+
+Note:
+  · la predefinita è salvata in ~/.config/glia/model (cancella il file per tornare al default)
+  · glia-hardware consiglia il modello adatto alla tua macchina
+EOF
+        ;;
+    de) cat <<EOF
+KI / Modelle - $ASSIST_NAME -m
+
+Die KIs lädt und verwaltet Ollama; der Assistent nutzt EINE davon.
+
+Befehle:
+  $ASSIST_NAME -m                    geladene KIs auflisten (nummeriert) und Standard wählen (geführt)
+  $ASSIST_NAME -m <n|Name>           Standard setzen (per Nummer oder Name)
+  $ASSIST_NAME -m <n|Name> <Aufgabe> diese KI nur für diesen Befehl nutzen (Standard bleibt)
+  $ASSIST_NAME -m help               diese Hilfe
+
+Mit Ollama:
+  ollama list          installierte KIs anzeigen
+  ollama pull <Name>   eine neue laden (z. B. llama3.1:8b)
+  ollama rm <Name>     eine entfernen
+
+Beispiel:
+  $ASSIST_NAME -m 2 schreibe dieses Skript klarer
+
+Hinweise:
+  · der Standard liegt in ~/.config/glia/model (Datei löschen = zurück zum Default)
+  · glia-hardware empfiehlt das passende Modell für deinen Rechner
+EOF
+        ;;
+    *) cat <<EOF
+AI / models - $ASSIST_NAME -m
+
+Ollama downloads and stores the AIs; the assistant uses ONE at a time.
+
+Commands:
+  $ASSIST_NAME -m                  list downloaded AIs (numbered) and pick the default (guided)
+  $ASSIST_NAME -m <n|name>         set the default (by number or name)
+  $ASSIST_NAME -m <n|name> <task>  use that AI for this command only (default unchanged)
+  $ASSIST_NAME -m help             this help
+
+With Ollama:
+  ollama list          see installed AIs
+  ollama pull <name>   download a new one (e.g. llama3.1:8b)
+  ollama rm <name>     remove one
+
+Example:
+  $ASSIST_NAME -m 2 rewrite this script more clearly
+
+Notes:
+  · the default is stored in ~/.config/glia/model (delete the file to return to the built-in default)
+  · glia-hardware recommends the model that fits your machine
+EOF
+        ;;
+    esac
+}
+
+memory_help() {
+    case "$UILANG" in
+    it) cat <<EOF
+Memoria (fatti ricordati) - $ASSIST_NAME --memory
+
+L'assistente può ricordare fatti brevi (macchine, percorsi, abitudini) e li
+aggiunge al contesto di ogni richiesta, così l'IA li tiene a mente.
+
+Comandi:
+  $ASSIST_NAME --remember "<fatto>"   ricorda un fatto
+  $ASSIST_NAME --memory               elenca i fatti (numerati)
+  $ASSIST_NAME --forget <n>           dimentica il fatto n
+  $ASSIST_NAME --memory help          questo aiuto
+
+Esempio:
+  $ASSIST_NAME --remember "bt3pro si raggiunge come bt3pro.local (mDNS)"
+
+Note:
+  · massimo $MEMMAX fatti (i più vecchi vengono scartati)
+  · i fatti sono usati SOLO quando la richiesta li riguarda
+  · file: $MEMFILE
+EOF
+        ;;
+    de) cat <<EOF
+Gedächtnis (gemerkte Fakten) - $ASSIST_NAME --memory
+
+Der Assistent kann kurze Fakten merken (Rechner, Pfade, Gewohnheiten) und fügt
+sie dem Kontext jeder Anfrage hinzu, damit die KI sie berücksichtigt.
+
+Befehle:
+  $ASSIST_NAME --remember "<Fakt>"   einen Fakt merken
+  $ASSIST_NAME --memory              Fakten auflisten (nummeriert)
+  $ASSIST_NAME --forget <n>          Fakt n vergessen
+  $ASSIST_NAME --memory help         diese Hilfe
+
+Beispiel:
+  $ASSIST_NAME --remember "bt3pro erreichbar als bt3pro.local (mDNS)"
+
+Hinweise:
+  · höchstens $MEMMAX Fakten (die ältesten fallen weg)
+  · Fakten werden NUR genutzt, wenn die Anfrage sie betrifft
+  · Datei: $MEMFILE
+EOF
+        ;;
+    *) cat <<EOF
+Memory (remembered facts) - $ASSIST_NAME --memory
+
+The assistant can remember short facts (machines, paths, habits) and adds them
+to the context of every request, so the AI keeps them in mind.
+
+Commands:
+  $ASSIST_NAME --remember "<fact>"   remember a fact
+  $ASSIST_NAME --memory              list facts (numbered)
+  $ASSIST_NAME --forget <n>          forget fact n
+  $ASSIST_NAME --memory help         this help
+
+Example:
+  $ASSIST_NAME --remember "bt3pro is reachable as bt3pro.local (mDNS)"
+
+Notes:
+  · at most $MEMMAX facts (the oldest are dropped)
+  · facts are used ONLY when the request refers to them
+  · file: $MEMFILE
+EOF
+        ;;
+    esac
+}
+
+project_help() {
+    case "$UILANG" in
+    it) cat <<EOF
+Modalità progetto - $ASSIST_NAME -p
+
+Pianifica un piccolo progetto e ne scrive i file, con la tua conferma a ogni passo.
+
+Comandi:
+  $ASSIST_NAME -p <idea>   pianifica i passi e scrivi i file (conferma per ognuno)
+  $ASSIST_NAME -p help     questo aiuto
+
+Consigli:
+  · elenca ESPLICITAMENTE i file che vuoi, così l'IA non li dimentica
+  · piano sbagliato? scrivi un indizio al prompt (es. "voglio anche backup.sh,
+    l'origine è /home") e il piano viene rifatto; gli indizi si accumulano
+  · lo stesso vale per ogni file: scrivi un indizio e viene rigenerato
+  · il progetto nasce DOVE SEI: <cartella corrente>/<nome-progetto>
+    (se la cartella corrente non è scrivibile, ripiega su $PROJBASE_SHOW)
+  · non tocca MAI una cartella esistente: se il nome è occupato ne
+    sceglie uno libero (nome-2, nome-3, ...) e te lo mostra prima
+  · richiede jq
+
+Esempio:
+  $ASSIST_NAME -p uno script di backup con rsync e un README che lo spiega
+EOF
+        ;;
+    de) cat <<EOF
+Projektmodus - $ASSIST_NAME -p
+
+Plant ein kleines Projekt und schreibt seine Dateien, mit deiner Bestätigung bei jedem Schritt.
+
+Befehle:
+  $ASSIST_NAME -p <Idee>   Schritte planen und Dateien schreiben (Bestätigung je Datei)
+  $ASSIST_NAME -p help     diese Hilfe
+
+Tipps:
+  · liste die gewünschten Dateien EXPLIZIT auf, sonst vergisst sie die KI
+  · Plan falsch? schreibe am Prompt einen Hinweis (z. B. "ich will auch
+    backup.sh, Quelle ist /home") und der Plan wird neu erstellt; Hinweise
+    sammeln sich an
+  · dasselbe gilt für jede Datei: Hinweis eingeben und sie wird neu erzeugt
+  · das Projekt entsteht WO DU BIST: <aktueller Ordner>/<Projektname>
+    (ist der aktuelle Ordner nicht beschreibbar, weicht es auf $PROJBASE_SHOW aus)
+  · es rührt NIE einen bestehenden Ordner an: ist der Name belegt, wird
+    ein freier gewählt (Name-2, Name-3, ...) und vorher angezeigt
+  · benötigt jq
+
+Beispiel:
+  $ASSIST_NAME -p ein Backup-Skript mit rsync und eine README, die es erklärt
+EOF
+        ;;
+    *) cat <<EOF
+Project mode - $ASSIST_NAME -p
+
+Plans a small project and writes its files, with your confirmation at each step.
+
+Commands:
+  $ASSIST_NAME -p <idea>   plan the steps and write the files (confirm each one)
+  $ASSIST_NAME -p help     this help
+
+Tips:
+  · list the files you want EXPLICITLY, so the AI doesn't forget them
+  · wrong plan? type a hint at the prompt (e.g. "I also want backup.sh,
+    the source is /home") and the plan is redone; hints accumulate
+  · the same works for each file: type a hint and it is regenerated
+  · the project is created WHERE YOU ARE: <current folder>/<project-name>
+    (if the current folder is not writable, it falls back to $PROJBASE_SHOW)
+  · it NEVER touches an existing folder: if the name is taken, a free one
+    is picked (name-2, name-3, ...) and shown before writing
+  · requires jq
+
+Example:
+  $ASSIST_NAME -p a backup script with rsync and a README explaining it
+EOF
+        ;;
+    esac
+}
+
+interactive_mode() {
+    # neophyte-friendly input: read the whole request at a dedicated prompt
+    # with `read -r`, so the interactive shell never parses special chars.
+    # Since v2.7 it is a real REPL: request after request in the same
+    # session (conversation context carries over); empty line = quit.
+    local req
+    check_ai
+    printf '%s\n' "$(t int_hint)" >&2
+    while true; do
+        printf '%s> ' "$ASSIST_NAME" >&2
+        IFS= read -r req || break
+        [ -z "$req" ] && break
+        propose_and_run "$req" || true
+    done
+    exit 0
+}
+
+int_help() {
+    case "$UILANG" in
+    it) cat <<EOF
+Modalità interattiva - $ASSIST_NAME (da solo) oppure $ASSIST_NAME -i
+
+A cosa serve:
+  La shell (fish, bash, zsh) interpreta alcuni caratteri PRIMA di passarli
+  a $ASSIST_NAME:   '   "   \$   |   ;   &   *   ( )   \`
+  Se scrivi una frase con questi simboli sulla stessa riga del comando, la
+  shell si blocca o ne cambia il senso. In modalità interattiva la richiesta
+  viene letta a un prompt dedicato, dove ogni carattere è preso alla lettera.
+
+Come si usa:
+  $ASSIST_NAME              (da solo)   entra nel prompt  $ASSIST_NAME>
+  $ASSIST_NAME -i           lo stesso, in forma esplicita
+  poi scrivi la frase al prompt e premi Invio   ·   Invio a vuoto = esci
+
+Quando serve:
+  ogni volta che la richiesta contiene   '   "   \$   |   ;   &   *
+  Esempio tipico:  mostrami l'uso del disco   (l'apostrofo rompe la shell)
+
+Esempi (scrivili AL PROMPT $ASSIST_NAME>, non sulla riga della shell):
+  mostrami l'uso del disco
+  conta i file *.log nella cartella corrente
+  cerca "errore 500" nei log e contali
+  quanto spazio occupa \$HOME
+  comprimi /etc & salvalo in /tmp
+
+Le frasi semplici (senza simboli) puoi ancora scriverle dirette:
+  $ASSIST_NAME trova i file più grandi in /home
+EOF
+        ;;
+    de) cat <<EOF
+Interaktiver Modus - $ASSIST_NAME (allein) oder $ASSIST_NAME -i
+
+Wozu:
+  Die Shell (fish, bash, zsh) interpretiert manche Zeichen, BEVOR sie an
+  $ASSIST_NAME gehen:   '   "   \$   |   ;   &   *   ( )   \`
+  Schreibst du einen Satz mit diesen Zeichen in dieselbe Befehlszeile,
+  blockiert die Shell oder verändert den Sinn. Im interaktiven Modus wird
+  die Anfrage an einem eigenen Prompt gelesen, Zeichen für Zeichen wörtlich.
+
+Verwendung:
+  $ASSIST_NAME              (allein)   öffnet den Prompt  $ASSIST_NAME>
+  $ASSIST_NAME -i           dasselbe, explizit
+  dann die Anfrage am Prompt eingeben und Enter   ·   leere Zeile = beenden
+
+Wann:
+  immer wenn die Anfrage   '   "   \$   |   ;   &   *   enthält
+  Typisches Beispiel:  zeig mir die Plattennutzung   (Apostroph bricht die Shell)
+
+Beispiele (am Prompt $ASSIST_NAME> eingeben, nicht in der Shell-Zeile):
+  zeig mir die Plattennutzung
+  zähle die *.log-Dateien im aktuellen Ordner
+  suche "Fehler 500" in den Logs und zähle sie
+  wie viel Platz braucht \$HOME
+  komprimiere /etc & lege es in /tmp ab
+
+Einfache Sätze (ohne Sonderzeichen) gehen weiterhin direkt:
+  $ASSIST_NAME finde die größten Dateien in /home
+EOF
+        ;;
+    *) cat <<EOF
+Interactive mode - $ASSIST_NAME (alone) or $ASSIST_NAME -i
+
+What it is for:
+  The shell (fish, bash, zsh) interprets some characters BEFORE they reach
+  $ASSIST_NAME:   '   "   \$   |   ;   &   *   ( )   \`
+  If you type a request with these symbols on the command line, the shell
+  blocks or changes its meaning. In interactive mode the request is read at
+  a dedicated prompt, where every character is taken literally.
+
+How to use it:
+  $ASSIST_NAME              (alone)   opens the prompt  $ASSIST_NAME>
+  $ASSIST_NAME -i           the same, explicit form
+  then type the request at the prompt and press Enter   ·   empty line = quit
+
+When you need it:
+  whenever the request contains   '   "   \$   |   ;   &   *
+  Typical case:  show me the disk usage   (the apostrophe breaks the shell)
+
+Examples (type them AT the prompt $ASSIST_NAME>, not on the shell line):
+  show me the disk usage
+  count the *.log files in the current folder
+  find "error 500" in the logs and count them
+  how much space does \$HOME use
+  compress /etc & save it to /tmp
+
+Simple requests (no symbols) can still go inline:
+  $ASSIST_NAME find the largest files in /home
+EOF
+        ;;
+    esac
+}
+
+# ---- doctor (v2.7): one-shot health check ----
+doctor() {
+    local fails=0 mname avail need
+    doc_line() {   # $1 = 0 ok / 1 fail, $2 = label, $3 = hint on failure
+        if [ "$1" -eq 0 ]; then
+            echo -e "  ${GREEN}✓${NC} $2"
+        else
+            echo -e "  ${RED}✗${NC} $2${3:+   -> $3}"
+            fails=$((fails+1))
+        fi
+    }
+    echo -e "${BLUE}=== $(t doc_title) ===${NC}"
+    command -v aichat >/dev/null 2>&1;  doc_line $? "$(t doc_aichat)" "$(pkg_install_cmd aichat)"
+    command -v jq >/dev/null 2>&1;      doc_line $? "$(t doc_jq)" "$(pkg_install_cmd jq)"
+    command -v ollama >/dev/null 2>&1;  doc_line $? "$(t doc_ollama)" "https://ollama.com/download"
+    curl -fsS --max-time 2 "$OLLAMA_URL/api/tags" >/dev/null 2>&1
+    doc_line $? "$(t doc_api)" "systemctl start ollama"
+    mname="${MODEL#ollama:}"
+    case "$mname" in *:*) : ;; *) mname="$mname:latest" ;; esac
+    curl -fsS --max-time 5 "$OLLAMA_URL/api/tags" 2>/dev/null | grep -q "\"$mname\""
+    doc_line $? "$(t doc_model)" "ollama pull ${MODEL#ollama:}"
+    avail=$(awk '/MemAvailable/ {print int($2/1024)}' /proc/meminfo)
+    need=$(ram_needed_mb)
+    [ -n "$avail" ] && [ "$avail" -ge "$need" ]
+    doc_line $? "$(t doc_ram) (${avail:-?} MB / ~${need} MB)" "glia-hardware"
+    command -v "$ASSIST_NAME" >/dev/null 2>&1
+    doc_line $? "$(t doc_name)" "cp bin/glia ~/.local/bin/  (+ echo \$PATH)"
+    mkdir -p "$LOGDIR" "$HOME/.config/glia" 2>/dev/null \
+        && [ -w "$LOGDIR" ] && [ -w "$HOME/.config/glia" ]
+    doc_line $? "$(t doc_dirs)" "ls -ld $LOGDIR ~/.config/glia"
+    echo
+    if [ "$fails" -eq 0 ]; then
+        echo -e "${GREEN}$(t doc_all_ok)${NC}"
+    else
+        echo -e "${YELLOW}$fails $(t doc_issues)${NC}"
+    fi
+    return "$fails"
+}
+
 # ---- danger self-explanation (v1.6) ----
 explain_danger() {
     # one plain-language sentence about what a dangerous command will do
@@ -717,11 +1782,25 @@ needs_extra_confirm() {
     return 1
 }
 
+# ---- piped input as context (v2.7) ----
+# cat error.log | glia why does this fail   -> the piped text goes to the AI.
+# Read only when stdin is NOT a terminal, and only in the request paths
+# (never in interactive mode, which reads its requests from stdin).
+PIPED=""
+read_piped() {
+    [ -t 0 ] && return 0
+    PIPED="$(head -c 4000 2>/dev/null | head -n 40)"
+}
+
+piped_context() {
+    [ -n "$PIPED" ] && printf 'The user piped this input (treat it as the data/context of the request): <<<%s>>>. ' "$PIPED"
+}
+
 AI_ERR=""
 generate_command() {
     # "look before acting": the model sees where we are and what is here
     local errfile out ctx
-    ctx="$CONTEXT $(memory_context)$(session_context)Current directory: $PWD. It contains: $(ls -1 2>/dev/null | head -n 15 | paste -sd ', ' -)."
+    ctx="$CONTEXT $(memory_context)$(session_context)$(piped_context)Current directory: $PWD. It contains: $(ls -1 2>/dev/null | head -n 15 | paste -sd ', ' -)."
     errfile=$(mktemp)
     out=$(aichat --model "$MODEL" "$ctx Request: $*" < /dev/null 2>"$errfile" \
         | sed 's/^```[a-z]*//; s/```$//' \
@@ -734,19 +1813,29 @@ generate_command() {
 
 CMD_ERR=""
 run_command() {
-    # runs the command; stderr is shown live AND captured for the fix loop
+    # runs the command; stderr is shown live AND captured for the fix loop.
+    # $2 (optional) = the original request, logged next to the command (v2.7)
     local cmd="$1" errf status
     errf=$(mktemp)
     bash -c "set -o pipefail; $cmd" 2> >(tee "$errf" >&2)
     status=$?
     CMD_ERR=$(tail -n 5 "$errf" 2>/dev/null)
     rm -f "$errf"
-    write_log "EXECUTED (exit=$status)" "$cmd"
+    write_log "EXECUTED (exit=$status)" "$cmd${2:+   <- $2}"
     return $status
 }
 
+edit_command() {
+    # let the user edit $1 in place (readline, prefilled); prints the result.
+    # empty result = keep the original (caller treats it as "no change").
+    local edited
+    echo -e "${BLUE}$(t edit_cmd)${NC}" >&2
+    IFS= read -r -e -i "$1" edited < /dev/tty || edited="$1"
+    printf '%s' "${edited:-$1}"
+}
+
 propose_and_run() {
-    local original="$*" request="$*" cmd answer status fixes=0 expl use_cache=1 from_cache
+    local original="$*" request="$*" cmd answer status fixes=0 expl use_cache=1 from_cache hints=""
     while true; do
         from_cache=0
         if [ "$use_cache" -eq 1 ] && [ "$fixes" -eq 0 ]; then
@@ -763,64 +1852,84 @@ propose_and_run() {
                 echo -e "${RED}$(t model_error)${NC}" >&2
                 echo "$AI_ERR" >&2
             fi
-            exit 1
+            return 1
         fi
         # deterministic privilege fix: add sudo where root is required (no AI call)
         cmd=$(maybe_sudo "$cmd")
-        echo
-        if [ "$from_cache" -eq 1 ]; then
-            echo -e "$(t proposed) ${GREEN}$cmd${NC} ${BLUE}$(t cache_hit)${NC}"
-        else
-            echo -e "$(t proposed) ${GREEN}$cmd${NC}"
-        fi
-        if is_reboot_cmd "$cmd"; then
-            echo -e "${RED}$(t warn)${NC}"
-            read -r -p "$(t ask_reboot)" answer < /dev/tty \
-                || { write_log "CANCELLED (no tty)" "$cmd"; echo "$(t cancelled)"; return; }
-            case "${answer,,}" in
-                "$YES_KEY") : ;;
-                r) use_cache=0; continue ;;
-                *)   write_log "CANCELLED" "$cmd"; echo "$(t cancelled)"; return ;;
-            esac
-        elif needs_extra_confirm "$cmd"; then
-            echo -e "${RED}$(t warn)${NC}"
-            echo -e "${YELLOW}$(t explaining)${NC}" >&2
-            expl=$(explain_danger "$cmd")
-            [ -n "$expl" ] && echo -e "${BLUE}➜ $expl${NC}"
-            read -r -p "$(t ask_danger)" answer < /dev/tty \
-                || { write_log "CANCELLED (no tty)" "$cmd"; echo "$(t cancelled)"; return; }
-            case "${answer,,}" in
-                "$YES_KEY") : ;;
-                r) use_cache=0; continue ;;
-                *)   write_log "CANCELLED" "$cmd"; echo "$(t cancelled)"; return ;;
-            esac
-        else
-            read -r -p "$(t ask_normal)" answer < /dev/tty \
-                || { write_log "CANCELLED (no tty)" "$cmd"; echo "$(t cancelled)"; return; }
-            case "$answer" in
-                "")  : ;;
-                r|R) use_cache=0; continue ;;
-                *)   write_log "CANCELLED" "$cmd"; echo "$(t cancelled)"; return ;;
-            esac
-        fi
+        # ---- inner loop: show + confirm; 'm' edits the command in place and
+        #      re-checks it (an edit can add or remove danger), 'e' explains
+        #      it on demand; both come back here without a new AI generation.
+        while true; do
+            echo
+            if [ "$from_cache" -eq 1 ]; then
+                echo -e "$(t proposed) ${GREEN}$cmd${NC} ${BLUE}$(t cache_hit)${NC}"
+            else
+                echo -e "$(t proposed) ${GREEN}$cmd${NC}"
+            fi
+            if is_reboot_cmd "$cmd"; then
+                echo -e "${RED}$(t warn)${NC}"
+                read -r -p "$(t ask_reboot)" answer < /dev/tty \
+                    || { write_log "CANCELLED (no tty)" "$cmd"; echo "$(t cancelled)"; return; }
+                case "${answer,,}" in
+                    "$YES_KEY") break ;;
+                    r) use_cache=0; continue 2 ;;
+                    m) cmd=$(edit_command "$cmd"); from_cache=0; continue ;;
+                    *)   write_log "CANCELLED" "$cmd"; echo "$(t cancelled)"; return ;;
+                esac
+            elif needs_extra_confirm "$cmd"; then
+                echo -e "${RED}$(t warn)${NC}"
+                echo -e "${YELLOW}$(t explaining)${NC}" >&2
+                expl=$(explain_danger "$cmd")
+                [ -n "$expl" ] && echo -e "${BLUE}➜ $expl${NC}"
+                read -r -p "$(t ask_danger)" answer < /dev/tty \
+                    || { write_log "CANCELLED (no tty)" "$cmd"; echo "$(t cancelled)"; return; }
+                case "${answer,,}" in
+                    "$YES_KEY") break ;;
+                    r) use_cache=0; continue 2 ;;
+                    m) cmd=$(edit_command "$cmd"); from_cache=0; continue ;;
+                    *)   write_log "CANCELLED" "$cmd"; echo "$(t cancelled)"; return ;;
+                esac
+            else
+                read -r -p "$(t ask_normal)" answer < /dev/tty \
+                    || { write_log "CANCELLED (no tty)" "$cmd"; echo "$(t cancelled)"; return; }
+                case "$answer" in
+                    "")  break ;;
+                    r|R) use_cache=0; continue 2 ;;
+                    m|M) cmd=$(edit_command "$cmd"); from_cache=0; continue ;;
+                    e|E) echo -e "${YELLOW}$(t explaining)${NC}" >&2
+                         expl=$(explain_danger "$cmd")
+                         [ -n "$expl" ] && echo -e "${BLUE}➜ $expl${NC}"
+                         continue ;;
+                    *)   write_log "CANCELLED" "$cmd"; echo "$(t cancelled)"; return ;;
+                esac
+            fi
+        done
 
-        # ---- execute; on failure, learn from the error (max 2 fixes) ----
+        # ---- execute; on failure, learn from the error (up to 5 fixes; the
+        #      user can type an extra hint that is fed back to the AI) ----
         session_add "$original" "$cmd"
-        run_command "$cmd"
+        run_command "$cmd" "$original"
         status=$?
-        [ "$status" -eq 0 ] && { cache_store "$original" "$cmd"; return 0; }
-        if [ "$fixes" -ge 2 ]; then
+        if [ "$status" -eq 0 ]; then
+            cache_store "$original" "$cmd"
+            save_last "$original" "$cmd"
+            maybe_propose_alias "$original" "$cmd"
+            return 0
+        fi
+        if [ "$fixes" -ge 5 ]; then
             return "$status"
         fi
         echo -e "${RED}$(t cmd_failed) (exit $status).${NC}"
         read -r -p "$(t ask_fix)" answer < /dev/tty || return "$status"
-        case "$answer" in
-            "")
-                fixes=$((fixes+1))
-                request="Original request: $original. The command '$cmd' failed with exit code $status and this error: ${CMD_ERR:-unknown}. Propose a corrected single-line bash command."
-                continue ;;
-            *)  return "$status" ;;
+        case "${answer,,}" in
+            n|no) return "$status" ;;
         esac
+        # Enter (empty) = plain fix; any other text = an extra hint for the AI.
+        # Hints accumulate, so earlier clues are kept while we refine.
+        [ -n "$answer" ] && hints="${hints:+$hints; }$answer"
+        fixes=$((fixes+1))
+        request="Original request: $original. The command '$cmd' failed with exit code $status and this error: ${CMD_ERR:-unknown}.${hints:+ Extra context from the user: $hints.} Use all of the above to propose a corrected single-line bash command."
+        continue
     done
 }
 
@@ -871,30 +1980,56 @@ project_mode() {
     command -v jq >/dev/null || { echo "$(t need_jq)" >&2; exit 1; }
     check_ai
 
-    echo -e "${YELLOW}$(t planning)${NC}"
-    add_msg system "You are the GLIA project agent. You plan small software or document projects and then write their files. Always reply in the exact format requested. Keep projects small and practical."
-    add_msg user "Project request: ${REQUEST}. Reply ONLY with JSON in this exact shape: {\"project_name\":\"short-kebab-case-name\",\"steps\":[\"step 1\",\"step 2\"],\"files\":[{\"path\":\"relative/path.ext\",\"description\":\"what this file contains\"}]}. Between 1 and 8 files. Write the steps and descriptions in ${PLAN_LANG}. No other text."
+    # ---- plan phase: same guided-hint procedure as the fix loop (v2.4).
+    # Enter = proceed, n = cancel, any other text = a hint for the AI: the
+    # plan is redone with it. Hints accumulate across attempts (v2.8).
+    # On a redo the model REVISES the previous plan (it gets it back) instead
+    # of starting over: small models otherwise latch onto the hint and drop
+    # files the original request asked for.
+    local PLAN NAME NFILES A PLAN_HINTS="" PREV_PLAN=""
+    while true; do
+        echo -e "${YELLOW}$(t planning)${NC}"
+        MSGS='[]'
+        add_msg system "You are the GLIA project agent. You plan small software or document projects and then write their files. Always reply in the exact format requested. Keep projects small and practical. The steps describe what YOU will do to produce the files, never manual instructions for the user. Target machine: ${OS_NAME:-Linux}${PKGMGR:+, package manager: $PKGMGR (use it in any install command, never one from other distros)}."
+        add_msg user "Project request: ${REQUEST}. ${PREV_PLAN:+You already proposed this plan: $PREV_PLAN. }${PLAN_HINTS:+The user refines it with this extra context (follow it closely, but KEEP satisfying the original request IN FULL: never drop files or parts the request asks for): $PLAN_HINTS. }Reply ONLY with JSON in this exact shape: {\"project_name\":\"short-kebab-case-name\",\"steps\":[\"step 1\",\"step 2\"],\"files\":[{\"path\":\"relative/path.ext\",\"description\":\"what this file contains\"}]}. Between 1 and 8 files. File paths are relative to the project root: NEVER wrap them in a top-level folder named after the project (write \"backup.sh\", not \"my-project/backup.sh\"). Write the steps and descriptions in ${PLAN_LANG}. No other text."
 
-    local PLAN NAME NFILES
-    PLAN=$(chat json) || { echo -e "${RED}$(t plan_fail)${NC}"; exit 1; }
-    NAME=$(jq -r '.project_name // empty' <<< "$PLAN" 2>/dev/null | tr -cd 'a-zA-Z0-9_-' | cut -c1-40)
-    NFILES=$(jq -r '.files | length' <<< "$PLAN" 2>/dev/null)
-    if [ -z "$NAME" ] || [ -z "$NFILES" ] || [ "$NFILES" = "0" ]; then
-        echo -e "${RED}$(t plan_fail)${NC}"; exit 1
+        PLAN=$(chat json) || { echo -e "${RED}$(t plan_fail)${NC}"; exit 1; }
+        NAME=$(jq -r '.project_name // empty' <<< "$PLAN" 2>/dev/null | tr -cd 'a-zA-Z0-9_-' | cut -c1-40)
+        NFILES=$(jq -r '.files | length' <<< "$PLAN" 2>/dev/null)
+        if [ -z "$NAME" ] || [ -z "$NFILES" ] || [ "$NFILES" = "0" ]; then
+            echo -e "${RED}$(t plan_fail)${NC}"; exit 1
+        fi
+
+        echo
+        echo -e "${BLUE}=== $(t plan): $NAME ===${NC}"
+        echo -e "${YELLOW}$(t steps)${NC}"
+        jq -r '.steps[]' <<< "$PLAN" | nl -w2 -s'. '
+        echo -e "${YELLOW}$(t files)${NC}"
+        jq -r '.files[] | "  \(.path)  -  \(.description)"' <<< "$PLAN"
+        echo
+        read -r -p "$(t go)" A < /dev/tty || exit 1
+        case "$A" in
+            "")   break ;;
+            n|N)  echo "$(t cancelled)"; exit 0 ;;
+            *)    PLAN_HINTS="${PLAN_HINTS:+$PLAN_HINTS; }$A"
+                  PREV_PLAN="$PLAN" ;;   # revise the previous plan with the hint
+        esac
+    done
+
+    # v2.9: the project is created WHERE YOU ARE ($PWD/<name>) - a textual
+    # desktop must not pull you away from your context. The projects folder
+    # is only the fallback when the current directory is not writable.
+    # v2.9.1: never write into an existing folder - if the name is taken,
+    # pick the first free one (<name>-2, <name>-3, ...).
+    local BASE="$PWD" PROJDIR n
+    [ -w "$PWD" ] || BASE="$PROJBASE"
+    PROJDIR="$BASE/$NAME"
+    if [ -e "$PROJDIR" ]; then
+        n=2
+        while [ -e "$BASE/$NAME-$n" ]; do n=$((n+1)); done
+        PROJDIR="$BASE/$NAME-$n"
     fi
-
-    echo
-    echo -e "${BLUE}=== $(t plan): $NAME ===${NC}"
-    echo -e "${YELLOW}$(t steps)${NC}"
-    jq -r '.steps[]' <<< "$PLAN" | nl -w2 -s'. '
-    echo -e "${YELLOW}$(t files)${NC}"
-    jq -r '.files[] | "  \(.path)  -  \(.description)"' <<< "$PLAN"
-    echo
-    local A
-    read -r -p "$(t go)" A < /dev/tty || exit 1
-    case "$A" in n|N) echo "$(t cancelled)"; exit 0 ;; esac
-
-    local PROJDIR="$PROJBASE/$NAME"
+    echo -e "${BLUE}$(t proj_dir)${NC} ${PROJDIR/#$HOME/\~}"
     mkdir -p "$PROJDIR"
     write_log "PROJECT START" "$NAME | $REQUEST"
 
@@ -903,15 +2038,19 @@ project_mode() {
     local FILELIST
     FILELIST=$(jq -r '.files[] | "- \(.path): \(.description)"' <<< "$PLAN")
     MSGS='[]'
-    add_msg system "You are the GLIA project agent. You write complete, working files for a small project. Reply ONLY with raw file content: no explanations, no markdown fences, no JSON."
-    add_msg user "Project: $NAME. Request: $REQUEST. Files of the project: $FILELIST. I will ask you for one file at a time."
+    add_msg system "You are the GLIA project agent. You write complete, working files for a small project. Reply ONLY with raw file content: no explanations, no markdown fences, no JSON. Target machine: ${OS_NAME:-Linux}${PKGMGR:+, package manager: $PKGMGR (use it in any install command, never one from other distros)}."
+    add_msg user "Project: $NAME. Request: $REQUEST.${PLAN_HINTS:+ Extra context from the user (follow it closely): $PLAN_HINTS.} Files of the project: $FILELIST. I will ask you for one file at a time."
     add_msg assistant "Understood. Ask me for each file and I will reply with its raw content only."
 
-    local i=0 FPATH FDESC CONTENT LINES
+    # per-file loop: at the save prompt, typed text = a hint for the AI and
+    # the file is regenerated following it (same procedure as the fix loop);
+    # hints accumulate per file and reset on the next file (v2.8)
+    local i=0 FPATH FDESC CONTENT LINES FILE_HINTS
     while [ "$i" -lt "$NFILES" ]; do
         FPATH=$(jq -r ".files[$i].path" <<< "$PLAN")
         FPATH="${FPATH#./}"
         FDESC=$(jq -r ".files[$i].description" <<< "$PLAN")
+        FILE_HINTS=""
         i=$((i+1))
         if ! safe_relpath "$FPATH"; then
             echo -e "${RED}$(t badpath) $FPATH${NC}"
@@ -921,7 +2060,7 @@ project_mode() {
         while true; do
             echo
             echo -e "${YELLOW}$(t writing) [$i/$NFILES]: ${NC}${GREEN}$FPATH${NC}"
-            add_msg user "Now write the COMPLETE content of the file '$FPATH' ($FDESC) for the project above. Reply ONLY with the raw file content. No explanations, no markdown fences."
+            add_msg user "Now write the COMPLETE content of the file '$FPATH' ($FDESC) for the project above.${FILE_HINTS:+ The user adds this guidance (follow it closely): $FILE_HINTS.} Reply ONLY with the raw file content. No explanations, no markdown fences."
             CONTENT=$(chat) || { echo -e "${RED}$(t plan_fail)${NC}"; break; }
             CONTENT=$(strip_fences <<< "$CONTENT" | strip_leaked_plan)
             echo -e "${BLUE}$(t preview)${NC}"
@@ -941,7 +2080,8 @@ project_mode() {
                     write_log "SAVED" "$NAME/$FPATH ($LINES lines)"
                     break ;;
                 r|R) continue ;;
-                *)  echo "$(t skipped)"; write_log "SKIPPED" "$NAME/$FPATH"; break ;;
+                s|S) echo "$(t skipped)"; write_log "SKIPPED" "$NAME/$FPATH"; break ;;
+                *)   FILE_HINTS="${FILE_HINTS:+$FILE_HINTS; }$A"; continue ;;   # regenerate with the hint
             esac
         done
     done
@@ -958,19 +2098,31 @@ project_mode() {
 # chosen name, so there are never two active names doing actual work.
 if [ "$PROG" = "glia" ] && [ "$ASSIST_NAME" != "glia" ]; then
     case "${1:-}" in
-        -h|--help|"") : ;;
+        -h|--help|-V|--version) : ;;
+        "")  show_help_paged; exit 0 ;;
         *) echo -e "${YELLOW}$(t glia_inhibited)${NC}" >&2; exit 1 ;;
     esac
 fi
 
 case "$1" in
-    -h|--help|"")
-        show_help
+    -h|--help)
+        show_help_paged
+        ;;
+    "")
+        interactive_mode
+        ;;
+    -V|--version)
+        echo "$ASSIST_NAME $VERSION (GLIA)"
+        ;;
+    --doctor)
+        doctor
         ;;
     -p|--project)
         shift
-        [ -z "$*" ] && { show_help; exit 1; }
-        project_mode "$@"
+        case "${1:-}" in
+            help|-h|--help|"") page project_help ;;
+            *)                 project_mode "$@" ;;
+        esac
         ;;
     --rename)
         shift
@@ -980,32 +2132,77 @@ case "$1" in
         shift
         set_language "$1"
         ;;
+    -m|--model)
+        shift
+        case "${1:-}" in
+            help|-h|--help) page model_help ;;
+            "")             model_menu ;;          # guided: list + pick default
+            *)
+                sel=$(model_resolve "$1") || { echo -e "${RED}$(t model_badsel)${NC}" >&2; exit 1; }
+                shift
+                if [ -n "$*" ]; then
+                    MODEL="ollama:$sel"            # one-off: only for this request
+                    echo -e "${BLUE}$(t model_oneoff) ${GREEN}$sel${NC}"
+                    check_ai
+                    propose_and_run "$@"
+                else
+                    set_model "$sel"               # permanent default
+                fi ;;
+        esac
+        ;;
     --remember)
         shift
         remember_fact "$@"
         ;;
     --memory)
-        show_memory
+        shift
+        case "${1:-}" in
+            help|-h|--help) page memory_help ;;
+            *)              show_memory ;;
+        esac
         ;;
     --forget)
         shift
         forget_fact "$1"
         ;;
-    --cache-clear)
+    --cache-clear|--clear-cache)
         rm -f "$CACHEFILE"
         echo -e "${GREEN}$(t cache_cleared)${NC}"
         ;;
-    -d)
+    -a|--alias)
+        shift
+        case "${1:-}" in
+            ""|list|ls)     alias_list ;;
+            add)            shift; alias_add "$@" ;;
+            save)           shift; alias_save_last "$1" ;;
+            rm|remove)      shift; alias_rm "$1" ;;
+            edit)           alias_edit ;;
+            help|-h|--help) page alias_help ;;
+            *)              alias_run "$1" ;;
+        esac
+        ;;
+    -i|--interactive)
+        shift
+        case "${1:-}" in
+            help|-h|--help) page int_help ;;
+            *)              interactive_mode ;;
+        esac
+        ;;
+    -d|--ask)
         shift
         check_ai
-        MEMCTX="$(memory_context)"
+        read_piped
+        # session context so follow-ups work in ask mode too (v2.7); the
+        # question is stored before exec (the streamed answer can't be)
+        MEMCTX="$(memory_context)$(session_context)$(piped_context)"
+        session_add "$*" "(answered in words via -d)"
         case "$UILANG" in
             it) exec aichat --model "$MODEL" "${MEMCTX}Rispondi in italiano. $*" ;;
             de) exec aichat --model "$MODEL" "${MEMCTX}Antworte auf Deutsch. $*" ;;
             *)  exec aichat --model "$MODEL" "${MEMCTX}$*" ;;
         esac
         ;;
-    -l)
+    -l|--log)
         if [ -f "$LOGFILE" ]; then
             cat "$LOGFILE"
         else
@@ -1014,6 +2211,7 @@ case "$1" in
         ;;
     *)
         check_ai
+        read_piped
         propose_and_run "$@"
         ;;
 esac

@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
 # ============================================================
 #  glia-build.sh - Build the GLIA live ISO
-#  Version: 1.0 - 2026-07-11
+#  Version: 1.1 - 2026-07-13 (sync bin/ into airootfs: the ISO always ships the current assistant)
 #  Author: Michele (with Claude)
 #  Project: GLIA (GNU Linux IA)
 #
 #  What it does:
-#   1. embeds the AI model into the ISO tree (if not already there)
-#   2. builds the ISO with mkarchiso
-#   3. cleans up the work directory
+#   1. syncs bin/* into the ISO tree (so the ISO never ships stale copies)
+#   2. embeds the AI model into the ISO tree (if not already there)
+#   3. builds the ISO with mkarchiso
+#   4. cleans up the work directory
 #
 #  Usage:
 #    sudo bash scripts/glia-build.sh
@@ -32,7 +33,15 @@ fi
 PROJECT="$(cd "$(dirname "$0")/.." && pwd)"
 [ -d "$PROJECT/iso" ] || { echo -e "${RED}iso/ profile not found in $PROJECT${NC}" >&2; exit 1; }
 
-# --------------- 1. EMBED THE MODEL ---------------
+# ---------- 1. SYNC THE ASSISTANT INTO THE ISO ----------
+# The copies in iso/airootfs/usr/local/bin are what the live system runs:
+# refresh them from bin/ so the ISO never ships an outdated assistant.
+step "Syncing bin/ into the ISO tree..."
+for f in glia glia-hardware glia-firstboot glia-install; do
+    install -m 755 "$PROJECT/bin/$f" "$PROJECT/iso/airootfs/usr/local/bin/$f"
+done
+
+# --------------- 2. EMBED THE MODEL ---------------
 DSTM="$PROJECT/iso/airootfs/var/lib/ollama"
 MANIFEST_DST="$DSTM/manifests/registry.ollama.ai/library/$MODEL_NAME/$MODEL_TAG"
 
@@ -63,12 +72,12 @@ else
 fi
 du -sh "$DSTM"
 
-# ------------------- 2. BUILD ---------------------
+# ------------------- 3. BUILD ---------------------
 step "Building the ISO (10-15 min, compresses the model too)..."
 rm -rf "$WORKDIR"
 mkarchiso -v -w "$WORKDIR" -o "$PROJECT/out" "$PROJECT/iso"
 
-# ------------------ 3. CLEANUP --------------------
+# ------------------ 4. CLEANUP --------------------
 step "Cleaning up the work directory..."
 rm -rf "$WORKDIR"
 
