@@ -1,12 +1,17 @@
 #!/usr/bin/env bash
 # ============================================================
 #  glia - AI terminal assistant (Ollama + aichat)
-#  Version: 2.3 - 2026-07-13
+#  Version: 2.4 - 2026-07-13
 #  Author: Michele (with Claude)
 #  Project: GLIA (GNU Linux IA)
 #
 #  Design pillar: commands follow standard terminal conventions, so
 #  what you learn here you can reuse in other programs (and vice versa).
+#
+#  What's new in v2.4 ("guide the fix"):
+#   - when a command fails, at the fix prompt you can now TYPE an extra hint
+#     (e.g. "it's an ssh host") and it is fed to the AI to refine the command;
+#     hints accumulate across attempts. Enter = plain fix, n = quit. Up to 5 tries.
 #
 #  What's new in v2.3 ("choose your AI"):
 #   - `-m` / `--model`: pick which downloaded Ollama model the assistant uses.
@@ -381,9 +386,9 @@ t() {
         it:cmd_failed)      echo "Il comando è fallito" ;;
         de:cmd_failed)      echo "Der Befehl ist fehlgeschlagen" ;;
         *:cmd_failed)       echo "The command failed" ;;
-        it:ask_fix)         echo "Invio = chiedo all'IA una correzione | altro = esco: " ;;
-        de:ask_fix)         echo "Enter = KI um Korrektur bitten | sonst = beenden: " ;;
-        *:ask_fix)          echo "Enter = ask the AI for a fix | anything else = quit: " ;;
+        it:ask_fix)         echo "Invio = correzione | scrivi un indizio per l'IA | n = esci: " ;;
+        de:ask_fix)         echo "Enter = Korrektur | schreibe einen Hinweis für die KI | n = beenden: " ;;
+        *:ask_fix)          echo "Enter = fix | type a hint for the AI | n = quit: " ;;
         # ---- aliases (v2.0) ----
         it:al_empty)        echo "Nessun alias salvato ($ALIASFILE)." ;;
         de:al_empty)        echo "Keine Aliase gespeichert ($ALIASFILE)." ;;
@@ -482,7 +487,7 @@ t() {
 show_help() {
     case "$UILANG" in
     it) cat <<EOF
-$ASSIST_NAME v2.3 - assistente IA da terminale (modello: ${MODEL#ollama:})
+$ASSIST_NAME v2.4 - assistente IA da terminale (modello: ${MODEL#ollama:})
 Assistente: $ASSIST_NAME  ·  comando di emergenza sempre attivo: glia
 
 Uso:
@@ -526,7 +531,7 @@ Se l'IA non risponde:
 EOF
         ;;
     de) cat <<EOF
-$ASSIST_NAME v2.3 - KI-Terminal-Assistent (Modell: ${MODEL#ollama:})
+$ASSIST_NAME v2.4 - KI-Terminal-Assistent (Modell: ${MODEL#ollama:})
 Assistent: $ASSIST_NAME  ·  Notfallbefehl immer aktiv: glia
 
 Verwendung:
@@ -570,7 +575,7 @@ Wenn die KI nicht antwortet:
 EOF
         ;;
     *) cat <<EOF
-$ASSIST_NAME v2.3 - AI terminal assistant (model: ${MODEL#ollama:})
+$ASSIST_NAME v2.4 - AI terminal assistant (model: ${MODEL#ollama:})
 Assistant: $ASSIST_NAME  ·  emergency command always on: glia
 
 Usage:
@@ -1297,7 +1302,7 @@ run_command() {
 }
 
 propose_and_run() {
-    local original="$*" request="$*" cmd answer status fixes=0 expl use_cache=1 from_cache
+    local original="$*" request="$*" cmd answer status fixes=0 expl use_cache=1 from_cache hints=""
     while true; do
         from_cache=0
         if [ "$use_cache" -eq 1 ] && [ "$fixes" -eq 0 ]; then
@@ -1355,7 +1360,8 @@ propose_and_run() {
             esac
         fi
 
-        # ---- execute; on failure, learn from the error (max 2 fixes) ----
+        # ---- execute; on failure, learn from the error (up to 5 fixes; the
+        #      user can type an extra hint that is fed back to the AI) ----
         session_add "$original" "$cmd"
         run_command "$cmd"
         status=$?
@@ -1365,18 +1371,20 @@ propose_and_run() {
             maybe_propose_alias "$original" "$cmd"
             return 0
         fi
-        if [ "$fixes" -ge 2 ]; then
+        if [ "$fixes" -ge 5 ]; then
             return "$status"
         fi
         echo -e "${RED}$(t cmd_failed) (exit $status).${NC}"
         read -r -p "$(t ask_fix)" answer < /dev/tty || return "$status"
-        case "$answer" in
-            "")
-                fixes=$((fixes+1))
-                request="Original request: $original. The command '$cmd' failed with exit code $status and this error: ${CMD_ERR:-unknown}. Propose a corrected single-line bash command."
-                continue ;;
-            *)  return "$status" ;;
+        case "${answer,,}" in
+            n|no) return "$status" ;;
         esac
+        # Enter (empty) = plain fix; any other text = an extra hint for the AI.
+        # Hints accumulate, so earlier clues are kept while we refine.
+        [ -n "$answer" ] && hints="${hints:+$hints; }$answer"
+        fixes=$((fixes+1))
+        request="Original request: $original. The command '$cmd' failed with exit code $status and this error: ${CMD_ERR:-unknown}.${hints:+ Extra context from the user: $hints.} Use all of the above to propose a corrected single-line bash command."
+        continue
     done
 }
 
@@ -1524,7 +1532,7 @@ case "$1" in
         show_help_paged
         ;;
     -V|--version)
-        echo "$ASSIST_NAME 2.3 (GLIA)"
+        echo "$ASSIST_NAME 2.4 (GLIA)"
         ;;
     -p|--project)
         shift
