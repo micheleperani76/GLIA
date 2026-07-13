@@ -1,12 +1,19 @@
 #!/usr/bin/env bash
 # ============================================================
 #  glia - AI terminal assistant (Ollama + aichat)
-#  Version: 2.0 - 2026-07-13
+#  Version: 2.1 - 2026-07-13
 #  Author: Michele (with Claude)
 #  Project: GLIA (GNU Linux IA)
 #
 #  Design pillar: commands follow standard terminal conventions, so
 #  what you learn here you can reuse in other programs (and vice versa).
+#
+#  What's new in v2.1 ("alias polish"):
+#   - `-a list` is numbered; `-a rm <n|name>` removes by number or name,
+#     names are case-insensitive, and removal asks for confirmation
+#   - `-a rm` with no argument is guided (shows the list, asks the number)
+#   - `-a help` gives a detailed help focused only on aliases
+#   - long help is paged (less) so it stays readable on a bare server console
 #
 #  What's new in v2.0 ("aliases + standard flags"):
 #   - --alias / -a: save a named shortcut for a command you use often,
@@ -406,13 +413,19 @@ t() {
         it:al_c_cmd)        echo "COMANDO" ;;
         de:al_c_cmd)        echo "BEFEHL" ;;
         *:al_c_cmd)         echo "COMMAND" ;;
+        it:al_rm_which)     echo "Quale numero o nome rimuovere? (Invio = annulla): " ;;
+        de:al_rm_which)     echo "Welche Nummer oder welchen Namen entfernen? (Enter = abbrechen): " ;;
+        *:al_rm_which)      echo "Which number or name to remove? (Enter = cancel): " ;;
+        it:al_rm_confirm)   echo "Confermi la rimozione? [$YES_KEY/N]: " ;;
+        de:al_rm_confirm)   echo "Entfernung bestaetigen? [$YES_KEY/N]: " ;;
+        *:al_rm_confirm)    echo "Confirm removal? [$YES_KEY/N]: " ;;
     esac
 }
 
 show_help() {
     case "$UILANG" in
     it) cat <<EOF
-$ASSIST_NAME v2.0 - assistente IA da terminale (modello: ${MODEL#ollama:})
+$ASSIST_NAME v2.1 - assistente IA da terminale (modello: ${MODEL#ollama:})
 Assistente: $ASSIST_NAME  ·  comando di emergenza sempre attivo: glia
 
 Uso:
@@ -423,7 +436,7 @@ Uso:
   $ASSIST_NAME -a <nome>       esegue un alias salvato (scorciatoia)
 
 Gestione:
-  $ASSIST_NAME -a add [nome cmd]   crea un alias (list | rm <nome> | edit)
+  $ASSIST_NAME -a list|add|rm|edit gestisci le scorciatoie (dettagli: $ASSIST_NAME -a help)
   $ASSIST_NAME --remember <fatto>  ricorda un fatto (macchine, percorsi, abitudini)
   $ASSIST_NAME --memory            elenca i fatti ricordati
   $ASSIST_NAME --forget <n>        dimentica il fatto n
@@ -455,7 +468,7 @@ Se l'IA non risponde:
 EOF
         ;;
     de) cat <<EOF
-$ASSIST_NAME v2.0 - KI-Terminal-Assistent (Modell: ${MODEL#ollama:})
+$ASSIST_NAME v2.1 - KI-Terminal-Assistent (Modell: ${MODEL#ollama:})
 Assistent: $ASSIST_NAME  ·  Notfallbefehl immer aktiv: glia
 
 Verwendung:
@@ -466,7 +479,7 @@ Verwendung:
   $ASSIST_NAME -a <Name>      führt einen gespeicherten Alias aus (Shortcut)
 
 Verwaltung:
-  $ASSIST_NAME -a add [Name Befehl]  Alias anlegen (list | rm <Name> | edit)
+  $ASSIST_NAME -a list|add|rm|edit  Shortcuts verwalten (Details: $ASSIST_NAME -a help)
   $ASSIST_NAME --remember <Fakt>  einen Fakt merken (Rechner, Pfade, Gewohnheiten)
   $ASSIST_NAME --memory           gemerkte Fakten auflisten
   $ASSIST_NAME --forget <n>       Fakt n vergessen
@@ -498,7 +511,7 @@ Wenn die KI nicht antwortet:
 EOF
         ;;
     *) cat <<EOF
-$ASSIST_NAME v2.0 - AI terminal assistant (model: ${MODEL#ollama:})
+$ASSIST_NAME v2.1 - AI terminal assistant (model: ${MODEL#ollama:})
 Assistant: $ASSIST_NAME  ·  emergency command always on: glia
 
 Usage:
@@ -509,7 +522,7 @@ Usage:
   $ASSIST_NAME -a <name>       run a saved alias (shortcut)
 
 Manage:
-  $ASSIST_NAME -a add [name cmd]  create an alias (list | rm <name> | edit)
+  $ASSIST_NAME -a list|add|rm|edit  manage shortcuts (details: $ASSIST_NAME -a help)
   $ASSIST_NAME --remember <fact>  remember a fact (machines, paths, habits)
   $ASSIST_NAME --memory           list remembered facts
   $ASSIST_NAME --forget <n>       forget fact n
@@ -546,16 +559,19 @@ EOF
 # Show the help through a pager when writing to a terminal, so long help
 # stays readable on a bare server console (the first lines don't scroll
 # off the top). Piped/redirected output stays plain, for scripts.
-show_help_paged() {
-    [ -t 1 ] || { show_help; return; }
-    if [ -n "${PAGER:-}" ] && command -v "${PAGER%% *}" >/dev/null 2>&1; then
-        show_help | $PAGER
-    elif command -v less >/dev/null 2>&1; then
-        show_help | less -FRX
-    else
-        show_help
+page() {
+    # run "$@" and page its output when writing to a terminal, so long text
+    # stays readable on a bare server console; plain when piped, for scripts.
+    if [ -t 1 ]; then
+        if [ -n "${PAGER:-}" ] && command -v "${PAGER%% *}" >/dev/null 2>&1; then
+            "$@" | $PAGER; return
+        elif command -v less >/dev/null 2>&1; then
+            "$@" | less -FRX; return
+        fi
     fi
+    "$@"
 }
+show_help_paged() { page show_help; }
 
 # ------------------- FUNCTIONS ----------------------
 write_log() {
@@ -758,6 +774,20 @@ alias_get() {
     awk -F'\t' -v n="$1" '$1==n {print; f=1} END{exit !f}' "$ALIASFILE"
 }
 
+alias_resolve() {
+    # $1 = a line number (as shown by -a list) OR a name (case-insensitive).
+    # Prints the real stored name, exit 1 if nothing matches.
+    [ -s "$ALIASFILE" ] || return 1
+    local q="$1" total
+    if [[ "$q" =~ ^[0-9]+$ ]]; then
+        total=$(wc -l < "$ALIASFILE")
+        [ "$q" -ge 1 ] && [ "$q" -le "$total" ] || return 1
+        sed -n "${q}p" "$ALIASFILE" | cut -f1
+        return 0
+    fi
+    awk -F'\t' -v n="$q" 'tolower($1)==tolower(n){print $1; f=1; exit} END{exit !f}' "$ALIASFILE"
+}
+
 alias_store() {
     # $1 name  $2 type  $3 request  $4 command  (replaces an existing name)
     local existed=0
@@ -775,9 +805,9 @@ alias_store() {
 
 alias_list() {
     if [ ! -s "$ALIASFILE" ]; then echo "$(t al_empty)"; return; fi
-    printf '%-16s %-5s %s\n' "$(t al_c_name)" "$(t al_c_type)" "$(t al_c_cmd)"
-    # awk keeps empty fields (unlike read+IFS=tab, which collapses them)
-    awk -F'\t' 'NF {printf "%-16s %-5s %s\n", $1, $2, $4}' "$ALIASFILE"
+    printf '%-3s %-16s %-5s %s\n' "#" "$(t al_c_name)" "$(t al_c_type)" "$(t al_c_cmd)"
+    # awk keeps empty fields (unlike read+IFS=tab, which collapses them); NR = row number
+    awk -F'\t' 'NF {printf "%-3s %-16s %-5s %s\n", NR, $1, $2, $4}' "$ALIASFILE"
 }
 
 alias_add() {
@@ -806,12 +836,25 @@ alias_add() {
 }
 
 alias_rm() {
-    local name="$1"
-    [ -z "$name" ] && { echo "$(t al_usage)" >&2; return 1; }
-    if [ ! -f "$ALIASFILE" ] || ! grep -qE "^$name"$'\t' "$ALIASFILE"; then
-        echo -e "${RED}$(t al_notfound) $name${NC}" >&2; return 1
+    local arg="$1" name cmd answer
+    # guided mode: no argument -> show the numbered list and ask which one
+    if [ -z "$arg" ]; then
+        [ -s "$ALIASFILE" ] || { echo "$(t al_empty)"; return; }
+        alias_list
+        read -r -p "$(t al_rm_which)" arg < /dev/tty || return 1
+        [ -z "$arg" ] && { echo "$(t cancelled)"; return; }
     fi
-    # no '&&': when removing the last line grep -v is empty and exits 1,
+    # accept a number (from the list) or a name (case-insensitive)
+    name=$(alias_resolve "$arg") || { echo -e "${RED}$(t al_notfound) $arg${NC}" >&2; return 1; }
+    cmd=$(awk -F'\t' -v n="$name" '$1==n{print $4; exit}' "$ALIASFILE")
+    # confirm before deleting, so a wrong number/name can't wipe the wrong one.
+    # only when a real terminal is available; non-interactive (scripts) proceed.
+    if (exec 3</dev/tty) 2>/dev/null; then
+        echo -e "  ${GREEN}$name${NC}  ->  $cmd"
+        read -r -p "$(t al_rm_confirm)" answer < /dev/tty || answer=""
+        case "${answer,,}" in "$YES_KEY"|s|y|j) : ;; *) echo "$(t cancelled)"; return ;; esac
+    fi
+    # no '&&': removing the last line makes grep -v empty and exit 1,
     # which would otherwise skip the mv and leave the alias in place
     grep -vE "^$name"$'\t' "$ALIASFILE" > "$ALIASFILE.tmp"
     mv "$ALIASFILE.tmp" "$ALIASFILE"
@@ -843,9 +886,10 @@ alias_execute() {
 }
 
 alias_run() {
-    # $1 = alias name to execute
-    local name="$1" line type req cmd answer
-    line=$(alias_get "$name") || { echo -e "${RED}$(t al_notfound) $name${NC}" >&2; return 1; }
+    # $1 = alias name (case-insensitive) or list number to execute
+    local name line type req cmd answer
+    name=$(alias_resolve "$1") || { echo -e "${RED}$(t al_notfound) $1${NC}" >&2; return 1; }
+    line=$(alias_get "$name") || { echo -e "${RED}$(t al_notfound) $1${NC}" >&2; return 1; }
     # cut keeps empty fields (unlike read+IFS=tab); fields: name type req command
     type=$(cut -f2 <<< "$line"); req=$(cut -f3 <<< "$line"); cmd=$(cut -f4 <<< "$line")
     if [ "$type" = "ask" ]; then
@@ -858,6 +902,107 @@ alias_run() {
     else
         alias_execute "$cmd"
     fi
+}
+
+alias_help() {
+    case "$UILANG" in
+    it) cat <<EOF
+Scorciatoie (alias) - $ASSIST_NAME -a
+
+Cosa sono:
+  una scorciatoia salva un comando che usi spesso, così lo richiami per
+  nome senza interpellare l'IA (es. l'ora di Bangkok).
+
+Comandi:
+  $ASSIST_NAME -a                    elenca le scorciatoie (numerate)
+  $ASSIST_NAME -a <nome|n>           esegue la scorciatoia (per nome o numero)
+  $ASSIST_NAME -a add                crea guidato (chiede nome, comando, tipo)
+  $ASSIST_NAME -a add <nome> <cmd>   crea al volo una scorciatoia diretta
+  $ASSIST_NAME -a rm                 rimuove guidato (mostra la lista, chiedi il numero)
+  $ASSIST_NAME -a rm <n|nome>        rimuove per numero o nome (con conferma)
+  $ASSIST_NAME -a edit               apre il file delle scorciatoie nell'editor
+  $ASSIST_NAME -a help               questo aiuto
+
+Due tipi:
+  diretta   esegue subito il comando salvato
+  con-IA    mostra il comando e chiede: Invio = usa la scorciatoia,
+            a = chiedo all'IA (utile se la richiesta era poco precisa)
+
+Esempio:
+  $ASSIST_NAME -a add bangkok "TZ=Asia/Bangkok date"
+  $ASSIST_NAME -a bangkok
+
+Note:
+  · nel richiamo e nella rimozione i nomi NON distinguono maiuscole/minuscole
+  · la rimozione chiede sempre conferma (Invio = no)
+  · file: $ALIASFILE
+EOF
+        ;;
+    de) cat <<EOF
+Shortcuts (Aliase) - $ASSIST_NAME -a
+
+Was sie sind:
+  ein Alias speichert einen oft genutzten Befehl, den du dann per Name
+  aufrufst, ohne die KI zu fragen (z. B. die Uhrzeit von Bangkok).
+
+Befehle:
+  $ASSIST_NAME -a                    Aliase auflisten (nummeriert)
+  $ASSIST_NAME -a <Name|n>           Alias ausführen (per Name oder Nummer)
+  $ASSIST_NAME -a add                geführt anlegen (fragt Name, Befehl, Typ)
+  $ASSIST_NAME -a add <Name> <cmd>   direkt einen Alias anlegen
+  $ASSIST_NAME -a rm                 geführt entfernen (Liste, dann Nummer)
+  $ASSIST_NAME -a rm <n|Name>        per Nummer oder Name entfernen (mit Bestätigung)
+  $ASSIST_NAME -a edit               Alias-Datei im Editor öffnen
+  $ASSIST_NAME -a help               diese Hilfe
+
+Zwei Typen:
+  direkt    führt den gespeicherten Befehl sofort aus
+  mit-KI    zeigt den Befehl und fragt: Enter = Alias verwenden,
+            a = KI fragen (nützlich bei unklarer Anfrage)
+
+Beispiel:
+  $ASSIST_NAME -a add bangkok "TZ=Asia/Bangkok date"
+  $ASSIST_NAME -a bangkok
+
+Hinweise:
+  · beim Aufruf und Entfernen sind Namen NICHT case-sensitiv
+  · das Entfernen fragt immer nach (Enter = nein)
+  · Datei: $ALIASFILE
+EOF
+        ;;
+    *) cat <<EOF
+Shortcuts (aliases) - $ASSIST_NAME -a
+
+What they are:
+  an alias saves a command you use often, so you recall it by name
+  without asking the AI (e.g. the time in Bangkok).
+
+Commands:
+  $ASSIST_NAME -a                    list aliases (numbered)
+  $ASSIST_NAME -a <name|n>           run an alias (by name or number)
+  $ASSIST_NAME -a add                create it guided (asks name, command, type)
+  $ASSIST_NAME -a add <name> <cmd>   create a direct alias in one go
+  $ASSIST_NAME -a rm                 remove it guided (shows the list, asks the number)
+  $ASSIST_NAME -a rm <n|name>        remove by number or name (with confirmation)
+  $ASSIST_NAME -a edit               open the aliases file in your editor
+  $ASSIST_NAME -a help               this help
+
+Two kinds:
+  direct    runs the saved command immediately
+  with-AI   shows the command and asks: Enter = use the alias,
+            a = ask the AI (handy when the request was fuzzy)
+
+Example:
+  $ASSIST_NAME -a add bangkok "TZ=Asia/Bangkok date"
+  $ASSIST_NAME -a bangkok
+
+Notes:
+  · on recall and removal, names are NOT case-sensitive
+  · removal always asks for confirmation (Enter = no)
+  · file: $ALIASFILE
+EOF
+        ;;
+    esac
 }
 
 # ---- danger self-explanation (v1.6) ----
@@ -1184,7 +1329,7 @@ case "$1" in
         show_help_paged
         ;;
     -V|--version)
-        echo "$ASSIST_NAME 2.0 (GLIA)"
+        echo "$ASSIST_NAME 2.1 (GLIA)"
         ;;
     -p|--project)
         shift
@@ -1217,11 +1362,12 @@ case "$1" in
     -a|--alias)
         shift
         case "${1:-}" in
-            ""|list|ls)  alias_list ;;
-            add)         shift; alias_add "$@" ;;
-            rm|remove)   shift; alias_rm "$1" ;;
-            edit)        alias_edit ;;
-            *)           alias_run "$1" ;;
+            ""|list|ls)     alias_list ;;
+            add)            shift; alias_add "$@" ;;
+            rm|remove)      shift; alias_rm "$1" ;;
+            edit)           alias_edit ;;
+            help|-h|--help) page alias_help ;;
+            *)              alias_run "$1" ;;
         esac
         ;;
     -d|--ask)
