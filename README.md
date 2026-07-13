@@ -208,5 +208,22 @@ glia-hardware                           # hardware report and recommended models
 | 3 | GPU ≥12 GB VRAM | qwen2.5-coder:14b, phi4:14b, deepseek-r1:14b |
 | 4 | GPU ≥20 GB VRAM | qwen3-coder:30b, qwen2.5-coder:32b, devstral:24b |
 
+## Roadmap & what's next
+
+GLIA is actively evolving. Planned and in-progress work:
+
+- **Cross-distro testing — help wanted.** The assistant runs on Arch, Debian
+  and Fedora, but the automated installer has so far been tested on
+  Arch/CachyOS only. **Debian and Fedora need testers** — feedback, issues and
+  PRs are very welcome.
+- **GNOME Shell search provider.** Call `glia` straight from the GNOME overview
+  search: type a request, get the proposed command without opening a terminal
+  first.
+- **Btrfs snapshots** as a safety net, plus branding and polish (phase 5).
+- **Lightweight memory retrieval** if the stored facts outgrow the prompt.
+
+Full details and history in [docs/ROADMAP.md](docs/ROADMAP.md).
+Contributions are welcome — open an issue or a pull request.
+
 ---
 *Author: Michele (with Claude) — 2026*
