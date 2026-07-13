@@ -1,12 +1,21 @@
 #!/usr/bin/env bash
 # ============================================================
 #  glia - AI terminal assistant (Ollama + aichat)
-#  Version: 2.9 - 2026-07-13
+#  Version: 2.9.1 - 2026-07-13
 #  Author: Michele (with Claude)
 #  Project: GLIA (GNU Linux IA)
 #
 #  Design pillar: commands follow standard terminal conventions, so
 #  what you learn here you can reuse in other programs (and vice versa).
+#
+#  What's new in v2.9.1 ("never touch an existing folder"):
+#   - if a folder with the project's name already exists, a FREE name is
+#     picked (<name>-2, <name>-3, ...): the assistant never writes into a
+#     folder it did not create; the chosen folder is shown before writing
+#   - the assistant's fallback folder moves from <Documents>/<name> to
+#     ~/<name>-projects in the HOME: a suffixed name is far less likely to
+#     collide with a folder of yours (an existing <Documents>/<name> keeps
+#     being used, for compatibility)
 #
 #  What's new in v2.9 ("projects where you are"):
 #   - project mode creates the project in the CURRENT directory
@@ -166,7 +175,7 @@
 # ============================================================
 
 # ----------------- CONFIGURATION -----------------
-VERSION="2.9"
+VERSION="2.9.1"
 DEFAULT_MODEL="qwen2.5-coder:7b"
 if [ -r "$HOME/.config/glia/model" ]; then
     MODEL="ollama:$(head -n1 "$HOME/.config/glia/model")"
@@ -230,7 +239,14 @@ SESSTTL=600      # seconds: session forgotten after 10 minutes
 # to migrate it to the new name.
 DOCS="$(xdg-user-dir DOCUMENTS 2>/dev/null)"
 [ -z "$DOCS" ] || [ "$DOCS" = "$HOME" ] && DOCS="$HOME/Documents"
-PROJBASE="$DOCS/$ASSIST_NAME"
+# v2.9.1: the assistant's own folder lives in the HOME as ~/<name>-projects:
+# the -projects suffix makes a collision with a folder of yours unlikely.
+# An existing <Documents>/<name> (the old location) keeps being used.
+if [ -d "$DOCS/$ASSIST_NAME" ]; then
+    PROJBASE="$DOCS/$ASSIST_NAME"
+else
+    PROJBASE="$HOME/$ASSIST_NAME-projects"
+fi
 PROJBASE_SHOW="${PROJBASE/#$HOME/\~}"   # short form for help/messages
 
 # Patterns that require extra confirmation (they don't block: they ask to type the confirm word).
@@ -432,6 +448,9 @@ t() {
         it:skipped)         echo "Saltato." ;;
         de:skipped)         echo "Übersprungen." ;;
         *:skipped)          echo "Skipped." ;;
+        it:proj_dir)        echo "Cartella del progetto:" ;;
+        de:proj_dir)        echo "Projektordner:" ;;
+        *:proj_dir)         echo "Project folder:" ;;
         it:proj_done)       echo "Progetto creato in:" ;;
         de:proj_done)       echo "Projekt erstellt in:" ;;
         *:proj_done)        echo "Project created in:" ;;
@@ -817,8 +836,15 @@ rename_assistant() {
     mkdir -p "$(dirname "$NAMEFILE")"; printf '%s\n' "$newname" > "$NAMEFILE"
     echo -e "${GREEN}$(t renamed) $newname${NC}"
     echo "  $newname -h        ($(t rename_anchor))"
-    # offer to migrate the projects folder to the new name (no = leave the old one)
-    local oldproj="$DOCS/$old" newproj="$DOCS/$newname" a
+    # offer to migrate the projects folder to the new name (no = leave the old one).
+    # v2.9.1: the folder may live in <Documents>/<name> (old) or ~/<name>-projects
+    # (new); migrate keeping the same style.
+    local oldproj newproj a
+    if [ -d "$DOCS/$old" ]; then
+        oldproj="$DOCS/$old"; newproj="$DOCS/$newname"
+    else
+        oldproj="$HOME/$old-projects"; newproj="$HOME/$newname-projects"
+    fi
     if [ -d "$oldproj" ] && [ "$oldproj" != "$newproj" ]; then
         if [ -e "$newproj" ]; then
             echo -e "${YELLOW}$(t proj_target_exists) ${newproj/#$HOME/\~}${NC}"
@@ -1472,6 +1498,8 @@ Consigli:
   · lo stesso vale per ogni file: scrivi un indizio e viene rigenerato
   · il progetto nasce DOVE SEI: <cartella corrente>/<nome-progetto>
     (se la cartella corrente non è scrivibile, ripiega su $PROJBASE_SHOW)
+  · non tocca MAI una cartella esistente: se il nome è occupato ne
+    sceglie uno libero (nome-2, nome-3, ...) e te lo mostra prima
   · richiede jq
 
 Esempio:
@@ -1495,6 +1523,8 @@ Tipps:
   · dasselbe gilt für jede Datei: Hinweis eingeben und sie wird neu erzeugt
   · das Projekt entsteht WO DU BIST: <aktueller Ordner>/<Projektname>
     (ist der aktuelle Ordner nicht beschreibbar, weicht es auf $PROJBASE_SHOW aus)
+  · es rührt NIE einen bestehenden Ordner an: ist der Name belegt, wird
+    ein freier gewählt (Name-2, Name-3, ...) und vorher angezeigt
   · benötigt jq
 
 Beispiel:
@@ -1517,6 +1547,8 @@ Tips:
   · the same works for each file: type a hint and it is regenerated
   · the project is created WHERE YOU ARE: <current folder>/<project-name>
     (if the current folder is not writable, it falls back to $PROJBASE_SHOW)
+  · it NEVER touches an existing folder: if the name is taken, a free one
+    is picked (name-2, name-3, ...) and shown before writing
   · requires jq
 
 Example:
@@ -1987,10 +2019,17 @@ project_mode() {
     # v2.9: the project is created WHERE YOU ARE ($PWD/<name>) - a textual
     # desktop must not pull you away from your context. The projects folder
     # is only the fallback when the current directory is not writable.
-    local PROJDIR="$PWD/$NAME"
-    if [ ! -w "$PWD" ]; then
-        PROJDIR="$PROJBASE/$NAME"
+    # v2.9.1: never write into an existing folder - if the name is taken,
+    # pick the first free one (<name>-2, <name>-3, ...).
+    local BASE="$PWD" PROJDIR n
+    [ -w "$PWD" ] || BASE="$PROJBASE"
+    PROJDIR="$BASE/$NAME"
+    if [ -e "$PROJDIR" ]; then
+        n=2
+        while [ -e "$BASE/$NAME-$n" ]; do n=$((n+1)); done
+        PROJDIR="$BASE/$NAME-$n"
     fi
+    echo -e "${BLUE}$(t proj_dir)${NC} ${PROJDIR/#$HOME/\~}"
     mkdir -p "$PROJDIR"
     write_log "PROJECT START" "$NAME | $REQUEST"
 
