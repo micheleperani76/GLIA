@@ -1,12 +1,20 @@
 #!/usr/bin/env bash
 # ============================================================
 #  glia - AI terminal assistant (Ollama + aichat)
-#  Version: 2.8 - 2026-07-13
+#  Version: 2.9 - 2026-07-13
 #  Author: Michele (with Claude)
 #  Project: GLIA (GNU Linux IA)
 #
 #  Design pillar: commands follow standard terminal conventions, so
 #  what you learn here you can reuse in other programs (and vice versa).
+#
+#  What's new in v2.9 ("projects where you are"):
+#   - project mode creates the project in the CURRENT directory
+#     ($PWD/<project-name>): this is a textual desktop, you must not lose
+#     the context of where you are. The old projects folder
+#     (<Documents>/<name>) is only a fallback when $PWD is not writable
+#   - the planner is told to keep file paths relative to the project root,
+#     so no more double nesting like <project>/<project>_dir/file
 #
 #  What's new in v2.8 ("guide the plan"):
 #   - project mode (-p) now uses the SAME guided-hint procedure as the
@@ -158,7 +166,7 @@
 # ============================================================
 
 # ----------------- CONFIGURATION -----------------
-VERSION="2.8"
+VERSION="2.9"
 DEFAULT_MODEL="qwen2.5-coder:7b"
 if [ -r "$HOME/.config/glia/model" ]; then
     MODEL="ollama:$(head -n1 "$HOME/.config/glia/model")"
@@ -215,9 +223,11 @@ SESSFILE="$SESSDIR/glia-session-$USER-$PPID"
 SESSMAX=6        # lines kept = 3 exchanges (2 lines each)
 SESSTTL=600      # seconds: session forgotten after 10 minutes
 
-# Project mode: files can be written ONLY under this folder.
-# The folder carries the assistant's configured name (e.g. ~/Documents/arx);
-# --rename offers to migrate it to the new name.
+# Project mode (v2.9): projects are created in the CURRENT directory
+# ($PWD/<project-name>), so you keep the context of where you are.
+# This folder is only the FALLBACK when $PWD is not writable. It carries
+# the assistant's configured name (e.g. ~/Documents/arx); --rename offers
+# to migrate it to the new name.
 DOCS="$(xdg-user-dir DOCUMENTS 2>/dev/null)"
 [ -z "$DOCS" ] || [ "$DOCS" = "$HOME" ] && DOCS="$HOME/Documents"
 PROJBASE="$DOCS/$ASSIST_NAME"
@@ -1460,7 +1470,8 @@ Consigli:
   · piano sbagliato? scrivi un indizio al prompt (es. "voglio anche backup.sh,
     l'origine è /home") e il piano viene rifatto; gli indizi si accumulano
   · lo stesso vale per ogni file: scrivi un indizio e viene rigenerato
-  · i file vengono scritti solo dentro la cartella progetti: $PROJBASE_SHOW
+  · il progetto nasce DOVE SEI: <cartella corrente>/<nome-progetto>
+    (se la cartella corrente non è scrivibile, ripiega su $PROJBASE_SHOW)
   · richiede jq
 
 Esempio:
@@ -1482,7 +1493,8 @@ Tipps:
     backup.sh, Quelle ist /home") und der Plan wird neu erstellt; Hinweise
     sammeln sich an
   · dasselbe gilt für jede Datei: Hinweis eingeben und sie wird neu erzeugt
-  · Dateien werden nur im Projektordner geschrieben: $PROJBASE_SHOW
+  · das Projekt entsteht WO DU BIST: <aktueller Ordner>/<Projektname>
+    (ist der aktuelle Ordner nicht beschreibbar, weicht es auf $PROJBASE_SHOW aus)
   · benötigt jq
 
 Beispiel:
@@ -1503,7 +1515,8 @@ Tips:
   · wrong plan? type a hint at the prompt (e.g. "I also want backup.sh,
     the source is /home") and the plan is redone; hints accumulate
   · the same works for each file: type a hint and it is regenerated
-  · files are written only inside the projects folder: $PROJBASE_SHOW
+  · the project is created WHERE YOU ARE: <current folder>/<project-name>
+    (if the current folder is not writable, it falls back to $PROJBASE_SHOW)
   · requires jq
 
 Example:
@@ -1946,7 +1959,7 @@ project_mode() {
         echo -e "${YELLOW}$(t planning)${NC}"
         MSGS='[]'
         add_msg system "You are the GLIA project agent. You plan small software or document projects and then write their files. Always reply in the exact format requested. Keep projects small and practical. The steps describe what YOU will do to produce the files, never manual instructions for the user. Target machine: ${OS_NAME:-Linux}${PKGMGR:+, package manager: $PKGMGR (use it in any install command, never one from other distros)}."
-        add_msg user "Project request: ${REQUEST}. ${PREV_PLAN:+You already proposed this plan: $PREV_PLAN. }${PLAN_HINTS:+The user refines it with this extra context (follow it closely, but KEEP satisfying the original request IN FULL: never drop files or parts the request asks for): $PLAN_HINTS. }Reply ONLY with JSON in this exact shape: {\"project_name\":\"short-kebab-case-name\",\"steps\":[\"step 1\",\"step 2\"],\"files\":[{\"path\":\"relative/path.ext\",\"description\":\"what this file contains\"}]}. Between 1 and 8 files. Write the steps and descriptions in ${PLAN_LANG}. No other text."
+        add_msg user "Project request: ${REQUEST}. ${PREV_PLAN:+You already proposed this plan: $PREV_PLAN. }${PLAN_HINTS:+The user refines it with this extra context (follow it closely, but KEEP satisfying the original request IN FULL: never drop files or parts the request asks for): $PLAN_HINTS. }Reply ONLY with JSON in this exact shape: {\"project_name\":\"short-kebab-case-name\",\"steps\":[\"step 1\",\"step 2\"],\"files\":[{\"path\":\"relative/path.ext\",\"description\":\"what this file contains\"}]}. Between 1 and 8 files. File paths are relative to the project root: NEVER wrap them in a top-level folder named after the project (write \"backup.sh\", not \"my-project/backup.sh\"). Write the steps and descriptions in ${PLAN_LANG}. No other text."
 
         PLAN=$(chat json) || { echo -e "${RED}$(t plan_fail)${NC}"; exit 1; }
         NAME=$(jq -r '.project_name // empty' <<< "$PLAN" 2>/dev/null | tr -cd 'a-zA-Z0-9_-' | cut -c1-40)
@@ -1971,7 +1984,13 @@ project_mode() {
         esac
     done
 
-    local PROJDIR="$PROJBASE/$NAME"
+    # v2.9: the project is created WHERE YOU ARE ($PWD/<name>) - a textual
+    # desktop must not pull you away from your context. The projects folder
+    # is only the fallback when the current directory is not writable.
+    local PROJDIR="$PWD/$NAME"
+    if [ ! -w "$PWD" ]; then
+        PROJDIR="$PROJBASE/$NAME"
+    fi
     mkdir -p "$PROJDIR"
     write_log "PROJECT START" "$NAME | $REQUEST"
 

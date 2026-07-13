@@ -204,7 +204,7 @@ footer .fbrand{font-weight:800;color:var(--white);font-size:1.05rem;margin-botto
       <tr><td class="c">(at the plan prompt)</td><td class="d">Enter = proceed, <b>n</b> = cancel, or <b>type a hint</b> — the plan is revised with it, without losing what the original request asked for. Hints accumulate.</td></tr>
       <tr><td class="c">(at each file)</td><td class="d">Enter = save, <b>v</b> = view all, <b>r</b> = regenerate, <b>type a hint</b> = regenerate following it, <b>s</b> = skip.</td></tr>
     </table>
-    <div class="note">List the files you want <b>explicitly</b>, so the AI doesn't forget them · files are written only inside the projects folder <code>~/Documenti/glia</code> · requires <code>jq</code>.<br><br>Example: <code>glia -p a backup script with rsync and a README explaining it</code></div>
+    <div class="note">List the files you want <b>explicitly</b>, so the AI doesn't forget them · the project is created <b>where you are</b> — <code>&lt;current folder&gt;/&lt;project-name&gt;</code> — so you never lose your context (if the current folder is not writable, it falls back to the projects folder) · requires <code>jq</code>.<br><br>Example: <code>glia -p a backup script with rsync and a README explaining it</code></div>
   </section>
 
   <section class="grp" id="interactive">
