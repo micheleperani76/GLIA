@@ -1,12 +1,18 @@
 #!/usr/bin/env bash
 # ============================================================
 #  glia - AI terminal assistant (Ollama + aichat)
-#  Version: 2.4 - 2026-07-13
+#  Version: 2.5 - 2026-07-13
 #  Author: Michele (with Claude)
 #  Project: GLIA (GNU Linux IA)
 #
 #  Design pillar: commands follow standard terminal conventions, so
 #  what you learn here you can reuse in other programs (and vice versa).
+#
+#  What's new in v2.5 ("leaner help, deeper sub-helps"):
+#   - the general `-h` is now slim: common use, the most common management
+#     commands, examples, and an index of per-group detailed helps
+#   - detailed help per group: `-a help` (shortcuts), `-m help` (AI/models),
+#     `--memory help` (facts), `-p help` (project mode) - all paged
 #
 #  What's new in v2.4 ("guide the fix"):
 #   - when a command fails, at the fix prompt you can now TYPE an extra hint
@@ -487,43 +493,33 @@ t() {
 show_help() {
     case "$UILANG" in
     it) cat <<EOF
-$ASSIST_NAME v2.4 - assistente IA da terminale (modello in uso: ${MODEL#ollama:})
+$ASSIST_NAME v2.5 - assistente IA da terminale (modello in uso: ${MODEL#ollama:})
 Assistente: $ASSIST_NAME  ·  comando di emergenza sempre attivo: glia
 
-Uso:
-  $ASSIST_NAME <richiesta>     propone un comando shell (Invio = esegui, n = annulla, r = riprova)
+Uso comune:
+  $ASSIST_NAME <richiesta>     propone ed esegue un comando (Invio = esegui, n = annulla, r = riprova)
   $ASSIST_NAME -d|--ask <dom>  risponde a parole, senza eseguire nulla
-  $ASSIST_NAME -p <idea>       modalità progetto: pianifica e scrive i file (con conferma)
-  $ASSIST_NAME -l|--log        mostra il log dei comandi eseguiti
-  $ASSIST_NAME -a <nome>       esegue un alias salvato (scorciatoia)
+  $ASSIST_NAME -a <nome>       esegue una scorciatoia salvata
+  $ASSIST_NAME -l|--log        mostra il log dei comandi
 
-Gestione:
-  $ASSIST_NAME -a list|add|rm|save|edit  scorciatoie (dettagli: $ASSIST_NAME -a help)
-  $ASSIST_NAME --remember <fatto>  ricorda un fatto (macchine, percorsi, abitudini)
-  $ASSIST_NAME --memory            elenca i fatti ricordati
-  $ASSIST_NAME --forget <n>        dimentica il fatto n
-  $ASSIST_NAME --clear-cache       svuota la cache delle risposte
-  $ASSIST_NAME --rename <nome>     dà un nuovo nome all'assistente (glia resta sempre)
-  $ASSIST_NAME --lang <it|en|de>   cambia la lingua dell'interfaccia
-  $ASSIST_NAME -m [n|nome] [task]  scegli quale IA usa l'assistente (vuoto = guidato; con task = solo per quel comando)
-  $ASSIST_NAME -V, --version       mostra la versione
-  $ASSIST_NAME -h                  questo aiuto
+Gestione (i più comuni):
+  $ASSIST_NAME -a add <nome> <cmd>  crea una scorciatoia
+  $ASSIST_NAME --remember <fatto>   ricorda un fatto (macchine, percorsi, abitudini)
+  $ASSIST_NAME -m                   scegli quale IA usare (guidato)
+
+Aiuto dettagliato per gruppo:
+  $ASSIST_NAME -a help         scorciatoie (alias)
+  $ASSIST_NAME -m help         quale IA usare
+  $ASSIST_NAME --memory help   memoria (fatti ricordati)
+  $ASSIST_NAME -p help         modalità progetto
+
+Impostazioni:  --rename · --lang · --clear-cache · -V · -h
 
 Esempi:
   $ASSIST_NAME trova i file più grandi in /home
   $ASSIST_NAME -d cosa fa il comando rsync
-  $ASSIST_NAME -p uno script di backup con rsync e un README che lo spiega
   $ASSIST_NAME -a add bangkok "TZ=Asia/Bangkok date"
-  $ASSIST_NAME -a bangkok
   $ASSIST_NAME -m 2 riscrivi questo script in modo più chiaro   (usa l'IA #2 solo qui)
-
-Note:
-  · i comandi pericolosi chiedono conferma con "$YES_KEY" (Invio o n = annulla)
-  · in -p elenca esplicitamente i file che vuoi, così l'IA non li dimentica
-
-Cartelle:
-  progetti   $PROJBASE_SHOW
-  log        $LOGFILE
 
 Se l'IA non risponde:
   systemctl start ollama          avvia il motore IA
@@ -532,43 +528,33 @@ Se l'IA non risponde:
 EOF
         ;;
     de) cat <<EOF
-$ASSIST_NAME v2.4 - KI-Terminal-Assistent (aktives Modell: ${MODEL#ollama:})
+$ASSIST_NAME v2.5 - KI-Terminal-Assistent (aktives Modell: ${MODEL#ollama:})
 Assistent: $ASSIST_NAME  ·  Notfallbefehl immer aktiv: glia
 
-Verwendung:
-  $ASSIST_NAME <Anfrage>      schlägt einen Shell-Befehl vor (Enter = ausführen, n = abbrechen, r = wiederholen)
+Häufige Nutzung:
+  $ASSIST_NAME <Anfrage>      schlägt einen Befehl vor und führt ihn aus (Enter = ausführen, n = abbrechen, r = wiederholen)
   $ASSIST_NAME -d|--ask <Fr>  antwortet in Worten, führt nichts aus
-  $ASSIST_NAME -p <Idee>      Projektmodus: plant und schreibt die Dateien (mit Bestätigung)
-  $ASSIST_NAME -l|--log       Protokoll der ausgeführten Befehle
-  $ASSIST_NAME -a <Name>      führt einen gespeicherten Alias aus (Shortcut)
+  $ASSIST_NAME -a <Name>      führt einen gespeicherten Shortcut aus
+  $ASSIST_NAME -l|--log       zeigt das Befehlsprotokoll
 
-Verwaltung:
-  $ASSIST_NAME -a list|add|rm|save|edit  Shortcuts (Details: $ASSIST_NAME -a help)
-  $ASSIST_NAME --remember <Fakt>  einen Fakt merken (Rechner, Pfade, Gewohnheiten)
-  $ASSIST_NAME --memory           gemerkte Fakten auflisten
-  $ASSIST_NAME --forget <n>       Fakt n vergessen
-  $ASSIST_NAME --clear-cache      Antwort-Cache leeren
-  $ASSIST_NAME --rename <Name>    dem Assistenten einen neuen Namen geben (glia bleibt immer)
-  $ASSIST_NAME --lang <it|en|de>  Sprache der Oberfläche ändern
-  $ASSIST_NAME -m [n|Name] [Aufgabe]  KI wählen (leer = geführt; mit Aufgabe = nur dafür)
-  $ASSIST_NAME -V, --version      Version anzeigen
-  $ASSIST_NAME -h                 diese Hilfe
+Verwaltung (die häufigsten):
+  $ASSIST_NAME -a add <Name> <cmd>  einen Shortcut anlegen
+  $ASSIST_NAME --remember <Fakt>    einen Fakt merken (Rechner, Pfade, Gewohnheiten)
+  $ASSIST_NAME -m                   KI wählen (geführt)
+
+Ausführliche Hilfe pro Gruppe:
+  $ASSIST_NAME -a help         Shortcuts (Aliase)
+  $ASSIST_NAME -m help         welche KI
+  $ASSIST_NAME --memory help   Gedächtnis (gemerkte Fakten)
+  $ASSIST_NAME -p help         Projektmodus
+
+Einstellungen:  --rename · --lang · --clear-cache · -V · -h
 
 Beispiele:
   $ASSIST_NAME finde die größten Dateien in /home
   $ASSIST_NAME -d was macht der Befehl rsync
-  $ASSIST_NAME -p ein Backup-Skript mit rsync und eine README, die es erklärt
   $ASSIST_NAME -a add bangkok "TZ=Asia/Bangkok date"
-  $ASSIST_NAME -a bangkok
   $ASSIST_NAME -m 2 schreibe dieses Skript klarer   (nutzt KI #2 nur hier)
-
-Hinweise:
-  · gefährliche Befehle fragen mit "$YES_KEY" nach (Enter oder n = abbrechen)
-  · bei -p die gewünschten Dateien explizit auflisten, sonst vergisst sie die KI
-
-Ordner:
-  Projekte   $PROJBASE_SHOW
-  Protokoll  $LOGFILE
 
 Wenn die KI nicht antwortet:
   systemctl start ollama          KI-Engine starten
@@ -577,43 +563,33 @@ Wenn die KI nicht antwortet:
 EOF
         ;;
     *) cat <<EOF
-$ASSIST_NAME v2.4 - AI terminal assistant (model in use: ${MODEL#ollama:})
+$ASSIST_NAME v2.5 - AI terminal assistant (model in use: ${MODEL#ollama:})
 Assistant: $ASSIST_NAME  ·  emergency command always on: glia
 
-Usage:
-  $ASSIST_NAME <request>       propose a shell command (Enter = run, n = cancel, r = retry)
+Common use:
+  $ASSIST_NAME <request>       propose and run a command (Enter = run, n = cancel, r = retry)
   $ASSIST_NAME -d|--ask <q>    answer in words, run nothing
-  $ASSIST_NAME -p <idea>       project mode: plan and write the files (with confirmation)
-  $ASSIST_NAME -l|--log        show the log of executed commands
-  $ASSIST_NAME -a <name>       run a saved alias (shortcut)
+  $ASSIST_NAME -a <name>       run a saved shortcut
+  $ASSIST_NAME -l|--log        show the command log
 
-Manage:
-  $ASSIST_NAME -a list|add|rm|save|edit  shortcuts (details: $ASSIST_NAME -a help)
-  $ASSIST_NAME --remember <fact>  remember a fact (machines, paths, habits)
-  $ASSIST_NAME --memory           list remembered facts
-  $ASSIST_NAME --forget <n>       forget fact n
-  $ASSIST_NAME --clear-cache      empty the answer cache
-  $ASSIST_NAME --rename <name>    give the assistant a new name (glia always stays)
-  $ASSIST_NAME --lang <it|en|de>  change the interface language
-  $ASSIST_NAME -m [n|name] [task]  choose which AI the assistant uses (empty = guided; with a task = only for it)
-  $ASSIST_NAME -V, --version      show the version
-  $ASSIST_NAME -h                 this help
+Manage (most common):
+  $ASSIST_NAME -a add <name> <cmd>  create a shortcut
+  $ASSIST_NAME --remember <fact>    remember a fact (machines, paths, habits)
+  $ASSIST_NAME -m                   choose which AI to use (guided)
+
+Detailed help per group:
+  $ASSIST_NAME -a help         shortcuts (aliases)
+  $ASSIST_NAME -m help         which AI to use
+  $ASSIST_NAME --memory help   memory (remembered facts)
+  $ASSIST_NAME -p help         project mode
+
+Settings:  --rename · --lang · --clear-cache · -V · -h
 
 Examples:
   $ASSIST_NAME find the largest files in /home
   $ASSIST_NAME -d what does the rsync command do
-  $ASSIST_NAME -p a backup script with rsync and a README explaining it
   $ASSIST_NAME -a add bangkok "TZ=Asia/Bangkok date"
-  $ASSIST_NAME -a bangkok
   $ASSIST_NAME -m 2 rewrite this script more clearly   (uses AI #2 for this only)
-
-Notes:
-  · dangerous commands ask for confirmation with "$YES_KEY" (Enter or n = cancel)
-  · with -p list the files you want explicitly, so the AI doesn't forget them
-
-Folders:
-  projects  $PROJBASE_SHOW
-  log       $LOGFILE
 
 If the AI does not answer:
   systemctl start ollama          start the AI engine
@@ -1203,6 +1179,210 @@ EOF
     esac
 }
 
+model_help() {
+    case "$UILANG" in
+    it) cat <<EOF
+IA / modelli - $ASSIST_NAME -m
+
+Le IA le scarica e le tiene Ollama; l'assistente ne usa UNA alla volta.
+
+Comandi:
+  $ASSIST_NAME -m                  elenca le IA scaricate (numerate) e scegli la predefinita (guidato)
+  $ASSIST_NAME -m <n|nome>         imposta la predefinita (per numero o nome)
+  $ASSIST_NAME -m <n|nome> <task>  usa quella IA solo per quel comando (predefinita invariata)
+  $ASSIST_NAME -m help             questo aiuto
+
+Con Ollama:
+  ollama list          vedi le IA installate
+  ollama pull <nome>   scaricane una nuova (es. llama3.1:8b)
+  ollama rm <nome>     rimuovine una
+
+Esempio:
+  $ASSIST_NAME -m 2 riscrivi questo script in modo più chiaro
+
+Note:
+  · la predefinita è salvata in ~/.config/glia/model (cancella il file per tornare al default)
+  · glia-hardware consiglia il modello adatto alla tua macchina
+EOF
+        ;;
+    de) cat <<EOF
+KI / Modelle - $ASSIST_NAME -m
+
+Die KIs lädt und verwaltet Ollama; der Assistent nutzt EINE davon.
+
+Befehle:
+  $ASSIST_NAME -m                    geladene KIs auflisten (nummeriert) und Standard wählen (geführt)
+  $ASSIST_NAME -m <n|Name>           Standard setzen (per Nummer oder Name)
+  $ASSIST_NAME -m <n|Name> <Aufgabe> diese KI nur für diesen Befehl nutzen (Standard bleibt)
+  $ASSIST_NAME -m help               diese Hilfe
+
+Mit Ollama:
+  ollama list          installierte KIs anzeigen
+  ollama pull <Name>   eine neue laden (z. B. llama3.1:8b)
+  ollama rm <Name>     eine entfernen
+
+Beispiel:
+  $ASSIST_NAME -m 2 schreibe dieses Skript klarer
+
+Hinweise:
+  · der Standard liegt in ~/.config/glia/model (Datei löschen = zurück zum Default)
+  · glia-hardware empfiehlt das passende Modell für deinen Rechner
+EOF
+        ;;
+    *) cat <<EOF
+AI / models - $ASSIST_NAME -m
+
+Ollama downloads and stores the AIs; the assistant uses ONE at a time.
+
+Commands:
+  $ASSIST_NAME -m                  list downloaded AIs (numbered) and pick the default (guided)
+  $ASSIST_NAME -m <n|name>         set the default (by number or name)
+  $ASSIST_NAME -m <n|name> <task>  use that AI for this command only (default unchanged)
+  $ASSIST_NAME -m help             this help
+
+With Ollama:
+  ollama list          see installed AIs
+  ollama pull <name>   download a new one (e.g. llama3.1:8b)
+  ollama rm <name>     remove one
+
+Example:
+  $ASSIST_NAME -m 2 rewrite this script more clearly
+
+Notes:
+  · the default is stored in ~/.config/glia/model (delete the file to return to the built-in default)
+  · glia-hardware recommends the model that fits your machine
+EOF
+        ;;
+    esac
+}
+
+memory_help() {
+    case "$UILANG" in
+    it) cat <<EOF
+Memoria (fatti ricordati) - $ASSIST_NAME --memory
+
+L'assistente può ricordare fatti brevi (macchine, percorsi, abitudini) e li
+aggiunge al contesto di ogni richiesta, così l'IA li tiene a mente.
+
+Comandi:
+  $ASSIST_NAME --remember "<fatto>"   ricorda un fatto
+  $ASSIST_NAME --memory               elenca i fatti (numerati)
+  $ASSIST_NAME --forget <n>           dimentica il fatto n
+  $ASSIST_NAME --memory help          questo aiuto
+
+Esempio:
+  $ASSIST_NAME --remember "bt3pro si raggiunge come bt3pro.local (mDNS)"
+
+Note:
+  · massimo $MEMMAX fatti (i più vecchi vengono scartati)
+  · i fatti sono usati SOLO quando la richiesta li riguarda
+  · file: $MEMFILE
+EOF
+        ;;
+    de) cat <<EOF
+Gedächtnis (gemerkte Fakten) - $ASSIST_NAME --memory
+
+Der Assistent kann kurze Fakten merken (Rechner, Pfade, Gewohnheiten) und fügt
+sie dem Kontext jeder Anfrage hinzu, damit die KI sie berücksichtigt.
+
+Befehle:
+  $ASSIST_NAME --remember "<Fakt>"   einen Fakt merken
+  $ASSIST_NAME --memory              Fakten auflisten (nummeriert)
+  $ASSIST_NAME --forget <n>          Fakt n vergessen
+  $ASSIST_NAME --memory help         diese Hilfe
+
+Beispiel:
+  $ASSIST_NAME --remember "bt3pro erreichbar als bt3pro.local (mDNS)"
+
+Hinweise:
+  · höchstens $MEMMAX Fakten (die ältesten fallen weg)
+  · Fakten werden NUR genutzt, wenn die Anfrage sie betrifft
+  · Datei: $MEMFILE
+EOF
+        ;;
+    *) cat <<EOF
+Memory (remembered facts) - $ASSIST_NAME --memory
+
+The assistant can remember short facts (machines, paths, habits) and adds them
+to the context of every request, so the AI keeps them in mind.
+
+Commands:
+  $ASSIST_NAME --remember "<fact>"   remember a fact
+  $ASSIST_NAME --memory              list facts (numbered)
+  $ASSIST_NAME --forget <n>          forget fact n
+  $ASSIST_NAME --memory help         this help
+
+Example:
+  $ASSIST_NAME --remember "bt3pro is reachable as bt3pro.local (mDNS)"
+
+Notes:
+  · at most $MEMMAX facts (the oldest are dropped)
+  · facts are used ONLY when the request refers to them
+  · file: $MEMFILE
+EOF
+        ;;
+    esac
+}
+
+project_help() {
+    case "$UILANG" in
+    it) cat <<EOF
+Modalità progetto - $ASSIST_NAME -p
+
+Pianifica un piccolo progetto e ne scrive i file, con la tua conferma a ogni passo.
+
+Comandi:
+  $ASSIST_NAME -p <idea>   pianifica i passi e scrivi i file (conferma per ognuno)
+  $ASSIST_NAME -p help     questo aiuto
+
+Consigli:
+  · elenca ESPLICITAMENTE i file che vuoi, così l'IA non li dimentica
+  · i file vengono scritti solo dentro la cartella progetti: $PROJBASE_SHOW
+  · richiede jq
+
+Esempio:
+  $ASSIST_NAME -p uno script di backup con rsync e un README che lo spiega
+EOF
+        ;;
+    de) cat <<EOF
+Projektmodus - $ASSIST_NAME -p
+
+Plant ein kleines Projekt und schreibt seine Dateien, mit deiner Bestätigung bei jedem Schritt.
+
+Befehle:
+  $ASSIST_NAME -p <Idee>   Schritte planen und Dateien schreiben (Bestätigung je Datei)
+  $ASSIST_NAME -p help     diese Hilfe
+
+Tipps:
+  · liste die gewünschten Dateien EXPLIZIT auf, sonst vergisst sie die KI
+  · Dateien werden nur im Projektordner geschrieben: $PROJBASE_SHOW
+  · benötigt jq
+
+Beispiel:
+  $ASSIST_NAME -p ein Backup-Skript mit rsync und eine README, die es erklärt
+EOF
+        ;;
+    *) cat <<EOF
+Project mode - $ASSIST_NAME -p
+
+Plans a small project and writes its files, with your confirmation at each step.
+
+Commands:
+  $ASSIST_NAME -p <idea>   plan the steps and write the files (confirm each one)
+  $ASSIST_NAME -p help     this help
+
+Tips:
+  · list the files you want EXPLICITLY, so the AI doesn't forget them
+  · files are written only inside the projects folder: $PROJBASE_SHOW
+  · requires jq
+
+Example:
+  $ASSIST_NAME -p a backup script with rsync and a README explaining it
+EOF
+        ;;
+    esac
+}
+
 # ---- danger self-explanation (v1.6) ----
 explain_danger() {
     # one plain-language sentence about what a dangerous command will do
@@ -1535,12 +1715,14 @@ case "$1" in
         show_help_paged
         ;;
     -V|--version)
-        echo "$ASSIST_NAME 2.4 (GLIA)"
+        echo "$ASSIST_NAME 2.5 (GLIA)"
         ;;
     -p|--project)
         shift
-        [ -z "$*" ] && { show_help; exit 1; }
-        project_mode "$@"
+        case "${1:-}" in
+            help|-h|--help|"") page project_help ;;
+            *)                 project_mode "$@" ;;
+        esac
         ;;
     --rename)
         shift
@@ -1552,27 +1734,32 @@ case "$1" in
         ;;
     -m|--model)
         shift
-        if [ -z "${1:-}" ]; then
-            model_menu                              # guided: list + pick default
-        else
-            sel=$(model_resolve "$1") || { echo -e "${RED}$(t model_badsel)${NC}" >&2; exit 1; }
-            shift
-            if [ -n "$*" ]; then
-                MODEL="ollama:$sel"                 # one-off: only for this request
-                echo -e "${BLUE}$(t model_oneoff) ${GREEN}$sel${NC}"
-                check_ai
-                propose_and_run "$@"
-            else
-                set_model "$sel"                    # permanent default
-            fi
-        fi
+        case "${1:-}" in
+            help|-h|--help) page model_help ;;
+            "")             model_menu ;;          # guided: list + pick default
+            *)
+                sel=$(model_resolve "$1") || { echo -e "${RED}$(t model_badsel)${NC}" >&2; exit 1; }
+                shift
+                if [ -n "$*" ]; then
+                    MODEL="ollama:$sel"            # one-off: only for this request
+                    echo -e "${BLUE}$(t model_oneoff) ${GREEN}$sel${NC}"
+                    check_ai
+                    propose_and_run "$@"
+                else
+                    set_model "$sel"               # permanent default
+                fi ;;
+        esac
         ;;
     --remember)
         shift
         remember_fact "$@"
         ;;
     --memory)
-        show_memory
+        shift
+        case "${1:-}" in
+            help|-h|--help) page memory_help ;;
+            *)              show_memory ;;
+        esac
         ;;
     --forget)
         shift
