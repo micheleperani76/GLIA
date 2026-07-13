@@ -45,7 +45,8 @@ nav{position:sticky;top:0;z-index:50;backdrop-filter:blur(12px);background:rgba(
 @media(max-width:720px){.nav-links a:not(.ghbtn){display:none}}
 /* hero */
 .hero{padding:90px 0 60px;position:relative;z-index:1}
-.hero h1{font-size:clamp(3rem,9vw,5.4rem);font-weight:800;color:var(--white);letter-spacing:-.04em;line-height:1;margin-bottom:8px}
+.hero h1{font-size:clamp(3rem,9vw,5.4rem);font-weight:800;color:var(--white);letter-spacing:-.04em;line-height:1;margin-bottom:8px;display:flex;align-items:center;gap:clamp(14px,3vw,26px)}
+.hero-logo{width:clamp(64px,13vw,116px);height:auto;flex-shrink:0}
 .hero h1 .g{background:linear-gradient(120deg,var(--green),var(--teal));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
 .hero .sub{font-family:var(--mono);font-size:1.05rem;color:var(--teal);margin-bottom:22px}
 .hero .tag{font-size:1.35rem;color:var(--white);font-weight:600;max-width:660px;margin-bottom:14px;letter-spacing:-.01em}
@@ -155,7 +156,7 @@ footer .fbrand{font-weight:800;color:var(--white);font-size:1.1rem;margin-bottom
   <div class="glow g1"></div>
   <div class="glow g2"></div>
   <div class="wrap">
-    <h1><span class="g">GLIA</span></h1>
+    <h1><img class="hero-logo" src="logo.svg" alt="GLIA logo"><span class="g">GLIA</span></h1>
     <div class="sub">Gnu · LInux · Ai</div>
     <p class="tag">A Linux distribution with a built-in AI terminal assistant.</p>
     <p class="desc">Not a chatbot that uses your PC for you — <b>a bridge that brings you to the terminal.</b> Every request in plain language becomes a real shell command, shown to you <b>before</b> it runs. You read it, you approve it, you learn it.</p>
