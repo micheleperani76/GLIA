@@ -1,12 +1,18 @@
 #!/usr/bin/env bash
 # ============================================================
 #  glia - AI terminal assistant (Ollama + aichat)
-#  Version: 2.2 - 2026-07-13
+#  Version: 2.3 - 2026-07-13
 #  Author: Michele (with Claude)
 #  Project: GLIA (GNU Linux IA)
 #
 #  Design pillar: commands follow standard terminal conventions, so
 #  what you learn here you can reuse in other programs (and vice versa).
+#
+#  What's new in v2.3 ("choose your AI"):
+#   - `-m` / `--model`: pick which downloaded Ollama model the assistant uses.
+#       * `-m`               guided: numbered list of AIs, pick the default
+#       * `-m <n|name>`      set the default permanently (by number or name)
+#       * `-m <n|name> ...`  use that AI for THIS request only (default unchanged)
 #
 #  What's new in v2.2 ("shortcut on the fly"):
 #   - `-a save` turns the LAST successful command into a shortcut, when YOU
@@ -445,13 +451,38 @@ t() {
         it:al_propose_q)    echo "Ne faccio una scorciatoia? scrivi un nome (Invio = no): " ;;
         de:al_propose_q)    echo "Daraus einen Shortcut machen? Name eingeben (Enter = nein): " ;;
         *:al_propose_q)     echo "Make it a shortcut? type a name (Enter = no): " ;;
+        # ---- AI model selection (v2.3) ----
+        it:model_avail)     echo "IA disponibili (già scaricate):" ;;
+        de:model_avail)     echo "Verfügbare KIs (bereits geladen):" ;;
+        *:model_avail)      echo "Available AIs (already downloaded):" ;;
+        it:model_inuse)     echo "← in uso ora" ;;
+        de:model_inuse)     echo "← aktiv" ;;
+        *:model_inuse)      echo "← in use" ;;
+        it:model_pick)      echo "Quale vuoi usare sempre? scrivi il numero (Invio = lascia com'è): " ;;
+        de:model_pick)      echo "Welche willst du immer nutzen? Nummer eingeben (Enter = so lassen): " ;;
+        *:model_pick)       echo "Which one to always use? type the number (Enter = keep current): " ;;
+        it:model_kept)      echo "Lasciato invariato." ;;
+        de:model_kept)      echo "Unverändert gelassen." ;;
+        *:model_kept)       echo "Left unchanged." ;;
+        it:model_set)       echo "Modello predefinito impostato:" ;;
+        de:model_set)       echo "Standardmodell gesetzt:" ;;
+        *:model_set)        echo "Default model set:" ;;
+        it:model_none)      echo "Nessuna IA scaricata (ollama pull <nome>) oppure Ollama non è in esecuzione." ;;
+        de:model_none)      echo "Keine KI geladen (ollama pull <Name>) oder Ollama läuft nicht." ;;
+        *:model_none)       echo "No AI downloaded (ollama pull <name>) or Ollama is not running." ;;
+        it:model_badsel)    echo "Selezione non valida. Vedi le IA con: $PROG -m" ;;
+        de:model_badsel)    echo "Ungültige Auswahl. KIs anzeigen mit: $PROG -m" ;;
+        *:model_badsel)     echo "Invalid selection. See the AIs with: $PROG -m" ;;
+        it:model_oneoff)    echo "Solo per questo comando uso:" ;;
+        de:model_oneoff)    echo "Nur für diesen Befehl nutze ich:" ;;
+        *:model_oneoff)     echo "For this command only I use:" ;;
     esac
 }
 
 show_help() {
     case "$UILANG" in
     it) cat <<EOF
-$ASSIST_NAME v2.2 - assistente IA da terminale (modello: ${MODEL#ollama:})
+$ASSIST_NAME v2.3 - assistente IA da terminale (modello: ${MODEL#ollama:})
 Assistente: $ASSIST_NAME  ·  comando di emergenza sempre attivo: glia
 
 Uso:
@@ -469,6 +500,7 @@ Gestione:
   $ASSIST_NAME --clear-cache       svuota la cache delle risposte
   $ASSIST_NAME --rename <nome>     dà un nuovo nome all'assistente (glia resta sempre)
   $ASSIST_NAME --lang <it|en|de>   cambia la lingua dell'interfaccia
+  $ASSIST_NAME -m [n|nome] [task]  scegli quale IA usa l'assistente (vuoto = guidato; con task = solo per quel comando)
   $ASSIST_NAME -V, --version       mostra la versione
   $ASSIST_NAME -h                  questo aiuto
 
@@ -494,7 +526,7 @@ Se l'IA non risponde:
 EOF
         ;;
     de) cat <<EOF
-$ASSIST_NAME v2.2 - KI-Terminal-Assistent (Modell: ${MODEL#ollama:})
+$ASSIST_NAME v2.3 - KI-Terminal-Assistent (Modell: ${MODEL#ollama:})
 Assistent: $ASSIST_NAME  ·  Notfallbefehl immer aktiv: glia
 
 Verwendung:
@@ -512,6 +544,7 @@ Verwaltung:
   $ASSIST_NAME --clear-cache      Antwort-Cache leeren
   $ASSIST_NAME --rename <Name>    dem Assistenten einen neuen Namen geben (glia bleibt immer)
   $ASSIST_NAME --lang <it|en|de>  Sprache der Oberfläche ändern
+  $ASSIST_NAME -m [n|Name] [Aufgabe]  KI wählen (leer = geführt; mit Aufgabe = nur dafür)
   $ASSIST_NAME -V, --version      Version anzeigen
   $ASSIST_NAME -h                 diese Hilfe
 
@@ -537,7 +570,7 @@ Wenn die KI nicht antwortet:
 EOF
         ;;
     *) cat <<EOF
-$ASSIST_NAME v2.2 - AI terminal assistant (model: ${MODEL#ollama:})
+$ASSIST_NAME v2.3 - AI terminal assistant (model: ${MODEL#ollama:})
 Assistant: $ASSIST_NAME  ·  emergency command always on: glia
 
 Usage:
@@ -555,6 +588,7 @@ Manage:
   $ASSIST_NAME --clear-cache      empty the answer cache
   $ASSIST_NAME --rename <name>    give the assistant a new name (glia always stays)
   $ASSIST_NAME --lang <it|en|de>  change the interface language
+  $ASSIST_NAME -m [n|name] [task]  choose which AI the assistant uses (empty = guided; with a task = only for it)
   $ASSIST_NAME -V, --version      show the version
   $ASSIST_NAME -h                 this help
 
@@ -700,6 +734,56 @@ set_language() {
             exit 1
             ;;
     esac
+}
+
+# ---- AI model selection (v2.3): pick which downloaded Ollama model to use ----
+model_names() {
+    # downloaded Ollama model names, one per line, sorted for STABLE numbering
+    ollama list 2>/dev/null | awk 'NR>1 && $1!="" {print $1}' | sort
+}
+
+model_resolve() {
+    # $1 = a number (from the -m list) OR a model name -> prints the model name
+    local q="$1" list n
+    list=$(model_names)
+    [ -z "$list" ] && return 1
+    if [[ "$q" =~ ^[0-9]+$ ]]; then
+        n=$(printf '%s\n' "$list" | sed -n "${q}p")
+        [ -n "$n" ] && { printf '%s\n' "$n"; return 0; }
+        return 1
+    fi
+    printf '%s\n' "$list" | grep -Fxq "$q" && { printf '%s\n' "$q"; return 0; }
+    return 1
+}
+
+set_model() {
+    # $1 = model name -> becomes the permanent default (per-user)
+    mkdir -p "$HOME/.config/glia"
+    printf '%s\n' "$1" > "$HOME/.config/glia/model"
+    echo -e "${GREEN}$(t model_set) $1${NC}"
+}
+
+model_menu() {
+    # list the downloaded AIs numbered, mark the active one, and (with a real
+    # terminal) let you pick one as the permanent default.
+    local list active name i=1 choice sel
+    list=$(model_names)
+    [ -z "$list" ] && { echo "$(t model_none)"; return; }
+    active="${MODEL#ollama:}"
+    echo "$(t model_avail)"
+    while IFS= read -r name; do
+        if [ "$name" = "$active" ]; then
+            printf '  %d) %s   %s\n' "$i" "$name" "$(t model_inuse)"
+        else
+            printf '  %d) %s\n' "$i" "$name"
+        fi
+        i=$((i+1))
+    done <<< "$list"
+    (exec 3</dev/tty) 2>/dev/null || return 0
+    read -r -p "$(t model_pick)" choice < /dev/tty || return 0
+    [ -z "$choice" ] && { echo "$(t model_kept)"; return 0; }
+    sel=$(model_resolve "$choice") || { echo -e "${RED}$(t model_badsel)${NC}" >&2; return 1; }
+    set_model "$sel"
 }
 
 # ---- persistent memory (v1.6) ----
@@ -1440,7 +1524,7 @@ case "$1" in
         show_help_paged
         ;;
     -V|--version)
-        echo "$ASSIST_NAME 2.2 (GLIA)"
+        echo "$ASSIST_NAME 2.3 (GLIA)"
         ;;
     -p|--project)
         shift
@@ -1454,6 +1538,23 @@ case "$1" in
     --lang)
         shift
         set_language "$1"
+        ;;
+    -m|--model)
+        shift
+        if [ -z "${1:-}" ]; then
+            model_menu                              # guided: list + pick default
+        else
+            sel=$(model_resolve "$1") || { echo -e "${RED}$(t model_badsel)${NC}" >&2; exit 1; }
+            shift
+            if [ -n "$*" ]; then
+                MODEL="ollama:$sel"                 # one-off: only for this request
+                echo -e "${BLUE}$(t model_oneoff) ${GREEN}$sel${NC}"
+                check_ai
+                propose_and_run "$@"
+            else
+                set_model "$sel"                    # permanent default
+            fi
+        fi
         ;;
     --remember)
         shift
