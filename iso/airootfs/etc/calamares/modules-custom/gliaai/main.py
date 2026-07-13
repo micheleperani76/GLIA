@@ -6,7 +6,7 @@
 #
 #  Writes to the target system:
 #  - /etc/glia/model: the AI model chosen in packagechooser@aimodel
-#  - /etc/glia/lang:  mypc UI language (it/de/en) derived from the
+#  - /etc/glia/lang:  glia UI language (it/de/en) derived from the
 #    system locale chosen in Calamares
 #  Replaces contextualprocess@aimodel (module not shipped
 #  by cachyos-calamares).
@@ -42,7 +42,7 @@ def run():
     with open(os.path.join(etc_glia, "model"), "w") as f:
         f.write(model + "\n")
 
-    # mypc UI language from the system locale (supported: it, de, en)
+    # glia UI language from the system locale (supported: it, de, en)
     locale_conf = gs.value("localeConf") or {}
     lang = str(locale_conf.get("LANG") or "en")
     if lang.startswith("it"):

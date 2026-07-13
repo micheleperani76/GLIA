@@ -21,14 +21,14 @@ Every request in natural language becomes a real shell command, shown to you *be
 - **Safety**: dangerous commands (rm -rf, dd, mkfs, ...) require reinforced confirmation.
 - **You stay in control**: the AI proposes, you decide.
 
-The assistant (`mypc`, name configurable at install time) turns natural-language
+The assistant (`glia`, name configurable at install time) turns natural-language
 requests into shell commands, with configurable approval levels.
 
 ## Project status
 
 | Phase | Status |
 |---|---|
-| 1. `mypc` assistant with safety levels | ✅ working |
+| 1. `glia` assistant with safety levels | ✅ working |
 | 2. Hardware detection → model recommendation | ✅ `glia-hardware` v1.0 |
 | 3. Live ISO (archiso) with AI preinstalled | ✅ 5.8 GB ISO, model embedded, tested in QEMU |
 | 4. Calamares installer with AI setup step | ✅ working, full install tested in QEMU (UEFI) |
@@ -36,10 +36,12 @@ requests into shell commands, with configurable approval levels.
 
 ## Components
 
-- **`bin/mypc`** — AI terminal assistant (Ollama + aichat).
+- **`bin/glia`** — AI terminal assistant (Ollama + aichat).
   Proposes a command → Enter runs it, `n` cancels, `r` retries.
-  Destructive commands (rm -rf, dd, mkfs, sudo, curl|sh, ...) require
-  typing `YES`. Everything is logged to `~/.local/share/mypc/mypc.log`.
+  Destructive commands (rm -rf, dd, mkfs, sudo, curl|sh, ...) ask for a
+  short `s`/`y`/`j` confirmation (Enter = no). Commands needing root get
+  `sudo` added automatically. Everything is logged to
+  `~/.local/share/glia/glia.log`.
 - **`bin/glia-hardware`** — detects RAM/GPU/VRAM and recommends the right
   AI model tier. JSON output (`-j`) designed for the installer.
 - **`config/aichat-config.yaml`** — aichat configuration for local Ollama
@@ -51,7 +53,7 @@ requests into shell commands, with configurable approval levels.
    USB stick and install (way 1).
 2. **Try it in a virtual machine** — build the ISO (step 1), boot it in
    QEMU (way 2).
-3. **Only the assistant** — add `mypc` to the Linux you already use
+3. **Only the assistant** — add `glia` to the Linux you already use
    (way 3, no ISO needed).
 
 There are no prebuilt ISO downloads: the ISO is always built fresh from
@@ -138,7 +140,26 @@ QEMU without the two cdrom lines to boot the installed system.
 
 ### Way 3 — only the assistant, on the Linux you already use
 
-`mypc` is a bash script: it only needs `ollama` and `aichat`.
+**The easy way — one script for Arch, Debian, Fedora and relatives.** It
+installs the two engines (ollama, aichat), the `glia` command and its
+config, and offers to download a model. It never changes anything without
+asking; run it with `--dry-run` first to preview every single step.
+
+```bash
+git clone https://github.com/micheleperani76/GLIA glia && cd glia
+bash scripts/install-assistant.sh --dry-run   # preview, changes nothing
+bash scripts/install-assistant.sh             # then the real install
+```
+
+> **Status — help wanted:** the assistant runs cross-distro, but the automated
+> installer has so far been tested on **Arch/CachyOS only**. The **Debian and
+> Fedora** paths are work-in-progress and **not yet tested** — if you try them,
+> feedback, issues and PRs are very welcome.
+
+<details>
+<summary><b>Manual install</b> (for experts, or to see exactly what the script does)</summary>
+
+`glia` is a bash script: it only needs `ollama` and `aichat`.
 
 On Arch/CachyOS:
 
@@ -147,7 +168,7 @@ sudo pacman -S ollama aichat
 sudo systemctl enable --now ollama
 ./bin/glia-hardware              # recommends the model for your hardware
 ollama pull qwen2.5-coder:7b     # or the recommended one
-install -m 755 bin/mypc bin/glia-hardware ~/.local/bin/
+install -m 755 bin/glia bin/glia-hardware ~/.local/bin/
 mkdir -p ~/.config/aichat && cp config/aichat-config.yaml ~/.config/aichat/config.yaml
 ```
 
@@ -155,24 +176,26 @@ On Debian, Fedora and other distros:
 
 ```bash
 curl -fsSL https://ollama.com/install.sh | sh    # official Ollama installer
-                                                 # (yes, mypc would ask you to type YES for a curl|sh — read scripts before running them!)
+                                                 # (yes, glia would ask you to type YES for a curl|sh — read scripts before running them!)
 # aichat: grab the binary for your arch from https://github.com/sigoden/aichat/releases
 # and put it in ~/.local/bin/
 
 git clone https://github.com/micheleperani76/GLIA glia && cd glia
 ./bin/glia-hardware              # recommends the model for your hardware
 ollama pull qwen2.5-coder:7b     # or the recommended one
-install -m 755 bin/mypc bin/glia-hardware ~/.local/bin/
+install -m 755 bin/glia bin/glia-hardware ~/.local/bin/
 mkdir -p ~/.config/aichat && cp config/aichat-config.yaml ~/.config/aichat/config.yaml
 ```
+
+</details>
 
 ## Usage
 
 ```bash
-mypc find the largest files in /home   # proposes the command → Enter runs it
-mypc -d what does rsync do             # plain-text explanation only
-mypc -p a bash backup script with rsync and a README explaining how to use it   # project mode: plans the steps, then writes the files (with confirmation)
-mypc -l                                # log of executed commands
+glia find the largest files in /home   # proposes the command → Enter runs it
+glia -d what does rsync do             # plain-text explanation only
+glia -p a bash backup script with rsync and a README explaining how to use it   # project mode: plans the steps, then writes the files (with confirmation)
+glia -l                                # log of executed commands
 glia-hardware                           # hardware report and recommended models
 ```
 

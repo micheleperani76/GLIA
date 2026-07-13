@@ -5,9 +5,9 @@
 
 Your AI assistant is ready. Try:
 
-  mypc <request>         proposes a shell command (Enter = run)
-  mypc -d <question>     plain-text answer, no command
-  mypc -h                help (including how to rename it)
+  glia <request>         proposes a shell command (Enter = run)
+  glia -d <question>     plain-text answer, no command
+  glia -h                help (including how to rename it)
 
 Dangerous commands always require typing YES.
 Project: https://github.com/micheleperani76/GLIA

@@ -1,0 +1,1019 @@
+#!/usr/bin/env bash
+# ============================================================
+#  glia - AI terminal assistant (Ollama + aichat)
+#  Version: 1.9 - 2026-07-13
+#  Author: Michele (with Claude)
+#  Project: GLIA (GNU Linux IA)
+#
+#  What's new in v1.9 ("one name: glia, with a safety net"):
+#   - the default command is now 'glia', which is also a permanent
+#     anchor: it never gets renamed away and always works
+#   - --rename NAME no longer MOVES the file: it creates a symlink
+#     NAME -> glia and records the chosen name in ~/.config/glia/name,
+#     so the 'glia' command keeps working as a passepartout
+#   - 'glia -h' (or NAME -h) shows the current assistant name, to
+#     recover it if you forgot it or mistyped it
+#   - config, logs and the project folder are unified under 'glia'
+#  What's new in v1.8 ("friendlier & safer confirmations"):
+#   - dangerous commands now use the standard s/n prompt (localized:
+#     s/it, y/en, j/de) instead of typing the whole word; Enter = No,
+#     so the safe default is always "cancel"
+#   - deterministic auto-sudo: before proposing, commands starting with
+#     a root-only binary (pacman, systemctl, mount...) get sudo added
+#     automatically, on every segment of a && / ; chain - no more
+#     re-asking the AI just to add a missing sudo
+#   - reboot/shutdown get their own explicit confirmation, and the model
+#     is told to prefer 'systemctl restart <service>' over a full reboot
+#  What's new in v1.7 ("command cache"):
+#   - a request already answered is served instantly from cache; only
+#     commands that ran successfully (exit 0) are cached, the command
+#     itself is always re-executed (fresh output every time)
+#   - at a cache hit, r = bypass the cache and ask the AI again
+#   - --cache-clear empties the cache
+#  What's new in v1.6 ("persistent memory"):
+#   - --remember "<fact>" stores short facts in ~/.config/glia/memory
+#     (max 20 lines, oldest dropped); facts are added to every prompt
+#   - --memory lists the stored facts, --forget <n> deletes one
+#   - conversation context: each terminal keeps its last exchanges
+#     (10 min expiry), so follow-ups like "now compress it" work
+#   - danger self-explanation: before the $CONFIRM_WORD prompt, the AI
+#     explains in one plain sentence what the command will do
+#  What's new in v1.5 ("look before acting, learn from errors"):
+#   - the model now sees the current directory and its contents,
+#     so commands fit the place you are in
+#   - if a command fails, the error is sent back to the model and
+#     a corrected command is proposed (with the usual confirmation)
+#  What's new in v1.4:
+#   - project mode built in: `mypc -p <idea>` plans a project in
+#     steps and writes its files (with confirmation), inside
+#     <Documents>/GLIA-Projects/ only. Replaces glia-project.
+#   - the plan is written in the interface language
+#  v1.3: multi-language UI (en/it/de), real AI errors, RAM check
+#  v1.2: model from config (~/.config/glia/model -> /etc/glia/model)
+#  v1.1: AI self-check, --rename, dynamic program name
+#
+#  Usage:
+#    glia <request>        propose a command (Enter = run)
+#    glia -p <idea>        project mode: plan steps, write files
+#    glia -d <question>    plain-text answer, no command
+#    glia -l               show the command log
+#    glia --remember <fact> store a fact in persistent memory
+#    glia --memory         list stored facts
+#    glia --forget <n>     delete fact number n
+#    glia --cache-clear    empty the command cache
+#    glia --rename <name>  rename the assistant (glia always stays too)
+#    glia --lang <code>    set interface language (en, it, de)
+#    glia -h               this help
+# ============================================================
+
+# ----------------- CONFIGURATION -----------------
+DEFAULT_MODEL="qwen2.5-coder:7b"
+if [ -r "$HOME/.config/glia/model" ]; then
+    MODEL="ollama:$(head -n1 "$HOME/.config/glia/model")"
+elif [ -r /etc/glia/model ]; then
+    MODEL="ollama:$(head -n1 /etc/glia/model)"
+else
+    MODEL="ollama:$DEFAULT_MODEL"
+fi
+
+if [ -r "$HOME/.config/glia/lang" ]; then
+    UILANG="$(head -n1 "$HOME/.config/glia/lang")"
+elif [ -r /etc/glia/lang ]; then
+    UILANG="$(head -n1 /etc/glia/lang)"
+else
+    case "${LANG:-en}" in
+        it*) UILANG="it" ;;
+        de*) UILANG="de" ;;
+        *)   UILANG="en" ;;
+    esac
+fi
+case "$UILANG" in it|de|en) : ;; *) UILANG="en" ;; esac
+
+PROG="$(basename "$0")"                 # how the command was invoked (glia, arx, ...)
+# 'glia' is the permanent anchor: config, logs and the safety command live under it.
+# The preferred/friendly name (shown in -h) is stored here by --rename.
+NAMEFILE="$HOME/.config/glia/name"
+if [ -r "$NAMEFILE" ]; then ASSIST_NAME="$(head -n1 "$NAMEFILE")"; else ASSIST_NAME="glia"; fi
+[ -z "$ASSIST_NAME" ] && ASSIST_NAME="glia"
+LOGDIR="$HOME/.local/share/glia"
+LOGFILE="$LOGDIR/glia.log"
+OLLAMA_URL="http://localhost:11434"
+
+# Persistent memory (v1.6): one fact per line, newest kept
+MEMFILE="$HOME/.config/glia/memory"
+MEMMAX=20
+
+# Command cache (v1.7): request+directory -> last command that worked
+CACHEFILE="$LOGDIR/cache"
+CACHEMAX=200
+
+# Conversation context (v1.6): per-terminal session file
+# $PPID = the shell of this terminal window, so each window has its own
+SESSDIR="${XDG_RUNTIME_DIR:-/tmp}"
+SESSFILE="$SESSDIR/glia-session-$USER-$PPID"
+SESSMAX=6        # lines kept = 3 exchanges (2 lines each)
+SESSTTL=600      # seconds: session forgotten after 10 minutes
+
+# Project mode: files can be written ONLY under this folder.
+# The folder carries the assistant's configured name (e.g. ~/Documents/arx);
+# --rename offers to migrate it to the new name.
+DOCS="$(xdg-user-dir DOCUMENTS 2>/dev/null)"
+[ -z "$DOCS" ] || [ "$DOCS" = "$HOME" ] && DOCS="$HOME/Documents"
+PROJBASE="$DOCS/$ASSIST_NAME"
+PROJBASE_SHOW="${PROJBASE/#$HOME/\~}"   # short form for help/messages
+
+# Patterns that require extra confirmation (they don't block: they ask to type the confirm word)
+EXTRA_CONFIRM_PATTERNS=(
+    'rm .*-[a-zA-Z]*[rf]'
+    '\bdd\b'
+    '\bmkfs'
+    '\bshred\b'
+    '\bwipefs\b'
+    '>\s*/dev/(sd|nvme|mmcblk)'
+    'chmod .*(777|-R)'
+    'chown .*-R'
+    '\bparted\b|\bfdisk\b|\bcfdisk\b|\bsgdisk\b'
+    '\btruncate\b'
+    '\bmv\b.*/dev/null'
+    ':\(\)\s*\{'
+    '\b(curl|wget)\b.*\|\s*(ba|z|da)?sh'
+    '\bsudo\b'
+)
+
+# Binaries that need root to CHANGE the system (v1.8 auto-sudo).
+# If a command starts with one of these and has no sudo, we add it ourselves.
+ROOT_BINS='pacman|paccache|pacman-key|pacman-mirrors|pacstrap|apt|apt-get|dnf|zypper|apk|systemctl|mount|umount|swapon|swapoff|mkfs|fsck|parted|fdisk|cfdisk|sgdisk|wipefs|modprobe|timedatectl|hwclock|useradd|usermod|userdel|groupadd|chpasswd|visudo|reboot|poweroff|shutdown|halt'
+
+OS_NAME=$(. /etc/os-release 2>/dev/null && echo "${PRETTY_NAME:-Linux}")
+# Anchor the model to the local machine: name the package manager explicitly
+PKGMGR=""
+for p in pacman apt dnf zypper apk; do
+    command -v "$p" >/dev/null 2>&1 && { PKGMGR="$p"; break; }
+done
+
+# install-command hint for the local package manager (arch/debian/fedora/...)
+pkg_install_cmd() {
+    case "$PKGMGR" in
+        pacman)      echo "sudo pacman -S $*" ;;
+        apt|apt-get) echo "sudo apt install $*" ;;
+        dnf)         echo "sudo dnf install $*" ;;
+        zypper)      echo "sudo zypper install $*" ;;
+        apk)         echo "sudo apk add $*" ;;
+        *)           echo "install $*" ;;
+    esac
+}
+CONTEXT="System: ${OS_NAME:-Linux}, user: $USER.${PKGMGR:+ The package manager on THIS machine is $PKGMGR.} \
+Commands will be executed with bash. When something can be solved by restarting a \
+single service, prefer 'systemctl restart <service>' over rebooting the whole \
+machine; suggest a full reboot ONLY when strictly necessary (e.g. after a kernel \
+update). Reply ONLY with a single-line bash command, no explanations, no markdown, \
+no backticks."
+# ---------------------------------------------------
+
+# ------------------- LANGUAGE ----------------------
+RED='\033[1;31m'; GREEN='\033[1;32m'; YELLOW='\033[1;33m'; BLUE='\033[1;34m'; NC='\033[0m'
+
+case "$UILANG" in
+    it) CONFIRM_WORD="SI";  PLAN_LANG="Italian"; YES_KEY="s" ;;
+    de) CONFIRM_WORD="JA";  PLAN_LANG="German";  YES_KEY="j" ;;
+    *)  CONFIRM_WORD="YES"; PLAN_LANG="English"; YES_KEY="y" ;;
+esac
+
+t() {
+    case "${UILANG}:${1}" in
+        it:thinking)        echo "Sto pensando..." ;;
+        de:thinking)        echo "Denke nach..." ;;
+        *:thinking)         echo "Thinking..." ;;
+        it:proposed)        echo "Comando proposto: " ;;
+        de:proposed)        echo "Vorgeschlagener Befehl: " ;;
+        *:proposed)         echo "Proposed command: " ;;
+        it:warn)            echo "⚠ ATTENZIONE: comando potenzialmente distruttivo." ;;
+        de:warn)            echo "⚠ ACHTUNG: potenziell zerstörerischer Befehl." ;;
+        *:warn)             echo "⚠ WARNING: potentially destructive command." ;;
+        it:ask_danger)      echo "$YES_KEY = esegui | Invio o n = annulla | r = riprova: " ;;
+        de:ask_danger)      echo "$YES_KEY = ausführen | Enter oder n = abbrechen | r = wiederholen: " ;;
+        *:ask_danger)       echo "$YES_KEY = run | Enter or n = cancel | r = retry: " ;;
+        it:ask_reboot)      echo "Questo RIAVVIA/SPEGNE la macchina. $YES_KEY = procedi | Invio o n = annulla | r = riprova: " ;;
+        de:ask_reboot)      echo "Dies STARTET/SCHALTET die Maschine. $YES_KEY = fortfahren | Enter oder n = abbrechen | r = wiederholen: " ;;
+        *:ask_reboot)       echo "This will REBOOT/SHUT DOWN the machine. $YES_KEY = proceed | Enter or n = cancel | r = retry: " ;;
+        it:ask_normal)      echo "Invio = esegui | n = annulla | r = riprova: " ;;
+        de:ask_normal)      echo "Enter = ausführen | n = abbrechen | r = wiederholen: " ;;
+        *:ask_normal)       echo "Enter = run | n = cancel | r = retry: " ;;
+        it:cancelled)       echo "Annullato." ;;
+        de:cancelled)       echo "Abgebrochen." ;;
+        *:cancelled)        echo "Cancelled." ;;
+        it:no_command)      echo "Nessun comando generato." ;;
+        de:no_command)      echo "Kein Befehl erzeugt." ;;
+        *:no_command)       echo "No command generated." ;;
+        it:model_error)     echo "Errore dal motore IA:" ;;
+        de:model_error)     echo "Fehler von der KI-Engine:" ;;
+        *:model_error)      echo "Error from the AI engine:" ;;
+        it:ollama_start)    echo "Ollama non è in esecuzione, lo avvio..." ;;
+        de:ollama_start)    echo "Ollama läuft nicht, starte es..." ;;
+        *:ollama_start)     echo "Ollama is not running, starting it..." ;;
+        it:ollama_fail)     echo "Ollama non parte. Controlla con: systemctl status ollama" ;;
+        de:ollama_fail)     echo "Ollama startet nicht. Prüfe mit: systemctl status ollama" ;;
+        *:ollama_fail)      echo "Ollama could not be started. Check with: systemctl status ollama" ;;
+        it:model_missing)   echo "Il modello ${MODEL#ollama:} non è ancora scaricato." ;;
+        de:model_missing)   echo "Das Modell ${MODEL#ollama:} ist noch nicht heruntergeladen." ;;
+        *:model_missing)    echo "The model ${MODEL#ollama:} is not downloaded yet." ;;
+        it:download_with)   echo "Scaricalo con:  ollama pull ${MODEL#ollama:}   (o esegui glia-hardware per un consiglio)" ;;
+        de:download_with)   echo "Herunterladen mit:  ollama pull ${MODEL#ollama:}   (oder glia-hardware für eine Empfehlung)" ;;
+        *:download_with)    echo "Download it with:  ollama pull ${MODEL#ollama:}   (or run glia-hardware for advice)" ;;
+        it:low_ram)         echo "Poca RAM libera per questo modello: potrebbe fallire o essere lentissimo." ;;
+        de:low_ram)         echo "Wenig freier RAM für dieses Modell: kann fehlschlagen oder sehr langsam sein." ;;
+        *:low_ram)          echo "Low free RAM for this model: it may fail or be very slow." ;;
+        it:no_log)          echo "Ancora nessun log ($LOGFILE)." ;;
+        de:no_log)          echo "Noch kein Protokoll ($LOGFILE)." ;;
+        *:no_log)           echo "No log yet ($LOGFILE)." ;;
+        it:mem_saved)       echo "Memorizzato." ;;
+        de:mem_saved)       echo "Gespeichert." ;;
+        *:mem_saved)        echo "Stored." ;;
+        it:mem_empty)       echo "Nessun fatto memorizzato ($MEMFILE)." ;;
+        de:mem_empty)       echo "Keine Fakten gespeichert ($MEMFILE)." ;;
+        *:mem_empty)        echo "No facts stored ($MEMFILE)." ;;
+        it:mem_usage)       echo "Uso: $PROG --remember \"<fatto>\"" ;;
+        de:mem_usage)       echo "Verwendung: $PROG --remember \"<Fakt>\"" ;;
+        *:mem_usage)        echo "Usage: $PROG --remember \"<fact>\"" ;;
+        it:forget_usage)    echo "Uso: $PROG --forget <numero>   (vedi: $PROG --memory)" ;;
+        de:forget_usage)    echo "Verwendung: $PROG --forget <Nummer>   (siehe: $PROG --memory)" ;;
+        *:forget_usage)     echo "Usage: $PROG --forget <number>   (see: $PROG --memory)" ;;
+        it:forgotten)       echo "Dimenticato:" ;;
+        de:forgotten)       echo "Vergessen:" ;;
+        *:forgotten)        echo "Forgotten:" ;;
+        it:renamed)         echo "Fatto. Il tuo assistente ora si chiama:" ;;
+        de:renamed)         echo "Fertig. Dein Assistent heißt jetzt:" ;;
+        *:renamed)          echo "Done. Your assistant is now called:" ;;
+        it:rename_invalid)  echo "Nome non valido (lettere, numeri, - o _; deve iniziare con una lettera)." ;;
+        de:rename_invalid)  echo "Ungültiger Name (Buchstaben, Zahlen, - oder _; muss mit Buchstabe beginnen)." ;;
+        *:rename_invalid)   echo "Invalid name (letters, digits, - or _; must start with a letter)." ;;
+        it:rename_exists)   echo "Esiste già un comando con questo nome." ;;
+        de:rename_exists)   echo "Ein Befehl mit diesem Namen existiert bereits." ;;
+        *:rename_exists)    echo "A command with that name already exists." ;;
+        it:rename_denied)   echo "Permesso negato. Prova con: sudo $PROG --rename" ;;
+        de:rename_denied)   echo "Zugriff verweigert. Versuche: sudo $PROG --rename" ;;
+        *:rename_denied)    echo "Permission denied. Try: sudo $PROG --rename" ;;
+        it:rename_isglia)   echo "'glia' e' il nome di sicurezza e non puo' essere usato come soprannome." ;;
+        de:rename_isglia)   echo "'glia' ist der Sicherheitsname und kann kein Spitzname sein." ;;
+        *:rename_isglia)    echo "'glia' is the safety name and can't be used as a nickname." ;;
+        it:rename_anchor)   echo "'glia' resta sempre disponibile" ;;
+        de:rename_anchor)   echo "'glia' bleibt immer verfuegbar" ;;
+        *:rename_anchor)    echo "'glia' stays available too" ;;
+        it:proj_ask)        echo "Esiste già la cartella progetti col vecchio nome. La rinomino al nuovo nome?" ;;
+        de:proj_ask)        echo "Es gibt bereits den Projektordner mit dem alten Namen. Auf den neuen Namen umbenennen?" ;;
+        *:proj_ask)         echo "A projects folder with the old name exists. Rename it to the new name?" ;;
+        it:proj_migrated)   echo "Cartella progetti rinominata:" ;;
+        de:proj_migrated)   echo "Projektordner umbenannt:" ;;
+        *:proj_migrated)    echo "Projects folder renamed:" ;;
+        it:proj_kept)       echo "Cartella progetti lasciata com'era:" ;;
+        de:proj_kept)       echo "Projektordner unverändert gelassen:" ;;
+        *:proj_kept)        echo "Projects folder left as it was:" ;;
+        it:proj_target_exists) echo "Esiste già una cartella col nuovo nome, non tocco niente:" ;;
+        de:proj_target_exists) echo "Ein Ordner mit dem neuen Namen existiert bereits, nichts geändert:" ;;
+        *:proj_target_exists)  echo "A folder with the new name already exists, leaving everything:" ;;
+        it:glia_inhibited)  echo "L'assistente ora si chiama '$ASSIST_NAME'. Il comando 'glia' serve solo da recupero: usa '$ASSIST_NAME ...' oppure 'glia -h'." ;;
+        de:glia_inhibited)  echo "Der Assistent heißt jetzt '$ASSIST_NAME'. Der Befehl 'glia' dient nur zur Wiederherstellung: nutze '$ASSIST_NAME ...' oder 'glia -h'." ;;
+        *:glia_inhibited)   echo "The assistant is now called '$ASSIST_NAME'. The 'glia' command is only for recovery: use '$ASSIST_NAME ...' or 'glia -h'." ;;
+        it:lang_set)        echo "Lingua impostata: " ;;
+        de:lang_set)        echo "Sprache eingestellt: " ;;
+        *:lang_set)         echo "Language set: " ;;
+        it:lang_usage)      echo "Uso: $PROG --lang it|en|de" ;;
+        de:lang_usage)      echo "Verwendung: $PROG --lang it|en|de" ;;
+        *:lang_usage)       echo "Usage: $PROG --lang it|en|de" ;;
+        # ---- project mode ----
+        it:planning)        echo "Preparo il piano del progetto..." ;;
+        de:planning)        echo "Erstelle den Projektplan..." ;;
+        *:planning)         echo "Preparing the project plan..." ;;
+        it:plan)            echo "PIANO DEL PROGETTO" ;;
+        de:plan)            echo "PROJEKTPLAN" ;;
+        *:plan)             echo "PROJECT PLAN" ;;
+        it:steps)           echo "Passi:" ;;
+        de:steps)           echo "Schritte:" ;;
+        *:steps)            echo "Steps:" ;;
+        it:files)           echo "File da creare:" ;;
+        de:files)           echo "Zu erstellende Dateien:" ;;
+        *:files)            echo "Files to create:" ;;
+        it:go)              echo "Invio = procedi | n = annulla: " ;;
+        de:go)              echo "Enter = weiter | n = abbrechen: " ;;
+        *:go)               echo "Enter = proceed | n = cancel: " ;;
+        it:writing)         echo "Genero il file" ;;
+        de:writing)         echo "Erzeuge Datei" ;;
+        *:writing)          echo "Generating file" ;;
+        it:preview)         echo "Anteprima (prime 20 righe):" ;;
+        de:preview)         echo "Vorschau (erste 20 Zeilen):" ;;
+        *:preview)          echo "Preview (first 20 lines):" ;;
+        it:save)            echo "Invio = salva | v = vedi tutto | r = rigenera | s = salta: " ;;
+        de:save)            echo "Enter = speichern | v = alles zeigen | r = neu | s = überspringen: " ;;
+        *:save)             echo "Enter = save | v = view all | r = regenerate | s = skip: " ;;
+        it:saved)           echo "Salvato:" ;;
+        de:saved)           echo "Gespeichert:" ;;
+        *:saved)            echo "Saved:" ;;
+        it:skipped)         echo "Saltato." ;;
+        de:skipped)         echo "Übersprungen." ;;
+        *:skipped)          echo "Skipped." ;;
+        it:proj_done)       echo "Progetto creato in:" ;;
+        de:proj_done)       echo "Projekt erstellt in:" ;;
+        *:proj_done)        echo "Project created in:" ;;
+        it:plan_fail)       echo "Il modello non ha prodotto un piano valido. Riprova (elenca esplicitamente i file che vuoi)." ;;
+        de:plan_fail)       echo "Das Modell hat keinen gültigen Plan erzeugt. Versuche es erneut (liste die Dateien explizit auf)." ;;
+        *:plan_fail)        echo "The model did not produce a valid plan. Try again (list the files you want explicitly)." ;;
+        it:badpath)         echo "Percorso file non sicuro, saltato:" ;;
+        de:badpath)         echo "Unsicherer Dateipfad, übersprungen:" ;;
+        *:badpath)          echo "Unsafe file path, skipped:" ;;
+        it:need_jq)         echo "La modalità progetto richiede jq:  $(pkg_install_cmd jq)" ;;
+        de:need_jq)         echo "Der Projektmodus benötigt jq:  $(pkg_install_cmd jq)" ;;
+        *:need_jq)          echo "Project mode requires jq:  $(pkg_install_cmd jq)" ;;
+        it:cache_hit)       echo "[dalla cache, r = richiedi all'IA]" ;;
+        de:cache_hit)       echo "[aus dem Cache, r = KI erneut fragen]" ;;
+        *:cache_hit)        echo "[from cache, r = ask the AI again]" ;;
+        it:cache_cleared)   echo "Cache dei comandi svuotata." ;;
+        de:cache_cleared)   echo "Befehls-Cache geleert." ;;
+        *:cache_cleared)    echo "Command cache cleared." ;;
+        it:explaining)      echo "Chiedo all'IA cosa farà questo comando..." ;;
+        de:explaining)      echo "Frage die KI, was dieser Befehl tun wird..." ;;
+        *:explaining)       echo "Asking the AI what this command will do..." ;;
+        it:cmd_failed)      echo "Il comando è fallito" ;;
+        de:cmd_failed)      echo "Der Befehl ist fehlgeschlagen" ;;
+        *:cmd_failed)       echo "The command failed" ;;
+        it:ask_fix)         echo "Invio = chiedo all'IA una correzione | altro = esco: " ;;
+        de:ask_fix)         echo "Enter = KI um Korrektur bitten | sonst = beenden: " ;;
+        *:ask_fix)          echo "Enter = ask the AI for a fix | anything else = quit: " ;;
+    esac
+}
+
+show_help() {
+    case "$UILANG" in
+    it) cat <<EOF
+$ASSIST_NAME v1.9 - assistente IA da terminale (modello: ${MODEL#ollama:})
+Assistente: $ASSIST_NAME  ·  comando di emergenza sempre attivo: glia
+
+Uso:
+  $ASSIST_NAME <richiesta>   propone un comando shell (Invio = esegui, n = annulla, r = riprova)
+  $ASSIST_NAME -d <domanda>  risponde a parole, senza eseguire nulla
+  $ASSIST_NAME -p <idea>     modalità progetto: pianifica e scrive i file (con conferma)
+  $ASSIST_NAME -l            mostra il log dei comandi eseguiti
+
+Gestione:
+  $ASSIST_NAME --remember <fatto>  ricorda un fatto (macchine, percorsi, abitudini)
+  $ASSIST_NAME --memory            elenca i fatti ricordati
+  $ASSIST_NAME --forget <n>        dimentica il fatto n
+  $ASSIST_NAME --cache-clear       svuota la cache delle risposte
+  $ASSIST_NAME --rename <nome>     dà un nuovo nome all'assistente (glia resta sempre)
+  $ASSIST_NAME --lang <it|en|de>   cambia la lingua dell'interfaccia
+  $ASSIST_NAME -h                  questo aiuto
+
+Esempi:
+  $ASSIST_NAME trova i file più grandi in /home
+  $ASSIST_NAME -d cosa fa il comando rsync
+  $ASSIST_NAME -p uno script di backup con rsync e un README che lo spiega
+
+Note:
+  · i comandi pericolosi chiedono conferma con "$YES_KEY" (Invio o n = annulla)
+  · in -p elenca esplicitamente i file che vuoi, così l'IA non li dimentica
+
+Cartelle:
+  progetti   $PROJBASE_SHOW
+  log        $LOGFILE
+
+Se l'IA non risponde:
+  systemctl start ollama          avvia il motore IA
+  ollama pull ${MODEL#ollama:}    scarica il modello
+  glia-hardware                   modello consigliato per questa macchina
+EOF
+        ;;
+    de) cat <<EOF
+$ASSIST_NAME v1.9 - KI-Terminal-Assistent (Modell: ${MODEL#ollama:})
+Assistent: $ASSIST_NAME  ·  Notfallbefehl immer aktiv: glia
+
+Verwendung:
+  $ASSIST_NAME <Anfrage>   schlägt einen Shell-Befehl vor (Enter = ausführen, n = abbrechen, r = wiederholen)
+  $ASSIST_NAME -d <Frage>  antwortet in Worten, führt nichts aus
+  $ASSIST_NAME -p <Idee>   Projektmodus: plant und schreibt die Dateien (mit Bestätigung)
+  $ASSIST_NAME -l          Protokoll der ausgeführten Befehle
+
+Verwaltung:
+  $ASSIST_NAME --remember <Fakt>  einen Fakt merken (Rechner, Pfade, Gewohnheiten)
+  $ASSIST_NAME --memory           gemerkte Fakten auflisten
+  $ASSIST_NAME --forget <n>       Fakt n vergessen
+  $ASSIST_NAME --cache-clear      Antwort-Cache leeren
+  $ASSIST_NAME --rename <Name>    dem Assistenten einen neuen Namen geben (glia bleibt immer)
+  $ASSIST_NAME --lang <it|en|de>  Sprache der Oberfläche ändern
+  $ASSIST_NAME -h                 diese Hilfe
+
+Beispiele:
+  $ASSIST_NAME finde die größten Dateien in /home
+  $ASSIST_NAME -d was macht der Befehl rsync
+  $ASSIST_NAME -p ein Backup-Skript mit rsync und eine README, die es erklärt
+
+Hinweise:
+  · gefährliche Befehle fragen mit "$YES_KEY" nach (Enter oder n = abbrechen)
+  · bei -p die gewünschten Dateien explizit auflisten, sonst vergisst sie die KI
+
+Ordner:
+  Projekte   $PROJBASE_SHOW
+  Protokoll  $LOGFILE
+
+Wenn die KI nicht antwortet:
+  systemctl start ollama          KI-Engine starten
+  ollama pull ${MODEL#ollama:}    Modell herunterladen
+  glia-hardware                   empfohlenes Modell für diesen Rechner
+EOF
+        ;;
+    *) cat <<EOF
+$ASSIST_NAME v1.9 - AI terminal assistant (model: ${MODEL#ollama:})
+Assistant: $ASSIST_NAME  ·  emergency command always on: glia
+
+Usage:
+  $ASSIST_NAME <request>      propose a shell command (Enter = run, n = cancel, r = retry)
+  $ASSIST_NAME -d <question>  answer in words, run nothing
+  $ASSIST_NAME -p <idea>      project mode: plan and write the files (with confirmation)
+  $ASSIST_NAME -l             show the log of executed commands
+
+Manage:
+  $ASSIST_NAME --remember <fact>  remember a fact (machines, paths, habits)
+  $ASSIST_NAME --memory           list remembered facts
+  $ASSIST_NAME --forget <n>       forget fact n
+  $ASSIST_NAME --cache-clear      empty the answer cache
+  $ASSIST_NAME --rename <name>    give the assistant a new name (glia always stays)
+  $ASSIST_NAME --lang <it|en|de>  change the interface language
+  $ASSIST_NAME -h                 this help
+
+Examples:
+  $ASSIST_NAME find the largest files in /home
+  $ASSIST_NAME -d what does the rsync command do
+  $ASSIST_NAME -p a backup script with rsync and a README explaining it
+
+Notes:
+  · dangerous commands ask for confirmation with "$YES_KEY" (Enter or n = cancel)
+  · with -p list the files you want explicitly, so the AI doesn't forget them
+
+Folders:
+  projects  $PROJBASE_SHOW
+  log       $LOGFILE
+
+If the AI does not answer:
+  systemctl start ollama          start the AI engine
+  ollama pull ${MODEL#ollama:}    download the model
+  glia-hardware                   see which model fits this machine
+EOF
+        ;;
+    esac
+}
+
+# ------------------- FUNCTIONS ----------------------
+write_log() {
+    mkdir -p "$LOGDIR"
+    printf '%s | %s | %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$1" "$2" >> "$LOGFILE"
+}
+
+ram_needed_mb() {
+    case "${MODEL}" in
+        *32b*|*30b*) echo 22000 ;;
+        *14b*)       echo 11000 ;;
+        *7b*|*8b*)   echo 6000 ;;
+        *)           echo 4000 ;;
+    esac
+}
+
+check_ai() {
+    if ! curl -fsS --max-time 2 "$OLLAMA_URL/api/tags" >/dev/null 2>&1; then
+        echo -e "${YELLOW}$(t ollama_start)${NC}" >&2
+        systemctl start ollama 2>/dev/null || sudo systemctl start ollama 2>/dev/null
+        local i
+        for i in 1 2 3 4 5; do
+            sleep 1
+            curl -fsS --max-time 2 "$OLLAMA_URL/api/tags" >/dev/null 2>&1 && break
+        done
+    fi
+    if ! curl -fsS --max-time 2 "$OLLAMA_URL/api/tags" >/dev/null 2>&1; then
+        echo -e "${RED}$(t ollama_fail)${NC}" >&2
+        exit 1
+    fi
+    if ! curl -fsS --max-time 5 "$OLLAMA_URL/api/tags" 2>/dev/null | grep -q "\"${MODEL#ollama:}\""; then
+        echo -e "${YELLOW}$(t model_missing)${NC}" >&2
+        echo -e "$(t download_with)" >&2
+        exit 1
+    fi
+    local avail need
+    avail=$(awk '/MemAvailable/ {print int($2/1024)}' /proc/meminfo)
+    need=$(ram_needed_mb)
+    if [ -n "$avail" ] && [ "$avail" -lt "$need" ]; then
+        echo -e "${YELLOW}$(t low_ram) (${avail} MB / ~${need} MB)${NC}" >&2
+    fi
+}
+
+rename_assistant() {
+    local newname="$1" self dir canon dest old="$ASSIST_NAME"
+    if [ -z "$newname" ]; then
+        echo "Usage: $PROG --rename <newname>" >&2; exit 1
+    fi
+    if ! grep -qE '^[a-zA-Z][a-zA-Z0-9_-]*$' <<< "$newname"; then
+        echo "$(t rename_invalid)" >&2; exit 1
+    fi
+    if [ "$newname" = "glia" ]; then
+        echo "$(t rename_isglia)" >&2; exit 1
+    fi
+    self="$(realpath "$0")"
+    dir="$(dirname "$self")"
+    canon="$dir/glia"
+    # ensure the anchor 'glia' exists: if this file is not it yet, become it once
+    if [ ! -e "$canon" ]; then
+        mv "$self" "$canon" 2>/dev/null || { echo -e "${RED}$(t rename_denied) glia${NC}" >&2; exit 1; }
+    fi
+    # the chosen name is only a symlink to glia; glia itself is never moved away
+    dest="$dir/$newname"
+    if [ -e "$dest" ] && [ ! -L "$dest" ]; then
+        echo "$(t rename_exists)" >&2; exit 1
+    fi
+    ln -sf glia "$dest" 2>/dev/null || { echo -e "${RED}$(t rename_denied) $newname${NC}" >&2; exit 1; }
+    # remember the preferred name (shown in -h); 'glia' keeps working as a safety net
+    mkdir -p "$(dirname "$NAMEFILE")"; printf '%s\n' "$newname" > "$NAMEFILE"
+    echo -e "${GREEN}$(t renamed) $newname${NC}"
+    echo "  $newname -h        ($(t rename_anchor))"
+    # offer to migrate the projects folder to the new name (no = leave the old one)
+    local oldproj="$DOCS/$old" newproj="$DOCS/$newname" a
+    if [ -d "$oldproj" ] && [ "$oldproj" != "$newproj" ]; then
+        if [ -e "$newproj" ]; then
+            echo -e "${YELLOW}$(t proj_target_exists) ${newproj/#$HOME/\~}${NC}"
+        else
+            echo -e "${BLUE}$(t proj_ask)${NC}"
+            echo "  ${oldproj/#$HOME/\~}  ->  ${newproj/#$HOME/\~}"
+            if (exec 3</dev/tty) 2>/dev/null; then read -r -p "  [$YES_KEY/N]: " a < /dev/tty || a=""; else a=""; fi
+            case "${a,,}" in
+                "$YES_KEY") mv "$oldproj" "$newproj" && echo -e "${GREEN}$(t proj_migrated) ${newproj/#$HOME/\~}${NC}" ;;
+                *)          echo "$(t proj_kept) ${oldproj/#$HOME/\~}" ;;
+            esac
+        fi
+    fi
+}
+
+set_language() {
+    case "$1" in
+        it|en|de)
+            mkdir -p "$HOME/.config/glia"
+            echo "$1" > "$HOME/.config/glia/lang"
+            UILANG="$1"
+            case "$UILANG" in it) CONFIRM_WORD="SI"; YES_KEY="s" ;; de) CONFIRM_WORD="JA"; YES_KEY="j" ;; *) CONFIRM_WORD="YES"; YES_KEY="y" ;; esac
+            echo -e "${GREEN}$(t lang_set)$1${NC}"
+            ;;
+        *)
+            echo "$(t lang_usage)" >&2
+            exit 1
+            ;;
+    esac
+}
+
+# ---- persistent memory (v1.6) ----
+memory_context() {
+    # prints the stored facts as one prompt line; nothing if memory is empty
+    [ -s "$MEMFILE" ] || return 0
+    printf 'Known facts about the user (background only, use them ONLY when the request refers to them; otherwise act on the local machine): %s. ' \
+        "$(paste -sd ';' "$MEMFILE" | sed 's/;/; /g')"
+}
+
+remember_fact() {
+    [ -z "$*" ] && { echo "$(t mem_usage)" >&2; exit 1; }
+    mkdir -p "$(dirname "$MEMFILE")"
+    printf '%s\n' "$*" >> "$MEMFILE"
+    if [ "$(wc -l < "$MEMFILE")" -gt "$MEMMAX" ]; then
+        tail -n "$MEMMAX" "$MEMFILE" > "$MEMFILE.tmp" && mv "$MEMFILE.tmp" "$MEMFILE"
+    fi
+    echo -e "${GREEN}$(t mem_saved)${NC}"
+}
+
+show_memory() {
+    if [ -s "$MEMFILE" ]; then
+        nl -w2 -s'. ' "$MEMFILE"
+    else
+        echo "$(t mem_empty)"
+    fi
+}
+
+forget_fact() {
+    local n="$1" total fact
+    if ! grep -qE '^[0-9]+$' <<< "$n" || [ ! -s "$MEMFILE" ]; then
+        echo "$(t forget_usage)" >&2; exit 1
+    fi
+    total=$(wc -l < "$MEMFILE")
+    if [ "$n" -lt 1 ] || [ "$n" -gt "$total" ]; then
+        echo "$(t forget_usage)" >&2; exit 1
+    fi
+    fact=$(sed -n "${n}p" "$MEMFILE")
+    sed -i "${n}d" "$MEMFILE"
+    echo -e "${GREEN}$(t forgotten)${NC} $fact"
+}
+
+# ---- conversation context (v1.6) ----
+session_context() {
+    # prints the recent exchanges of this terminal, if not expired
+    [ -f "$SESSFILE" ] || return 0
+    local age
+    age=$(( $(date +%s) - $(stat -c %Y "$SESSFILE" 2>/dev/null || echo 0) ))
+    if [ "$age" -gt "$SESSTTL" ]; then
+        rm -f "$SESSFILE"
+        return 0
+    fi
+    printf 'Recent conversation in this terminal (use it to resolve follow-ups like "it", "that file"): %s. ' \
+        "$(paste -sd ';' "$SESSFILE" | sed 's/;/; /g')"
+}
+
+session_add() {
+    # $1 = user request, $2 = executed command
+    printf 'User asked: %s | you ran: %s\n' "$1" "$2" >> "$SESSFILE" 2>/dev/null || return 0
+    tail -n "$SESSMAX" "$SESSFILE" > "$SESSFILE.tmp" && mv "$SESSFILE.tmp" "$SESSFILE"
+    chmod 600 "$SESSFILE" 2>/dev/null
+}
+
+# ---- command cache (v1.7) ----
+cache_key() {
+    # same request in the same directory = same key (case/space insensitive)
+    printf '%s|%s' "$PWD" "$(tr -s ' ' <<< "${*,,}")" | sha256sum | cut -d' ' -f1
+}
+
+cache_lookup() {
+    [ -f "$CACHEFILE" ] || return 0
+    grep "^$(cache_key "$@")|" "$CACHEFILE" 2>/dev/null | tail -n 1 | cut -d'|' -f2-
+}
+
+cache_store() {
+    # $1 = request, $2 = command that just ran with exit 0
+    local key; key=$(cache_key "$1")
+    mkdir -p "$(dirname "$CACHEFILE")"
+    { grep -v "^$key|" "$CACHEFILE" 2>/dev/null; printf '%s|%s\n' "$key" "$2"; } > "$CACHEFILE.tmp"
+    tail -n "$CACHEMAX" "$CACHEFILE.tmp" > "$CACHEFILE"
+    rm -f "$CACHEFILE.tmp"
+}
+
+# ---- danger self-explanation (v1.6) ----
+explain_danger() {
+    # one plain-language sentence about what a dangerous command will do
+    local cmd="$1" out
+    out=$(aichat --model "$MODEL" \
+        "Explain in ONE short sentence, in ${PLAN_LANG}, in plain language for a non-expert, what this bash command will do and what it could delete or change permanently. No markdown, no code, only the sentence. Command: $cmd" \
+        < /dev/null 2>/dev/null | grep -v '^\s*$' | head -n 2 | paste -sd ' ' -)
+    [ -n "$out" ] && printf '%s\n' "$out"
+    return 0
+}
+
+# ---- reboot / shutdown detection (v1.8) ----
+is_reboot_cmd() {
+    # true if the command reboots, powers off or halts the whole machine
+    grep -qiE '(^|[[:space:];&|])(reboot|poweroff|halt)([[:space:]]|$)|systemctl[[:space:]].*(reboot|poweroff|halt|suspend|hibernate)|shutdown([[:space:]]|$)|init[[:space:]]+[06]([[:space:]]|$)' <<< "$1"
+}
+
+# ---- deterministic privilege fix (v1.8) ----
+add_sudo_segment() {
+    # adds sudo to ONE simple command if it needs root and lacks it,
+    # preserving leading/trailing spaces of the segment
+    local seg="$1" lead trail core first
+    lead="${seg%%[![:space:]]*}"
+    trail="${seg##*[![:space:]]}"
+    core="${seg#"$lead"}"; core="${core%"$trail"}"
+    [ -z "$core" ] && { printf '%s' "$seg"; return; }
+    first="${core%%[[:space:]]*}"
+    # already elevated, or read-only queries that do NOT need root -> leave as is
+    case "$core" in
+        sudo\ *) printf '%s' "$seg"; return ;;
+        systemctl\ status*|systemctl\ list*|systemctl\ show*|systemctl\ is-*|systemctl\ cat*|systemctl\ --user*)
+            printf '%s' "$seg"; return ;;
+        pacman\ -Q*|pacman\ -Ss*|pacman\ -Si*|pacman\ -Sl*|pacman\ -Sg*|pacman\ -Sp*|pacman\ -F*)
+            printf '%s' "$seg"; return ;;
+        apt\ list*|apt\ search*|apt\ show*|apt\ policy*|apt-cache\ *)
+            printf '%s' "$seg"; return ;;
+        dnf\ list*|dnf\ search*|dnf\ info*|dnf\ repoquery*|dnf\ provides*)
+            printf '%s' "$seg"; return ;;
+        zypper\ search*|zypper\ se\ *|zypper\ info*|zypper\ if\ *)
+            printf '%s' "$seg"; return ;;
+    esac
+    if grep -qE "^($ROOT_BINS)$" <<< "$first"; then
+        printf '%s%s%s' "$lead" "sudo $core" "$trail"
+    else
+        printf '%s' "$seg"
+    fi
+}
+
+maybe_sudo() {
+    # apply add_sudo_segment to every part of a  &&  or  ;  chain.
+    # too risky to auto-elevate pipelines, subshells or redirections: leave them.
+    local cmd="$1" out="" rest="$1" sep seg
+    case "$cmd" in *'|'*|*'('*|*'`'*|*'$'*|*'>'*|*'<'*) printf '%s' "$cmd"; return ;; esac
+    while [[ "$rest" =~ (\&\&|\;) ]]; do
+        sep="${BASH_REMATCH[1]}"
+        seg="${rest%%"$sep"*}"
+        out+="$(add_sudo_segment "$seg")$sep"
+        rest="${rest#*"$sep"}"
+    done
+    out+="$(add_sudo_segment "$rest")"
+    printf '%s' "$out"
+}
+
+needs_extra_confirm() {
+    local cmd="$1" p
+    for p in "${EXTRA_CONFIRM_PATTERNS[@]}"; do
+        if grep -qiE "$p" <<< "$cmd"; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+AI_ERR=""
+generate_command() {
+    # "look before acting": the model sees where we are and what is here
+    local errfile out ctx
+    ctx="$CONTEXT $(memory_context)$(session_context)Current directory: $PWD. It contains: $(ls -1 2>/dev/null | head -n 15 | paste -sd ', ' -)."
+    errfile=$(mktemp)
+    out=$(aichat --model "$MODEL" "$ctx Request: $*" < /dev/null 2>"$errfile" \
+        | sed 's/^```[a-z]*//; s/```$//' \
+        | grep -v '^\s*$' \
+        | head -n 1)
+    AI_ERR=$(tail -n 3 "$errfile" 2>/dev/null)
+    rm -f "$errfile"
+    echo "$out"
+}
+
+CMD_ERR=""
+run_command() {
+    # runs the command; stderr is shown live AND captured for the fix loop
+    local cmd="$1" errf status
+    errf=$(mktemp)
+    bash -c "set -o pipefail; $cmd" 2> >(tee "$errf" >&2)
+    status=$?
+    CMD_ERR=$(tail -n 5 "$errf" 2>/dev/null)
+    rm -f "$errf"
+    write_log "EXECUTED (exit=$status)" "$cmd"
+    return $status
+}
+
+propose_and_run() {
+    local original="$*" request="$*" cmd answer status fixes=0 expl use_cache=1 from_cache
+    while true; do
+        from_cache=0
+        if [ "$use_cache" -eq 1 ] && [ "$fixes" -eq 0 ]; then
+            cmd=$(cache_lookup "$original")
+            [ -n "$cmd" ] && from_cache=1
+        fi
+        if [ "$from_cache" -eq 0 ]; then
+            echo -e "${YELLOW}$(t thinking)${NC}" >&2
+            cmd=$(generate_command "$request")
+        fi
+        if [ -z "$cmd" ]; then
+            echo -e "${RED}$(t no_command)${NC}" >&2
+            if [ -n "$AI_ERR" ]; then
+                echo -e "${RED}$(t model_error)${NC}" >&2
+                echo "$AI_ERR" >&2
+            fi
+            exit 1
+        fi
+        # deterministic privilege fix: add sudo where root is required (no AI call)
+        cmd=$(maybe_sudo "$cmd")
+        echo
+        if [ "$from_cache" -eq 1 ]; then
+            echo -e "$(t proposed) ${GREEN}$cmd${NC} ${BLUE}$(t cache_hit)${NC}"
+        else
+            echo -e "$(t proposed) ${GREEN}$cmd${NC}"
+        fi
+        if is_reboot_cmd "$cmd"; then
+            echo -e "${RED}$(t warn)${NC}"
+            read -r -p "$(t ask_reboot)" answer < /dev/tty \
+                || { write_log "CANCELLED (no tty)" "$cmd"; echo "$(t cancelled)"; return; }
+            case "${answer,,}" in
+                "$YES_KEY") : ;;
+                r) use_cache=0; continue ;;
+                *)   write_log "CANCELLED" "$cmd"; echo "$(t cancelled)"; return ;;
+            esac
+        elif needs_extra_confirm "$cmd"; then
+            echo -e "${RED}$(t warn)${NC}"
+            echo -e "${YELLOW}$(t explaining)${NC}" >&2
+            expl=$(explain_danger "$cmd")
+            [ -n "$expl" ] && echo -e "${BLUE}➜ $expl${NC}"
+            read -r -p "$(t ask_danger)" answer < /dev/tty \
+                || { write_log "CANCELLED (no tty)" "$cmd"; echo "$(t cancelled)"; return; }
+            case "${answer,,}" in
+                "$YES_KEY") : ;;
+                r) use_cache=0; continue ;;
+                *)   write_log "CANCELLED" "$cmd"; echo "$(t cancelled)"; return ;;
+            esac
+        else
+            read -r -p "$(t ask_normal)" answer < /dev/tty \
+                || { write_log "CANCELLED (no tty)" "$cmd"; echo "$(t cancelled)"; return; }
+            case "$answer" in
+                "")  : ;;
+                r|R) use_cache=0; continue ;;
+                *)   write_log "CANCELLED" "$cmd"; echo "$(t cancelled)"; return ;;
+            esac
+        fi
+
+        # ---- execute; on failure, learn from the error (max 2 fixes) ----
+        session_add "$original" "$cmd"
+        run_command "$cmd"
+        status=$?
+        [ "$status" -eq 0 ] && { cache_store "$original" "$cmd"; return 0; }
+        if [ "$fixes" -ge 2 ]; then
+            return "$status"
+        fi
+        echo -e "${RED}$(t cmd_failed) (exit $status).${NC}"
+        read -r -p "$(t ask_fix)" answer < /dev/tty || return "$status"
+        case "$answer" in
+            "")
+                fixes=$((fixes+1))
+                request="Original request: $original. The command '$cmd' failed with exit code $status and this error: ${CMD_ERR:-unknown}. Propose a corrected single-line bash command."
+                continue ;;
+            *)  return "$status" ;;
+        esac
+    done
+}
+
+# ---------------- PROJECT MODE ----------------------
+MSGS='[]'
+add_msg() {
+    MSGS=$(jq -c --arg r "$1" --arg c "$2" '. + [{"role":$r,"content":$c}]' <<< "$MSGS")
+}
+
+chat() {
+    # $1 = "json" to force JSON output. Prints the reply, appends it to MSGS.
+    local body reply
+    body="{\"model\":\"${MODEL#ollama:}\",\"messages\":$MSGS,\"stream\":false"
+    [ "$1" = "json" ] && body="$body,\"format\":\"json\""
+    body="$body}"
+    reply=$(curl -fsS --max-time 600 "$OLLAMA_URL/api/chat" -d "$body" 2>/dev/null | jq -r '.message.content // empty')
+    [ -z "$reply" ] && return 1
+    add_msg assistant "$reply"
+    printf '%s' "$reply"
+}
+
+safe_relpath() {
+    case "$1" in
+        ""|/*|*..*|*'~'*|*'$'*) return 1 ;;
+        *) return 0 ;;
+    esac
+}
+
+strip_fences() {
+    sed 's/^```[a-zA-Z]*$//; s/^```$//' | sed '/./,$!d'
+}
+
+strip_leaked_plan() {
+    # safety net: if the model echoed the JSON plan before the real
+    # content, drop everything up to (and including) the closing brace
+    local content
+    content=$(cat)
+    if head -n1 <<< "$content" | grep -qE '^[[:space:]]*\{' \
+       && head -n 40 <<< "$content" | grep -q '"project_name"'; then
+        sed '1,/^[[:space:]]*}[[:space:]]*$/d' <<< "$content" | sed '/./,$!d'
+    else
+        printf '%s\n' "$content"
+    fi
+}
+
+project_mode() {
+    local REQUEST="$*"
+    command -v jq >/dev/null || { echo "$(t need_jq)" >&2; exit 1; }
+    check_ai
+
+    echo -e "${YELLOW}$(t planning)${NC}"
+    add_msg system "You are the GLIA project agent. You plan small software or document projects and then write their files. Always reply in the exact format requested. Keep projects small and practical."
+    add_msg user "Project request: ${REQUEST}. Reply ONLY with JSON in this exact shape: {\"project_name\":\"short-kebab-case-name\",\"steps\":[\"step 1\",\"step 2\"],\"files\":[{\"path\":\"relative/path.ext\",\"description\":\"what this file contains\"}]}. Between 1 and 8 files. Write the steps and descriptions in ${PLAN_LANG}. No other text."
+
+    local PLAN NAME NFILES
+    PLAN=$(chat json) || { echo -e "${RED}$(t plan_fail)${NC}"; exit 1; }
+    NAME=$(jq -r '.project_name // empty' <<< "$PLAN" 2>/dev/null | tr -cd 'a-zA-Z0-9_-' | cut -c1-40)
+    NFILES=$(jq -r '.files | length' <<< "$PLAN" 2>/dev/null)
+    if [ -z "$NAME" ] || [ -z "$NFILES" ] || [ "$NFILES" = "0" ]; then
+        echo -e "${RED}$(t plan_fail)${NC}"; exit 1
+    fi
+
+    echo
+    echo -e "${BLUE}=== $(t plan): $NAME ===${NC}"
+    echo -e "${YELLOW}$(t steps)${NC}"
+    jq -r '.steps[]' <<< "$PLAN" | nl -w2 -s'. '
+    echo -e "${YELLOW}$(t files)${NC}"
+    jq -r '.files[] | "  \(.path)  -  \(.description)"' <<< "$PLAN"
+    echo
+    local A
+    read -r -p "$(t go)" A < /dev/tty || exit 1
+    case "$A" in n|N) echo "$(t cancelled)"; exit 0 ;; esac
+
+    local PROJDIR="$PROJBASE/$NAME"
+    mkdir -p "$PROJDIR"
+    write_log "PROJECT START" "$NAME | $REQUEST"
+
+    # Fresh conversation for the writing phase: the JSON plan stays out
+    # of the context, so the model does not echo it into the files.
+    local FILELIST
+    FILELIST=$(jq -r '.files[] | "- \(.path): \(.description)"' <<< "$PLAN")
+    MSGS='[]'
+    add_msg system "You are the GLIA project agent. You write complete, working files for a small project. Reply ONLY with raw file content: no explanations, no markdown fences, no JSON."
+    add_msg user "Project: $NAME. Request: $REQUEST. Files of the project: $FILELIST. I will ask you for one file at a time."
+    add_msg assistant "Understood. Ask me for each file and I will reply with its raw content only."
+
+    local i=0 FPATH FDESC CONTENT LINES
+    while [ "$i" -lt "$NFILES" ]; do
+        FPATH=$(jq -r ".files[$i].path" <<< "$PLAN")
+        FPATH="${FPATH#./}"
+        FDESC=$(jq -r ".files[$i].description" <<< "$PLAN")
+        i=$((i+1))
+        if ! safe_relpath "$FPATH"; then
+            echo -e "${RED}$(t badpath) $FPATH${NC}"
+            write_log "SKIPPED (unsafe path)" "$NAME/$FPATH"
+            continue
+        fi
+        while true; do
+            echo
+            echo -e "${YELLOW}$(t writing) [$i/$NFILES]: ${NC}${GREEN}$FPATH${NC}"
+            add_msg user "Now write the COMPLETE content of the file '$FPATH' ($FDESC) for the project above. Reply ONLY with the raw file content. No explanations, no markdown fences."
+            CONTENT=$(chat) || { echo -e "${RED}$(t plan_fail)${NC}"; break; }
+            CONTENT=$(strip_fences <<< "$CONTENT" | strip_leaked_plan)
+            echo -e "${BLUE}$(t preview)${NC}"
+            head -n 20 <<< "$CONTENT"
+            LINES=$(wc -l <<< "$CONTENT")
+            echo -e "${BLUE}--- ($LINES lines) ---${NC}"
+            read -r -p "$(t save)" A < /dev/tty || A="s"
+            if [ "$A" = "v" ] || [ "$A" = "V" ]; then
+                echo "$CONTENT" | less
+                read -r -p "$(t save)" A < /dev/tty || A="s"
+            fi
+            case "$A" in
+                "")
+                    mkdir -p "$PROJDIR/$(dirname "$FPATH")"
+                    printf '%s\n' "$CONTENT" > "$PROJDIR/$FPATH"
+                    echo -e "${GREEN}$(t saved) $PROJDIR/$FPATH${NC}"
+                    write_log "SAVED" "$NAME/$FPATH ($LINES lines)"
+                    break ;;
+                r|R) continue ;;
+                *)  echo "$(t skipped)"; write_log "SKIPPED" "$NAME/$FPATH"; break ;;
+            esac
+        done
+    done
+
+    echo
+    echo -e "${GREEN}$(t proj_done) $PROJDIR${NC}"
+    find "$PROJDIR" -type f | sed "s|$PROJDIR/|  |"
+    write_log "PROJECT END" "$NAME"
+}
+
+# --------------------- MAIN ------------------------
+# Once a custom name exists, 'glia' itself becomes only the recovery command:
+# it may run just -h / --help (or no args). Any real request points back to the
+# chosen name, so there are never two active names doing actual work.
+if [ "$PROG" = "glia" ] && [ "$ASSIST_NAME" != "glia" ]; then
+    case "${1:-}" in
+        -h|--help|"") : ;;
+        *) echo -e "${YELLOW}$(t glia_inhibited)${NC}" >&2; exit 1 ;;
+    esac
+fi
+
+case "$1" in
+    -h|--help|"")
+        show_help
+        ;;
+    -p|--project)
+        shift
+        [ -z "$*" ] && { show_help; exit 1; }
+        project_mode "$@"
+        ;;
+    --rename)
+        shift
+        rename_assistant "$1"
+        ;;
+    --lang)
+        shift
+        set_language "$1"
+        ;;
+    --remember)
+        shift
+        remember_fact "$@"
+        ;;
+    --memory)
+        show_memory
+        ;;
+    --forget)
+        shift
+        forget_fact "$1"
+        ;;
+    --cache-clear)
+        rm -f "$CACHEFILE"
+        echo -e "${GREEN}$(t cache_cleared)${NC}"
+        ;;
+    -d)
+        shift
+        check_ai
+        MEMCTX="$(memory_context)"
+        case "$UILANG" in
+            it) exec aichat --model "$MODEL" "${MEMCTX}Rispondi in italiano. $*" ;;
+            de) exec aichat --model "$MODEL" "${MEMCTX}Antworte auf Deutsch. $*" ;;
+            *)  exec aichat --model "$MODEL" "${MEMCTX}$*" ;;
+        esac
+        ;;
+    -l)
+        if [ -f "$LOGFILE" ]; then
+            cat "$LOGFILE"
+        else
+            echo "$(t no_log)"
+        fi
+        ;;
+    *)
+        check_ai
+        propose_and_run "$@"
+        ;;
+esac

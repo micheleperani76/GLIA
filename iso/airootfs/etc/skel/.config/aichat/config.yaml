@@ -1,7 +1,7 @@
 # ============================================================
 # aichat - configuration for local Ollama
 # Version: 1.1 - 2026-07-11
-# Project: GLIA — used by command: mypc
+# Project: GLIA — used by command: glia
 # Target: ~/.config/aichat/config.yaml
 # ============================================================
 model: ollama:qwen2.5-coder:7b

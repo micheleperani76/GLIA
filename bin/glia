@@ -1,10 +1,29 @@
 #!/usr/bin/env bash
 # ============================================================
-#  mypc - AI terminal assistant (Ollama + aichat)
-#  Version: 1.7 - 2026-07-12
+#  glia - AI terminal assistant (Ollama + aichat)
+#  Version: 1.9 - 2026-07-13
 #  Author: Michele (with Claude)
 #  Project: GLIA (GNU Linux IA)
 #
+#  What's new in v1.9 ("one name: glia, with a safety net"):
+#   - the default command is now 'glia', which is also a permanent
+#     anchor: it never gets renamed away and always works
+#   - --rename NAME no longer MOVES the file: it creates a symlink
+#     NAME -> glia and records the chosen name in ~/.config/glia/name,
+#     so the 'glia' command keeps working as a passepartout
+#   - 'glia -h' (or NAME -h) shows the current assistant name, to
+#     recover it if you forgot it or mistyped it
+#   - config, logs and the project folder are unified under 'glia'
+#  What's new in v1.8 ("friendlier & safer confirmations"):
+#   - dangerous commands now use the standard s/n prompt (localized:
+#     s/it, y/en, j/de) instead of typing the whole word; Enter = No,
+#     so the safe default is always "cancel"
+#   - deterministic auto-sudo: before proposing, commands starting with
+#     a root-only binary (pacman, systemctl, mount...) get sudo added
+#     automatically, on every segment of a && / ; chain - no more
+#     re-asking the AI just to add a missing sudo
+#   - reboot/shutdown get their own explicit confirmation, and the model
+#     is told to prefer 'systemctl restart <service>' over a full reboot
 #  What's new in v1.7 ("command cache"):
 #   - a request already answered is served instantly from cache; only
 #     commands that ran successfully (exit 0) are cached, the command
@@ -34,17 +53,17 @@
 #  v1.1: AI self-check, --rename, dynamic program name
 #
 #  Usage:
-#    mypc <request>        propose a command (Enter = run)
-#    mypc -p <idea>        project mode: plan steps, write files
-#    mypc -d <question>    plain-text answer, no command
-#    mypc -l               show the command log
-#    mypc --remember <fact> store a fact in persistent memory
-#    mypc --memory         list stored facts
-#    mypc --forget <n>     delete fact number n
-#    mypc --cache-clear    empty the command cache
-#    mypc --rename <name>  rename the assistant
-#    mypc --lang <code>    set interface language (en, it, de)
-#    mypc -h               this help
+#    glia <request>        propose a command (Enter = run)
+#    glia -p <idea>        project mode: plan steps, write files
+#    glia -d <question>    plain-text answer, no command
+#    glia -l               show the command log
+#    glia --remember <fact> store a fact in persistent memory
+#    glia --memory         list stored facts
+#    glia --forget <n>     delete fact number n
+#    glia --cache-clear    empty the command cache
+#    glia --rename <name>  rename the assistant (glia always stays too)
+#    glia --lang <code>    set interface language (en, it, de)
+#    glia -h               this help
 # ============================================================
 
 # ----------------- CONFIGURATION -----------------
@@ -70,9 +89,14 @@ else
 fi
 case "$UILANG" in it|de|en) : ;; *) UILANG="en" ;; esac
 
-PROG="$(basename "$0")"
-LOGDIR="$HOME/.local/share/$PROG"
-LOGFILE="$LOGDIR/$PROG.log"
+PROG="$(basename "$0")"                 # how the command was invoked (glia, arx, ...)
+# 'glia' is the permanent anchor: config, logs and the safety command live under it.
+# The preferred/friendly name (shown in -h) is stored here by --rename.
+NAMEFILE="$HOME/.config/glia/name"
+if [ -r "$NAMEFILE" ]; then ASSIST_NAME="$(head -n1 "$NAMEFILE")"; else ASSIST_NAME="glia"; fi
+[ -z "$ASSIST_NAME" ] && ASSIST_NAME="glia"
+LOGDIR="$HOME/.local/share/glia"
+LOGFILE="$LOGDIR/glia.log"
 OLLAMA_URL="http://localhost:11434"
 
 # Persistent memory (v1.6): one fact per line, newest kept
@@ -91,10 +115,11 @@ SESSMAX=6        # lines kept = 3 exchanges (2 lines each)
 SESSTTL=600      # seconds: session forgotten after 10 minutes
 
 # Project mode: files can be written ONLY under this folder.
-# The folder carries the assistant's current name (e.g. ~/Documents/arx)
+# The folder carries the assistant's configured name (e.g. ~/Documents/arx);
+# --rename offers to migrate it to the new name.
 DOCS="$(xdg-user-dir DOCUMENTS 2>/dev/null)"
 [ -z "$DOCS" ] || [ "$DOCS" = "$HOME" ] && DOCS="$HOME/Documents"
-PROJBASE="$DOCS/$PROG"
+PROJBASE="$DOCS/$ASSIST_NAME"
 PROJBASE_SHOW="${PROJBASE/#$HOME/\~}"   # short form for help/messages
 
 # Patterns that require extra confirmation (they don't block: they ask to type the confirm word)
@@ -115,24 +140,43 @@ EXTRA_CONFIRM_PATTERNS=(
     '\bsudo\b'
 )
 
+# Binaries that need root to CHANGE the system (v1.8 auto-sudo).
+# If a command starts with one of these and has no sudo, we add it ourselves.
+ROOT_BINS='pacman|paccache|pacman-key|pacman-mirrors|pacstrap|apt|apt-get|dnf|zypper|apk|systemctl|mount|umount|swapon|swapoff|mkfs|fsck|parted|fdisk|cfdisk|sgdisk|wipefs|modprobe|timedatectl|hwclock|useradd|usermod|userdel|groupadd|chpasswd|visudo|reboot|poweroff|shutdown|halt'
+
 OS_NAME=$(. /etc/os-release 2>/dev/null && echo "${PRETTY_NAME:-Linux}")
 # Anchor the model to the local machine: name the package manager explicitly
 PKGMGR=""
 for p in pacman apt dnf zypper apk; do
     command -v "$p" >/dev/null 2>&1 && { PKGMGR="$p"; break; }
 done
+
+# install-command hint for the local package manager (arch/debian/fedora/...)
+pkg_install_cmd() {
+    case "$PKGMGR" in
+        pacman)      echo "sudo pacman -S $*" ;;
+        apt|apt-get) echo "sudo apt install $*" ;;
+        dnf)         echo "sudo dnf install $*" ;;
+        zypper)      echo "sudo zypper install $*" ;;
+        apk)         echo "sudo apk add $*" ;;
+        *)           echo "install $*" ;;
+    esac
+}
 CONTEXT="System: ${OS_NAME:-Linux}, user: $USER.${PKGMGR:+ The package manager on THIS machine is $PKGMGR.} \
-Commands will be executed with bash. Reply ONLY with a single-line bash \
-command, no explanations, no markdown, no backticks."
+Commands will be executed with bash. When something can be solved by restarting a \
+single service, prefer 'systemctl restart <service>' over rebooting the whole \
+machine; suggest a full reboot ONLY when strictly necessary (e.g. after a kernel \
+update). Reply ONLY with a single-line bash command, no explanations, no markdown, \
+no backticks."
 # ---------------------------------------------------
 
 # ------------------- LANGUAGE ----------------------
 RED='\033[1;31m'; GREEN='\033[1;32m'; YELLOW='\033[1;33m'; BLUE='\033[1;34m'; NC='\033[0m'
 
 case "$UILANG" in
-    it) CONFIRM_WORD="SI";  PLAN_LANG="Italian" ;;
-    de) CONFIRM_WORD="JA";  PLAN_LANG="German" ;;
-    *)  CONFIRM_WORD="YES"; PLAN_LANG="English" ;;
+    it) CONFIRM_WORD="SI";  PLAN_LANG="Italian"; YES_KEY="s" ;;
+    de) CONFIRM_WORD="JA";  PLAN_LANG="German";  YES_KEY="j" ;;
+    *)  CONFIRM_WORD="YES"; PLAN_LANG="English"; YES_KEY="y" ;;
 esac
 
 t() {
@@ -146,9 +190,12 @@ t() {
         it:warn)            echo "⚠ ATTENZIONE: comando potenzialmente distruttivo." ;;
         de:warn)            echo "⚠ ACHTUNG: potenziell zerstörerischer Befehl." ;;
         *:warn)             echo "⚠ WARNING: potentially destructive command." ;;
-        it:ask_danger)      echo "Digita $CONFIRM_WORD (maiuscolo) per eseguire, r per riprovare, altro per annullare: " ;;
-        de:ask_danger)      echo "Tippe $CONFIRM_WORD (Großbuchstaben) zum Ausführen, r zum Wiederholen, sonst abbrechen: " ;;
-        *:ask_danger)       echo "Type $CONFIRM_WORD (uppercase) to run, r to retry, anything else to cancel: " ;;
+        it:ask_danger)      echo "$YES_KEY = esegui | Invio o n = annulla | r = riprova: " ;;
+        de:ask_danger)      echo "$YES_KEY = ausführen | Enter oder n = abbrechen | r = wiederholen: " ;;
+        *:ask_danger)       echo "$YES_KEY = run | Enter or n = cancel | r = retry: " ;;
+        it:ask_reboot)      echo "Questo RIAVVIA/SPEGNE la macchina. $YES_KEY = procedi | Invio o n = annulla | r = riprova: " ;;
+        de:ask_reboot)      echo "Dies STARTET/SCHALTET die Maschine. $YES_KEY = fortfahren | Enter oder n = abbrechen | r = wiederholen: " ;;
+        *:ask_reboot)       echo "This will REBOOT/SHUT DOWN the machine. $YES_KEY = proceed | Enter or n = cancel | r = retry: " ;;
         it:ask_normal)      echo "Invio = esegui | n = annulla | r = riprova: " ;;
         de:ask_normal)      echo "Enter = ausführen | n = abbrechen | r = wiederholen: " ;;
         *:ask_normal)       echo "Enter = run | n = cancel | r = retry: " ;;
@@ -206,6 +253,27 @@ t() {
         it:rename_denied)   echo "Permesso negato. Prova con: sudo $PROG --rename" ;;
         de:rename_denied)   echo "Zugriff verweigert. Versuche: sudo $PROG --rename" ;;
         *:rename_denied)    echo "Permission denied. Try: sudo $PROG --rename" ;;
+        it:rename_isglia)   echo "'glia' e' il nome di sicurezza e non puo' essere usato come soprannome." ;;
+        de:rename_isglia)   echo "'glia' ist der Sicherheitsname und kann kein Spitzname sein." ;;
+        *:rename_isglia)    echo "'glia' is the safety name and can't be used as a nickname." ;;
+        it:rename_anchor)   echo "'glia' resta sempre disponibile" ;;
+        de:rename_anchor)   echo "'glia' bleibt immer verfuegbar" ;;
+        *:rename_anchor)    echo "'glia' stays available too" ;;
+        it:proj_ask)        echo "Esiste già la cartella progetti col vecchio nome. La rinomino al nuovo nome?" ;;
+        de:proj_ask)        echo "Es gibt bereits den Projektordner mit dem alten Namen. Auf den neuen Namen umbenennen?" ;;
+        *:proj_ask)         echo "A projects folder with the old name exists. Rename it to the new name?" ;;
+        it:proj_migrated)   echo "Cartella progetti rinominata:" ;;
+        de:proj_migrated)   echo "Projektordner umbenannt:" ;;
+        *:proj_migrated)    echo "Projects folder renamed:" ;;
+        it:proj_kept)       echo "Cartella progetti lasciata com'era:" ;;
+        de:proj_kept)       echo "Projektordner unverändert gelassen:" ;;
+        *:proj_kept)        echo "Projects folder left as it was:" ;;
+        it:proj_target_exists) echo "Esiste già una cartella col nuovo nome, non tocco niente:" ;;
+        de:proj_target_exists) echo "Ein Ordner mit dem neuen Namen existiert bereits, nichts geändert:" ;;
+        *:proj_target_exists)  echo "A folder with the new name already exists, leaving everything:" ;;
+        it:glia_inhibited)  echo "L'assistente ora si chiama '$ASSIST_NAME'. Il comando 'glia' serve solo da recupero: usa '$ASSIST_NAME ...' oppure 'glia -h'." ;;
+        de:glia_inhibited)  echo "Der Assistent heißt jetzt '$ASSIST_NAME'. Der Befehl 'glia' dient nur zur Wiederherstellung: nutze '$ASSIST_NAME ...' oder 'glia -h'." ;;
+        *:glia_inhibited)   echo "The assistant is now called '$ASSIST_NAME'. The 'glia' command is only for recovery: use '$ASSIST_NAME ...' or 'glia -h'." ;;
         it:lang_set)        echo "Lingua impostata: " ;;
         de:lang_set)        echo "Sprache eingestellt: " ;;
         *:lang_set)         echo "Language set: " ;;
@@ -252,9 +320,9 @@ t() {
         it:badpath)         echo "Percorso file non sicuro, saltato:" ;;
         de:badpath)         echo "Unsicherer Dateipfad, übersprungen:" ;;
         *:badpath)          echo "Unsafe file path, skipped:" ;;
-        it:need_jq)         echo "La modalità progetto richiede jq:  sudo pacman -S jq" ;;
-        de:need_jq)         echo "Der Projektmodus benötigt jq:  sudo pacman -S jq" ;;
-        *:need_jq)          echo "Project mode requires jq:  sudo pacman -S jq" ;;
+        it:need_jq)         echo "La modalità progetto richiede jq:  $(pkg_install_cmd jq)" ;;
+        de:need_jq)         echo "Der Projektmodus benötigt jq:  $(pkg_install_cmd jq)" ;;
+        *:need_jq)          echo "Project mode requires jq:  $(pkg_install_cmd jq)" ;;
         it:cache_hit)       echo "[dalla cache, r = richiedi all'IA]" ;;
         de:cache_hit)       echo "[aus dem Cache, r = KI erneut fragen]" ;;
         *:cache_hit)        echo "[from cache, r = ask the AI again]" ;;
@@ -276,28 +344,36 @@ t() {
 show_help() {
     case "$UILANG" in
     it) cat <<EOF
-$PROG v1.7 - assistente IA da terminale (modello: ${MODEL#ollama:})
+$ASSIST_NAME v1.9 - assistente IA da terminale (modello: ${MODEL#ollama:})
+Assistente: $ASSIST_NAME  ·  comando di emergenza sempre attivo: glia
 
 Uso:
-  $PROG <richiesta>       propone un comando shell
-                          Invio = esegui | n = annulla | r = riprova
-  $PROG -p <idea>         modalità progetto: piano a step, poi crea
-                          i file (con conferma) in $PROJBASE_SHOW
-  $PROG -d <domanda>      risposta testuale, nessun comando
-  $PROG -l                mostra il log dei comandi
-  $PROG --remember <fatto> memorizza un fatto (macchine, percorsi, abitudini)
-  $PROG --memory          mostra i fatti memorizzati
-  $PROG --forget <n>      dimentica il fatto numero n
-  $PROG --cache-clear     svuota la cache dei comandi riusciti
-                          (richieste ripetute = risposta immediata, senza IA)
-  $PROG --rename <nome>   rinomina l'assistente (es: $PROG --rename jarvis)
-  $PROG --lang <codice>   lingua dell'interfaccia: en, it, de
-  $PROG -h                questo aiuto
+  $ASSIST_NAME <richiesta>   propone un comando shell (Invio = esegui, n = annulla, r = riprova)
+  $ASSIST_NAME -d <domanda>  risponde a parole, senza eseguire nulla
+  $ASSIST_NAME -p <idea>     modalità progetto: pianifica e scrive i file (con conferma)
+  $ASSIST_NAME -l            mostra il log dei comandi eseguiti
 
-I comandi potenzialmente distruttivi richiedono di digitare $CONFIRM_WORD.
-Consiglio per -p: elenca esplicitamente i file che vuoi nel progetto.
-Esempio: $PROG -p uno script bash di backup con rsync e un README che spiega come usarlo
-Log: $LOGFILE
+Gestione:
+  $ASSIST_NAME --remember <fatto>  ricorda un fatto (macchine, percorsi, abitudini)
+  $ASSIST_NAME --memory            elenca i fatti ricordati
+  $ASSIST_NAME --forget <n>        dimentica il fatto n
+  $ASSIST_NAME --cache-clear       svuota la cache delle risposte
+  $ASSIST_NAME --rename <nome>     dà un nuovo nome all'assistente (glia resta sempre)
+  $ASSIST_NAME --lang <it|en|de>   cambia la lingua dell'interfaccia
+  $ASSIST_NAME -h                  questo aiuto
+
+Esempi:
+  $ASSIST_NAME trova i file più grandi in /home
+  $ASSIST_NAME -d cosa fa il comando rsync
+  $ASSIST_NAME -p uno script di backup con rsync e un README che lo spiega
+
+Note:
+  · i comandi pericolosi chiedono conferma con "$YES_KEY" (Invio o n = annulla)
+  · in -p elenca esplicitamente i file che vuoi, così l'IA non li dimentica
+
+Cartelle:
+  progetti   $PROJBASE_SHOW
+  log        $LOGFILE
 
 Se l'IA non risponde:
   systemctl start ollama          avvia il motore IA
@@ -306,28 +382,36 @@ Se l'IA non risponde:
 EOF
         ;;
     de) cat <<EOF
-$PROG v1.7 - KI-Terminal-Assistent (Modell: ${MODEL#ollama:})
+$ASSIST_NAME v1.9 - KI-Terminal-Assistent (Modell: ${MODEL#ollama:})
+Assistent: $ASSIST_NAME  ·  Notfallbefehl immer aktiv: glia
 
 Verwendung:
-  $PROG <Anfrage>         schlägt einen Shell-Befehl vor
-                          Enter = ausführen | n = abbrechen | r = wiederholen
-  $PROG -p <Idee>         Projektmodus: Plan in Schritten, erstellt
-                          Dateien (mit Bestätigung) in $PROJBASE_SHOW
-  $PROG -d <Frage>        Textantwort, kein Befehl
-  $PROG -l                Befehlsprotokoll anzeigen
-  $PROG --remember <Fakt> Fakt dauerhaft merken (Rechner, Pfade, Gewohnheiten)
-  $PROG --memory          gespeicherte Fakten anzeigen
-  $PROG --forget <n>      Fakt Nummer n vergessen
-  $PROG --cache-clear     Befehls-Cache leeren
-                          (wiederholte Anfragen = sofortige Antwort, ohne KI)
-  $PROG --rename <Name>   Assistenten umbenennen (z.B.: $PROG --rename jarvis)
-  $PROG --lang <Code>     Sprache der Oberfläche: en, it, de
-  $PROG -h                diese Hilfe
+  $ASSIST_NAME <Anfrage>   schlägt einen Shell-Befehl vor (Enter = ausführen, n = abbrechen, r = wiederholen)
+  $ASSIST_NAME -d <Frage>  antwortet in Worten, führt nichts aus
+  $ASSIST_NAME -p <Idee>   Projektmodus: plant und schreibt die Dateien (mit Bestätigung)
+  $ASSIST_NAME -l          Protokoll der ausgeführten Befehle
 
-Potenziell zerstörerische Befehle erfordern die Eingabe von $CONFIRM_WORD.
-Tipp für -p: liste die gewünschten Dateien explizit auf.
-Beispiel: $PROG -p ein Bash-Backup-Skript mit rsync und eine README, die die Nutzung erklärt
-Protokoll: $LOGFILE
+Verwaltung:
+  $ASSIST_NAME --remember <Fakt>  einen Fakt merken (Rechner, Pfade, Gewohnheiten)
+  $ASSIST_NAME --memory           gemerkte Fakten auflisten
+  $ASSIST_NAME --forget <n>       Fakt n vergessen
+  $ASSIST_NAME --cache-clear      Antwort-Cache leeren
+  $ASSIST_NAME --rename <Name>    dem Assistenten einen neuen Namen geben (glia bleibt immer)
+  $ASSIST_NAME --lang <it|en|de>  Sprache der Oberfläche ändern
+  $ASSIST_NAME -h                 diese Hilfe
+
+Beispiele:
+  $ASSIST_NAME finde die größten Dateien in /home
+  $ASSIST_NAME -d was macht der Befehl rsync
+  $ASSIST_NAME -p ein Backup-Skript mit rsync und eine README, die es erklärt
+
+Hinweise:
+  · gefährliche Befehle fragen mit "$YES_KEY" nach (Enter oder n = abbrechen)
+  · bei -p die gewünschten Dateien explizit auflisten, sonst vergisst sie die KI
+
+Ordner:
+  Projekte   $PROJBASE_SHOW
+  Protokoll  $LOGFILE
 
 Wenn die KI nicht antwortet:
   systemctl start ollama          KI-Engine starten
@@ -336,28 +420,36 @@ Wenn die KI nicht antwortet:
 EOF
         ;;
     *) cat <<EOF
-$PROG v1.7 - AI terminal assistant (model: ${MODEL#ollama:})
+$ASSIST_NAME v1.9 - AI terminal assistant (model: ${MODEL#ollama:})
+Assistant: $ASSIST_NAME  ·  emergency command always on: glia
 
 Usage:
-  $PROG <request>        propose a shell command
-                         Enter = run | n = cancel | r = retry
-  $PROG -p <idea>        project mode: plan in steps, then create
-                         the files (confirmed by you) in $PROJBASE_SHOW
-  $PROG -d <question>    plain-text answer, no command
-  $PROG -l               show the command log
-  $PROG --remember <fact> store a fact (machines, paths, habits)
-  $PROG --memory         list stored facts
-  $PROG --forget <n>     forget fact number n
-  $PROG --cache-clear    empty the cache of successful commands
-                         (repeated requests = instant answer, no AI)
-  $PROG --rename <name>  rename the assistant (example: $PROG --rename jarvis)
-  $PROG --lang <code>    interface language: en, it, de
-  $PROG -h               this help
+  $ASSIST_NAME <request>      propose a shell command (Enter = run, n = cancel, r = retry)
+  $ASSIST_NAME -d <question>  answer in words, run nothing
+  $ASSIST_NAME -p <idea>      project mode: plan and write the files (with confirmation)
+  $ASSIST_NAME -l             show the log of executed commands
 
-Potentially destructive commands require typing $CONFIRM_WORD.
-Tip for -p: list the files you want explicitly.
-Example: $PROG -p a bash backup script with rsync and a README explaining how to use it
-Log: $LOGFILE
+Manage:
+  $ASSIST_NAME --remember <fact>  remember a fact (machines, paths, habits)
+  $ASSIST_NAME --memory           list remembered facts
+  $ASSIST_NAME --forget <n>       forget fact n
+  $ASSIST_NAME --cache-clear      empty the answer cache
+  $ASSIST_NAME --rename <name>    give the assistant a new name (glia always stays)
+  $ASSIST_NAME --lang <it|en|de>  change the interface language
+  $ASSIST_NAME -h                 this help
+
+Examples:
+  $ASSIST_NAME find the largest files in /home
+  $ASSIST_NAME -d what does the rsync command do
+  $ASSIST_NAME -p a backup script with rsync and a README explaining it
+
+Notes:
+  · dangerous commands ask for confirmation with "$YES_KEY" (Enter or n = cancel)
+  · with -p list the files you want explicitly, so the AI doesn't forget them
+
+Folders:
+  projects  $PROJBASE_SHOW
+  log       $LOGFILE
 
 If the AI does not answer:
   systemctl start ollama          start the AI engine
@@ -411,24 +503,47 @@ check_ai() {
 }
 
 rename_assistant() {
-    local newname="$1" self dest
+    local newname="$1" self dir canon dest old="$ASSIST_NAME"
     if [ -z "$newname" ]; then
         echo "Usage: $PROG --rename <newname>" >&2; exit 1
     fi
     if ! grep -qE '^[a-zA-Z][a-zA-Z0-9_-]*$' <<< "$newname"; then
         echo "$(t rename_invalid)" >&2; exit 1
     fi
+    if [ "$newname" = "glia" ]; then
+        echo "$(t rename_isglia)" >&2; exit 1
+    fi
     self="$(realpath "$0")"
-    dest="$(dirname "$self")/$newname"
-    if [ -e "$dest" ]; then
+    dir="$(dirname "$self")"
+    canon="$dir/glia"
+    # ensure the anchor 'glia' exists: if this file is not it yet, become it once
+    if [ ! -e "$canon" ]; then
+        mv "$self" "$canon" 2>/dev/null || { echo -e "${RED}$(t rename_denied) glia${NC}" >&2; exit 1; }
+    fi
+    # the chosen name is only a symlink to glia; glia itself is never moved away
+    dest="$dir/$newname"
+    if [ -e "$dest" ] && [ ! -L "$dest" ]; then
         echo "$(t rename_exists)" >&2; exit 1
     fi
-    if mv "$self" "$dest" 2>/dev/null; then
-        echo -e "${GREEN}$(t renamed) $newname${NC}"
-        echo "  $newname -h"
-    else
-        echo -e "${RED}$(t rename_denied) $newname${NC}" >&2
-        exit 1
+    ln -sf glia "$dest" 2>/dev/null || { echo -e "${RED}$(t rename_denied) $newname${NC}" >&2; exit 1; }
+    # remember the preferred name (shown in -h); 'glia' keeps working as a safety net
+    mkdir -p "$(dirname "$NAMEFILE")"; printf '%s\n' "$newname" > "$NAMEFILE"
+    echo -e "${GREEN}$(t renamed) $newname${NC}"
+    echo "  $newname -h        ($(t rename_anchor))"
+    # offer to migrate the projects folder to the new name (no = leave the old one)
+    local oldproj="$DOCS/$old" newproj="$DOCS/$newname" a
+    if [ -d "$oldproj" ] && [ "$oldproj" != "$newproj" ]; then
+        if [ -e "$newproj" ]; then
+            echo -e "${YELLOW}$(t proj_target_exists) ${newproj/#$HOME/\~}${NC}"
+        else
+            echo -e "${BLUE}$(t proj_ask)${NC}"
+            echo "  ${oldproj/#$HOME/\~}  ->  ${newproj/#$HOME/\~}"
+            if (exec 3</dev/tty) 2>/dev/null; then read -r -p "  [$YES_KEY/N]: " a < /dev/tty || a=""; else a=""; fi
+            case "${a,,}" in
+                "$YES_KEY") mv "$oldproj" "$newproj" && echo -e "${GREEN}$(t proj_migrated) ${newproj/#$HOME/\~}${NC}" ;;
+                *)          echo "$(t proj_kept) ${oldproj/#$HOME/\~}" ;;
+            esac
+        fi
     fi
 }
 
@@ -438,7 +553,7 @@ set_language() {
             mkdir -p "$HOME/.config/glia"
             echo "$1" > "$HOME/.config/glia/lang"
             UILANG="$1"
-            case "$UILANG" in it) CONFIRM_WORD="SI" ;; de) CONFIRM_WORD="JA" ;; *) CONFIRM_WORD="YES" ;; esac
+            case "$UILANG" in it) CONFIRM_WORD="SI"; YES_KEY="s" ;; de) CONFIRM_WORD="JA"; YES_KEY="j" ;; *) CONFIRM_WORD="YES"; YES_KEY="y" ;; esac
             echo -e "${GREEN}$(t lang_set)$1${NC}"
             ;;
         *)
@@ -540,6 +655,58 @@ explain_danger() {
     return 0
 }
 
+# ---- reboot / shutdown detection (v1.8) ----
+is_reboot_cmd() {
+    # true if the command reboots, powers off or halts the whole machine
+    grep -qiE '(^|[[:space:];&|])(reboot|poweroff|halt)([[:space:]]|$)|systemctl[[:space:]].*(reboot|poweroff|halt|suspend|hibernate)|shutdown([[:space:]]|$)|init[[:space:]]+[06]([[:space:]]|$)' <<< "$1"
+}
+
+# ---- deterministic privilege fix (v1.8) ----
+add_sudo_segment() {
+    # adds sudo to ONE simple command if it needs root and lacks it,
+    # preserving leading/trailing spaces of the segment
+    local seg="$1" lead trail core first
+    lead="${seg%%[![:space:]]*}"
+    trail="${seg##*[![:space:]]}"
+    core="${seg#"$lead"}"; core="${core%"$trail"}"
+    [ -z "$core" ] && { printf '%s' "$seg"; return; }
+    first="${core%%[[:space:]]*}"
+    # already elevated, or read-only queries that do NOT need root -> leave as is
+    case "$core" in
+        sudo\ *) printf '%s' "$seg"; return ;;
+        systemctl\ status*|systemctl\ list*|systemctl\ show*|systemctl\ is-*|systemctl\ cat*|systemctl\ --user*)
+            printf '%s' "$seg"; return ;;
+        pacman\ -Q*|pacman\ -Ss*|pacman\ -Si*|pacman\ -Sl*|pacman\ -Sg*|pacman\ -Sp*|pacman\ -F*)
+            printf '%s' "$seg"; return ;;
+        apt\ list*|apt\ search*|apt\ show*|apt\ policy*|apt-cache\ *)
+            printf '%s' "$seg"; return ;;
+        dnf\ list*|dnf\ search*|dnf\ info*|dnf\ repoquery*|dnf\ provides*)
+            printf '%s' "$seg"; return ;;
+        zypper\ search*|zypper\ se\ *|zypper\ info*|zypper\ if\ *)
+            printf '%s' "$seg"; return ;;
+    esac
+    if grep -qE "^($ROOT_BINS)$" <<< "$first"; then
+        printf '%s%s%s' "$lead" "sudo $core" "$trail"
+    else
+        printf '%s' "$seg"
+    fi
+}
+
+maybe_sudo() {
+    # apply add_sudo_segment to every part of a  &&  or  ;  chain.
+    # too risky to auto-elevate pipelines, subshells or redirections: leave them.
+    local cmd="$1" out="" rest="$1" sep seg
+    case "$cmd" in *'|'*|*'('*|*'`'*|*'$'*|*'>'*|*'<'*) printf '%s' "$cmd"; return ;; esac
+    while [[ "$rest" =~ (\&\&|\;) ]]; do
+        sep="${BASH_REMATCH[1]}"
+        seg="${rest%%"$sep"*}"
+        out+="$(add_sudo_segment "$seg")$sep"
+        rest="${rest#*"$sep"}"
+    done
+    out+="$(add_sudo_segment "$rest")"
+    printf '%s' "$out"
+}
+
 needs_extra_confirm() {
     local cmd="$1" p
     for p in "${EXTRA_CONFIRM_PATTERNS[@]}"; do
@@ -598,22 +765,33 @@ propose_and_run() {
             fi
             exit 1
         fi
+        # deterministic privilege fix: add sudo where root is required (no AI call)
+        cmd=$(maybe_sudo "$cmd")
         echo
         if [ "$from_cache" -eq 1 ]; then
             echo -e "$(t proposed) ${GREEN}$cmd${NC} ${BLUE}$(t cache_hit)${NC}"
         else
             echo -e "$(t proposed) ${GREEN}$cmd${NC}"
         fi
-        if needs_extra_confirm "$cmd"; then
+        if is_reboot_cmd "$cmd"; then
+            echo -e "${RED}$(t warn)${NC}"
+            read -r -p "$(t ask_reboot)" answer < /dev/tty \
+                || { write_log "CANCELLED (no tty)" "$cmd"; echo "$(t cancelled)"; return; }
+            case "${answer,,}" in
+                "$YES_KEY") : ;;
+                r) use_cache=0; continue ;;
+                *)   write_log "CANCELLED" "$cmd"; echo "$(t cancelled)"; return ;;
+            esac
+        elif needs_extra_confirm "$cmd"; then
             echo -e "${RED}$(t warn)${NC}"
             echo -e "${YELLOW}$(t explaining)${NC}" >&2
             expl=$(explain_danger "$cmd")
             [ -n "$expl" ] && echo -e "${BLUE}➜ $expl${NC}"
             read -r -p "$(t ask_danger)" answer < /dev/tty \
                 || { write_log "CANCELLED (no tty)" "$cmd"; echo "$(t cancelled)"; return; }
-            case "$answer" in
-                "$CONFIRM_WORD") : ;;
-                r|R) use_cache=0; continue ;;
+            case "${answer,,}" in
+                "$YES_KEY") : ;;
+                r) use_cache=0; continue ;;
                 *)   write_log "CANCELLED" "$cmd"; echo "$(t cancelled)"; return ;;
             esac
         else
@@ -775,6 +953,16 @@ project_mode() {
 }
 
 # --------------------- MAIN ------------------------
+# Once a custom name exists, 'glia' itself becomes only the recovery command:
+# it may run just -h / --help (or no args). Any real request points back to the
+# chosen name, so there are never two active names doing actual work.
+if [ "$PROG" = "glia" ] && [ "$ASSIST_NAME" != "glia" ]; then
+    case "${1:-}" in
+        -h|--help|"") : ;;
+        *) echo -e "${YELLOW}$(t glia_inhibited)${NC}" >&2; exit 1 ;;
+    esac
+fi
+
 case "$1" in
     -h|--help|"")
         show_help
