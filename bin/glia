@@ -1,9 +1,24 @@
 #!/usr/bin/env bash
 # ============================================================
 #  glia - AI terminal assistant (Ollama + aichat)
-#  Version: 1.9 - 2026-07-13
+#  Version: 2.0 - 2026-07-13
 #  Author: Michele (with Claude)
 #  Project: GLIA (GNU Linux IA)
+#
+#  Design pillar: commands follow standard terminal conventions, so
+#  what you learn here you can reuse in other programs (and vice versa).
+#
+#  What's new in v2.0 ("aliases + standard flags"):
+#   - --alias / -a: save a named shortcut for a command you use often,
+#     so you don't ask the AI every time. Two kinds:
+#       * direct : runs the saved command instantly (e.g. Bangkok time)
+#       * ask    : shows the saved command and asks "use the alias, or
+#                  ask the AI?" - for requests that were a bit fuzzy
+#     Manage with:  -a add | -a list | -a rm <name> | -a edit
+#   - standard conformance: every short flag now has a long twin
+#     (-d/--ask, -l/--log), there is a --version / -V like any normal
+#     terminal program, and --cache-clear is now --clear-cache
+#     (the old spelling still works)
 #
 #  What's new in v1.9 ("one name: glia, with a safety net"):
 #   - the default command is now 'glia', which is also a permanent
@@ -55,14 +70,17 @@
 #  Usage:
 #    glia <request>        propose a command (Enter = run)
 #    glia -p <idea>        project mode: plan steps, write files
-#    glia -d <question>    plain-text answer, no command
-#    glia -l               show the command log
+#    glia -d|--ask <q>     plain-text answer, no command
+#    glia -l|--log         show the command log
+#    glia -a <name>        run a saved alias (shortcut)
+#    glia -a add [name cmd] create an alias  (list | rm <name> | edit)
 #    glia --remember <fact> store a fact in persistent memory
 #    glia --memory         list stored facts
 #    glia --forget <n>     delete fact number n
-#    glia --cache-clear    empty the command cache
+#    glia --clear-cache    empty the command cache
 #    glia --rename <name>  rename the assistant (glia always stays too)
 #    glia --lang <code>    set interface language (en, it, de)
+#    glia -V|--version     show the version
 #    glia -h               this help
 # ============================================================
 
@@ -106,6 +124,10 @@ MEMMAX=20
 # Command cache (v1.7): request+directory -> last command that worked
 CACHEFILE="$LOGDIR/cache"
 CACHEMAX=200
+
+# Aliases (v2.0): user shortcuts, one per line
+#   name<TAB>type<TAB>request<TAB>command   (type = run | ask)
+ALIASFILE="$HOME/.config/glia/aliases"
 
 # Conversation context (v1.6): per-terminal session file
 # $PPID = the shell of this terminal window, so each window has its own
@@ -338,28 +360,68 @@ t() {
         it:ask_fix)         echo "Invio = chiedo all'IA una correzione | altro = esco: " ;;
         de:ask_fix)         echo "Enter = KI um Korrektur bitten | sonst = beenden: " ;;
         *:ask_fix)          echo "Enter = ask the AI for a fix | anything else = quit: " ;;
+        # ---- aliases (v2.0) ----
+        it:al_empty)        echo "Nessun alias salvato ($ALIASFILE)." ;;
+        de:al_empty)        echo "Keine Aliase gespeichert ($ALIASFILE)." ;;
+        *:al_empty)         echo "No aliases saved ($ALIASFILE)." ;;
+        it:al_saved)        echo "Alias salvato:" ;;
+        de:al_saved)        echo "Alias gespeichert:" ;;
+        *:al_saved)         echo "Alias saved:" ;;
+        it:al_updated)      echo "Alias aggiornato:" ;;
+        de:al_updated)      echo "Alias aktualisiert:" ;;
+        *:al_updated)       echo "Alias updated:" ;;
+        it:al_removed)      echo "Alias rimosso:" ;;
+        de:al_removed)      echo "Alias entfernt:" ;;
+        *:al_removed)       echo "Alias removed:" ;;
+        it:al_notfound)     echo "Alias non trovato:" ;;
+        de:al_notfound)     echo "Alias nicht gefunden:" ;;
+        *:al_notfound)      echo "Alias not found:" ;;
+        it:al_name_q)       echo "Parola per l'alias: " ;;
+        de:al_name_q)       echo "Wort fuer den Alias: " ;;
+        *:al_name_q)        echo "Word for the alias: " ;;
+        it:al_cmd_q)        echo "Comando da salvare: " ;;
+        de:al_cmd_q)        echo "Zu speichernder Befehl: " ;;
+        *:al_cmd_q)         echo "Command to save: " ;;
+        it:al_ai_q)         echo "Chiedere conferma all'IA a ogni uso? [$YES_KEY/N]: " ;;
+        de:al_ai_q)         echo "Bei jeder Nutzung die KI fragen? [$YES_KEY/N]: " ;;
+        *:al_ai_q)          echo "Ask the AI on every use? [$YES_KEY/N]: " ;;
+        it:al_req_q)        echo "Richiesta da girare all'IA (Invio = usa il comando): " ;;
+        de:al_req_q)        echo "Anfrage fuer die KI (Enter = Befehl verwenden): " ;;
+        *:al_req_q)         echo "Request to send to the AI (Enter = use the command): " ;;
+        it:al_invalid)      echo "Nome non valido o riservato (lettere/numeri/-/_, non: add list rm edit)." ;;
+        de:al_invalid)      echo "Ungueltiger oder reservierter Name (Buchstaben/Zahlen/-/_, nicht: add list rm edit)." ;;
+        *:al_invalid)       echo "Invalid or reserved name (letters/digits/-/_, not: add list rm edit)." ;;
+        it:al_run_ask)      echo "Invio = usa l'alias | a = chiedo all'IA: " ;;
+        de:al_run_ask)      echo "Enter = Alias verwenden | a = KI fragen: " ;;
+        *:al_run_ask)       echo "Enter = use the alias | a = ask the AI: " ;;
+        it:al_usage)        echo "Uso: $PROG -a add|list|rm|edit   ·   $PROG -a <nome>" ;;
+        de:al_usage)        echo "Verwendung: $PROG -a add|list|rm|edit   ·   $PROG -a <Name>" ;;
+        *:al_usage)         echo "Usage: $PROG -a add|list|rm|edit   ·   $PROG -a <name>" ;;
     esac
 }
 
 show_help() {
     case "$UILANG" in
     it) cat <<EOF
-$ASSIST_NAME v1.9 - assistente IA da terminale (modello: ${MODEL#ollama:})
+$ASSIST_NAME v2.0 - assistente IA da terminale (modello: ${MODEL#ollama:})
 Assistente: $ASSIST_NAME  ·  comando di emergenza sempre attivo: glia
 
 Uso:
-  $ASSIST_NAME <richiesta>   propone un comando shell (Invio = esegui, n = annulla, r = riprova)
-  $ASSIST_NAME -d <domanda>  risponde a parole, senza eseguire nulla
-  $ASSIST_NAME -p <idea>     modalità progetto: pianifica e scrive i file (con conferma)
-  $ASSIST_NAME -l            mostra il log dei comandi eseguiti
+  $ASSIST_NAME <richiesta>     propone un comando shell (Invio = esegui, n = annulla, r = riprova)
+  $ASSIST_NAME -d|--ask <dom>  risponde a parole, senza eseguire nulla
+  $ASSIST_NAME -p <idea>       modalità progetto: pianifica e scrive i file (con conferma)
+  $ASSIST_NAME -l|--log        mostra il log dei comandi eseguiti
+  $ASSIST_NAME -a <nome>       esegue un alias salvato (scorciatoia)
 
 Gestione:
+  $ASSIST_NAME -a add [nome cmd]   crea un alias (list | rm <nome> | edit)
   $ASSIST_NAME --remember <fatto>  ricorda un fatto (macchine, percorsi, abitudini)
   $ASSIST_NAME --memory            elenca i fatti ricordati
   $ASSIST_NAME --forget <n>        dimentica il fatto n
-  $ASSIST_NAME --cache-clear       svuota la cache delle risposte
+  $ASSIST_NAME --clear-cache       svuota la cache delle risposte
   $ASSIST_NAME --rename <nome>     dà un nuovo nome all'assistente (glia resta sempre)
   $ASSIST_NAME --lang <it|en|de>   cambia la lingua dell'interfaccia
+  $ASSIST_NAME -V, --version       mostra la versione
   $ASSIST_NAME -h                  questo aiuto
 
 Esempi:
@@ -382,22 +444,25 @@ Se l'IA non risponde:
 EOF
         ;;
     de) cat <<EOF
-$ASSIST_NAME v1.9 - KI-Terminal-Assistent (Modell: ${MODEL#ollama:})
+$ASSIST_NAME v2.0 - KI-Terminal-Assistent (Modell: ${MODEL#ollama:})
 Assistent: $ASSIST_NAME  ·  Notfallbefehl immer aktiv: glia
 
 Verwendung:
-  $ASSIST_NAME <Anfrage>   schlägt einen Shell-Befehl vor (Enter = ausführen, n = abbrechen, r = wiederholen)
-  $ASSIST_NAME -d <Frage>  antwortet in Worten, führt nichts aus
-  $ASSIST_NAME -p <Idee>   Projektmodus: plant und schreibt die Dateien (mit Bestätigung)
-  $ASSIST_NAME -l          Protokoll der ausgeführten Befehle
+  $ASSIST_NAME <Anfrage>      schlägt einen Shell-Befehl vor (Enter = ausführen, n = abbrechen, r = wiederholen)
+  $ASSIST_NAME -d|--ask <Fr>  antwortet in Worten, führt nichts aus
+  $ASSIST_NAME -p <Idee>      Projektmodus: plant und schreibt die Dateien (mit Bestätigung)
+  $ASSIST_NAME -l|--log       Protokoll der ausgeführten Befehle
+  $ASSIST_NAME -a <Name>      führt einen gespeicherten Alias aus (Shortcut)
 
 Verwaltung:
+  $ASSIST_NAME -a add [Name Befehl]  Alias anlegen (list | rm <Name> | edit)
   $ASSIST_NAME --remember <Fakt>  einen Fakt merken (Rechner, Pfade, Gewohnheiten)
   $ASSIST_NAME --memory           gemerkte Fakten auflisten
   $ASSIST_NAME --forget <n>       Fakt n vergessen
-  $ASSIST_NAME --cache-clear      Antwort-Cache leeren
+  $ASSIST_NAME --clear-cache      Antwort-Cache leeren
   $ASSIST_NAME --rename <Name>    dem Assistenten einen neuen Namen geben (glia bleibt immer)
   $ASSIST_NAME --lang <it|en|de>  Sprache der Oberfläche ändern
+  $ASSIST_NAME -V, --version      Version anzeigen
   $ASSIST_NAME -h                 diese Hilfe
 
 Beispiele:
@@ -420,22 +485,25 @@ Wenn die KI nicht antwortet:
 EOF
         ;;
     *) cat <<EOF
-$ASSIST_NAME v1.9 - AI terminal assistant (model: ${MODEL#ollama:})
+$ASSIST_NAME v2.0 - AI terminal assistant (model: ${MODEL#ollama:})
 Assistant: $ASSIST_NAME  ·  emergency command always on: glia
 
 Usage:
-  $ASSIST_NAME <request>      propose a shell command (Enter = run, n = cancel, r = retry)
-  $ASSIST_NAME -d <question>  answer in words, run nothing
-  $ASSIST_NAME -p <idea>      project mode: plan and write the files (with confirmation)
-  $ASSIST_NAME -l             show the log of executed commands
+  $ASSIST_NAME <request>       propose a shell command (Enter = run, n = cancel, r = retry)
+  $ASSIST_NAME -d|--ask <q>    answer in words, run nothing
+  $ASSIST_NAME -p <idea>       project mode: plan and write the files (with confirmation)
+  $ASSIST_NAME -l|--log        show the log of executed commands
+  $ASSIST_NAME -a <name>       run a saved alias (shortcut)
 
 Manage:
+  $ASSIST_NAME -a add [name cmd]  create an alias (list | rm <name> | edit)
   $ASSIST_NAME --remember <fact>  remember a fact (machines, paths, habits)
   $ASSIST_NAME --memory           list remembered facts
   $ASSIST_NAME --forget <n>       forget fact n
-  $ASSIST_NAME --cache-clear      empty the answer cache
+  $ASSIST_NAME --clear-cache      empty the answer cache
   $ASSIST_NAME --rename <name>    give the assistant a new name (glia always stays)
   $ASSIST_NAME --lang <it|en|de>  change the interface language
+  $ASSIST_NAME -V, --version      show the version
   $ASSIST_NAME -h                 this help
 
 Examples:
@@ -642,6 +710,125 @@ cache_store() {
     { grep -v "^$key|" "$CACHEFILE" 2>/dev/null; printf '%s|%s\n' "$key" "$2"; } > "$CACHEFILE.tmp"
     tail -n "$CACHEMAX" "$CACHEFILE.tmp" > "$CACHEFILE"
     rm -f "$CACHEFILE.tmp"
+}
+
+# ---- aliases (v2.0): named shortcuts, no AI needed ----
+# storage: name<TAB>type<TAB>request<TAB>command   (type = run | ask)
+ALIAS_RESERVED=" add list ls rm remove edit "   # sub-actions, not valid names
+
+alias_valid_name() {
+    # correct shape AND not one of the -a sub-actions
+    grep -qE '^[a-zA-Z][a-zA-Z0-9_-]*$' <<< "$1" || return 1
+    case "$ALIAS_RESERVED" in *" $1 "*) return 1 ;; esac
+    return 0
+}
+
+alias_get() {
+    # print the line whose name == $1, exit 1 if none
+    [ -f "$ALIASFILE" ] || return 1
+    awk -F'\t' -v n="$1" '$1==n {print; f=1} END{exit !f}' "$ALIASFILE"
+}
+
+alias_store() {
+    # $1 name  $2 type  $3 request  $4 command  (replaces an existing name)
+    local existed=0
+    mkdir -p "$(dirname "$ALIASFILE")"; touch "$ALIASFILE"
+    grep -qE "^$1"$'\t' "$ALIASFILE" && existed=1
+    { grep -vE "^$1"$'\t' "$ALIASFILE" 2>/dev/null
+      printf '%s\t%s\t%s\t%s\n' "$1" "$2" "$3" "$4"; } > "$ALIASFILE.tmp"
+    mv "$ALIASFILE.tmp" "$ALIASFILE"
+    if [ "$existed" -eq 1 ]; then
+        echo -e "${GREEN}$(t al_updated) $1${NC}"
+    else
+        echo -e "${GREEN}$(t al_saved) $1${NC}"
+    fi
+}
+
+alias_list() {
+    if [ ! -s "$ALIASFILE" ]; then echo "$(t al_empty)"; return; fi
+    printf '%-16s %-5s %s\n' "NAME" "TYPE" "COMMAND"
+    # awk keeps empty fields (unlike read+IFS=tab, which collapses them)
+    awk -F'\t' 'NF {printf "%-16s %-5s %s\n", $1, $2, $4}' "$ALIASFILE"
+}
+
+alias_add() {
+    local name="$1" cmd req ans
+    # quick form: -a add <name> <command...>  -> direct alias
+    if [ -n "$name" ] && [ "$#" -ge 2 ]; then
+        shift; cmd="$*"
+        alias_valid_name "$name" || { echo "$(t al_invalid)" >&2; return 1; }
+        alias_store "$name" "run" "" "$cmd"; return
+    fi
+    # interactive form: ask for the word (name), then the command
+    if [ -z "$name" ]; then
+        read -r -p "$(t al_name_q)" name < /dev/tty || return 1
+    fi
+    alias_valid_name "$name" || { echo "$(t al_invalid)" >&2; return 1; }
+    read -r -p "$(t al_cmd_q)" cmd < /dev/tty || return 1
+    [ -z "$cmd" ] && { echo "$(t cancelled)"; return 1; }
+    read -r -p "$(t al_ai_q)" ans < /dev/tty || ans=""
+    case "${ans,,}" in
+        "$YES_KEY"|s|y|j)
+            read -r -p "$(t al_req_q)" req < /dev/tty || req=""
+            [ -z "$req" ] && req="$cmd"
+            alias_store "$name" "ask" "$req" "$cmd" ;;
+        *)  alias_store "$name" "run" "" "$cmd" ;;
+    esac
+}
+
+alias_rm() {
+    local name="$1"
+    [ -z "$name" ] && { echo "$(t al_usage)" >&2; return 1; }
+    if [ ! -f "$ALIASFILE" ] || ! grep -qE "^$name"$'\t' "$ALIASFILE"; then
+        echo -e "${RED}$(t al_notfound) $name${NC}" >&2; return 1
+    fi
+    # no '&&': when removing the last line grep -v is empty and exits 1,
+    # which would otherwise skip the mv and leave the alias in place
+    grep -vE "^$name"$'\t' "$ALIASFILE" > "$ALIASFILE.tmp"
+    mv "$ALIASFILE.tmp" "$ALIASFILE"
+    echo -e "${GREEN}$(t al_removed) $name${NC}"
+}
+
+alias_edit() {
+    local ed="${EDITOR:-${VISUAL:-}}"
+    [ -z "$ed" ] && { command -v nano >/dev/null 2>&1 && ed=nano || ed=vi; }
+    mkdir -p "$(dirname "$ALIASFILE")"; touch "$ALIASFILE"
+    "$ed" "$ALIASFILE" < /dev/tty > /dev/tty 2>&1
+}
+
+alias_execute() {
+    # run a saved command, keeping the usual safety confirmations
+    local cmd="$1" answer
+    if is_reboot_cmd "$cmd"; then
+        echo -e "$(t proposed) ${GREEN}$cmd${NC}"
+        echo -e "${RED}$(t warn)${NC}"
+        read -r -p "$(t ask_reboot)" answer < /dev/tty || { echo "$(t cancelled)"; return; }
+        case "${answer,,}" in "$YES_KEY") : ;; *) echo "$(t cancelled)"; return ;; esac
+    elif needs_extra_confirm "$cmd"; then
+        echo -e "$(t proposed) ${GREEN}$cmd${NC}"
+        echo -e "${RED}$(t warn)${NC}"
+        read -r -p "$(t ask_danger)" answer < /dev/tty || { echo "$(t cancelled)"; return; }
+        case "${answer,,}" in "$YES_KEY") : ;; *) echo "$(t cancelled)"; return ;; esac
+    fi
+    run_command "$cmd"
+}
+
+alias_run() {
+    # $1 = alias name to execute
+    local name="$1" line type req cmd answer
+    line=$(alias_get "$name") || { echo -e "${RED}$(t al_notfound) $name${NC}" >&2; return 1; }
+    # cut keeps empty fields (unlike read+IFS=tab); fields: name type req command
+    type=$(cut -f2 <<< "$line"); req=$(cut -f3 <<< "$line"); cmd=$(cut -f4 <<< "$line")
+    if [ "$type" = "ask" ]; then
+        echo -e "$(t proposed) ${GREEN}$cmd${NC}"
+        read -r -p "$(t al_run_ask)" answer < /dev/tty || answer=""
+        case "${answer,,}" in
+            a)  check_ai; propose_and_run "$req"; return ;;
+            *)  alias_execute "$cmd" ;;
+        esac
+    else
+        alias_execute "$cmd"
+    fi
 }
 
 # ---- danger self-explanation (v1.6) ----
@@ -958,7 +1145,7 @@ project_mode() {
 # chosen name, so there are never two active names doing actual work.
 if [ "$PROG" = "glia" ] && [ "$ASSIST_NAME" != "glia" ]; then
     case "${1:-}" in
-        -h|--help|"") : ;;
+        -h|--help|-V|--version|"") : ;;
         *) echo -e "${YELLOW}$(t glia_inhibited)${NC}" >&2; exit 1 ;;
     esac
 fi
@@ -966,6 +1153,9 @@ fi
 case "$1" in
     -h|--help|"")
         show_help
+        ;;
+    -V|--version)
+        echo "$ASSIST_NAME 2.0 (GLIA)"
         ;;
     -p|--project)
         shift
@@ -991,11 +1181,21 @@ case "$1" in
         shift
         forget_fact "$1"
         ;;
-    --cache-clear)
+    --cache-clear|--clear-cache)
         rm -f "$CACHEFILE"
         echo -e "${GREEN}$(t cache_cleared)${NC}"
         ;;
-    -d)
+    -a|--alias)
+        shift
+        case "${1:-}" in
+            ""|list|ls)  alias_list ;;
+            add)         shift; alias_add "$@" ;;
+            rm|remove)   shift; alias_rm "$1" ;;
+            edit)        alias_edit ;;
+            *)           alias_run "$1" ;;
+        esac
+        ;;
+    -d|--ask)
         shift
         check_ai
         MEMCTX="$(memory_context)"
@@ -1005,7 +1205,7 @@ case "$1" in
             *)  exec aichat --model "$MODEL" "${MEMCTX}$*" ;;
         esac
         ;;
-    -l)
+    -l|--log)
         if [ -f "$LOGFILE" ]; then
             cat "$LOGFILE"
         else

@@ -26,6 +26,11 @@ Every request in natural language becomes a real shell command, shown to you *be
 - **Learning by doing**: each interaction is a small terminal lesson.
 - **Safety**: dangerous commands (rm -rf, dd, mkfs, ...) require reinforced confirmation.
 - **You stay in control**: the AI proposes, you decide.
+- **Standard conventions**: GLIA's own commands mirror normal terminal usage —
+  `--help`/`-h`, `--version`/`-V`, matching short/long flags, `-a`/`--alias` for
+  saved shortcuts. What you learn in GLIA transfers to every other tool, and what
+  you already know from other tools works here. **This is a foundational rule of
+  the project: we never invent bespoke syntax when a standard one exists.**
 
 The assistant (`glia`, name configurable at install time) turns natural-language
 requests into shell commands, with configurable approval levels.
@@ -48,6 +53,10 @@ requests into shell commands, with configurable approval levels.
   short `s`/`y`/`j` confirmation (Enter = no). Commands needing root get
   `sudo` added automatically. Everything is logged to
   `~/.local/share/glia/glia.log`.
+  Aliases (`glia -a add <name> <cmd>`) save commands you use often so you
+  don't ask the AI every time (e.g. `glia -a bangkok`); manage them with
+  `-a list` / `-a rm` / `-a edit`. Standard flags throughout:
+  `-h/--help`, `-V/--version`, `-d/--ask`, `-l/--log`.
 - **`bin/glia-hardware`** — detects RAM/GPU/VRAM and recommends the right
   AI model tier. JSON output (`-j`) designed for the installer.
 - **`config/aichat-config.yaml`** — aichat configuration for local Ollama
