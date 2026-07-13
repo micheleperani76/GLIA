@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GLIA — Command reference</title>
+<meta name="description" content="Every GLIA command group explained: what it is, why it exists, and what it does. Many commands re-run with no AI call to save GPU, time and energy.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0a0e14;--bg2:#0f141c;--panel:#131a24;--panel2:#0d1219;
+  --border:#212b38;--text:#c9d4e3;--muted:#7d8ba0;--white:#eef4fb;
+  --green:#4ade80;--green-dim:#22c55e;--teal:#2dd4bf;--purple:#a78bfa;--amber:#fbbf24;
+  --mono:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+  --sans:'Inter',system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);line-height:1.65;-webkit-font-smoothing:antialiased}
+a{color:inherit;text-decoration:none}
+.wrap{max-width:960px;margin:0 auto;padding:0 24px}
+.mono{font-family:var(--mono)}
+nav{position:sticky;top:0;z-index:50;backdrop-filter:blur(12px);background:rgba(10,14,20,.72);border-bottom:1px solid var(--border)}
+.nav-in{display:flex;align-items:center;justify-content:space-between;height:60px}
+.brand{display:flex;align-items:center;gap:10px;font-weight:800;color:var(--white);font-size:1.15rem}
+.brand .dot{width:11px;height:11px;border-radius:50%;background:var(--green);box-shadow:0 0 12px var(--green)}
+.nav-links{display:flex;gap:26px;align-items:center;font-size:.92rem;color:var(--muted)}
+.nav-links a:hover{color:var(--white)}
+.nav-links a.active{color:var(--teal)}
+.nav-links .ghbtn{border:1px solid var(--border);padding:7px 15px;border-radius:8px;color:var(--text);font-weight:600}
+.nav-links .ghbtn:hover{border-color:var(--green);color:var(--green)}
+@media(max-width:760px){.nav-links a:not(.ghbtn):not(.active){display:none}}
+.head{padding:64px 0 8px}
+.eyebrow{font-family:var(--mono);font-size:.78rem;letter-spacing:.18em;text-transform:uppercase;color:var(--teal);margin-bottom:14px}
+h1{font-size:clamp(2.2rem,5vw,3rem);font-weight:800;color:var(--white);letter-spacing:-.03em;line-height:1.05;margin-bottom:14px}
+h1 .g{background:linear-gradient(120deg,var(--green),var(--teal));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.lead{color:var(--muted);font-size:1.05rem;max-width:680px}
+.lead code{font-family:var(--mono);color:var(--teal);font-size:.9em;background:var(--panel2);padding:1px 5px;border-radius:4px}
+.green{background:linear-gradient(90deg,rgba(74,222,128,.09),rgba(45,212,191,.03));border:1px solid rgba(74,222,128,.32);border-radius:14px;padding:22px 26px;display:flex;gap:18px;align-items:flex-start;margin:38px 0 8px}
+.green .gi{color:var(--green);flex-shrink:0;margin-top:2px}
+.green h3{color:var(--green);font-size:1.12rem;margin-bottom:7px}
+.green p{color:var(--text);font-size:.98rem}
+.green p b{color:var(--white)}
+.green p code{font-family:var(--mono);color:var(--green);font-size:.88em;background:var(--panel2);padding:1px 5px;border-radius:4px}
+.toc{display:flex;flex-wrap:wrap;gap:8px;margin:34px 0 10px}
+.toc a{font-family:var(--mono);font-size:.8rem;color:var(--muted);border:1px solid var(--border);background:var(--panel2);padding:6px 12px;border-radius:20px}
+.toc a:hover{border-color:var(--teal);color:var(--teal)}
+.grp{padding:40px 0;border-top:1px solid var(--border)}
+.grp-h{display:flex;align-items:baseline;gap:14px;margin-bottom:6px}
+.grp-h .n{font-family:var(--mono);font-size:.95rem;color:var(--teal)}
+.grp-h h2{font-size:1.45rem;font-weight:800;color:var(--white);letter-spacing:-.02em}
+.grp .why{color:var(--muted);font-size:.98rem;max-width:720px;margin-bottom:20px}
+.grp .why b{color:var(--text)}
+.grp .why code,.tag code{font-family:var(--mono)}
+.cmds{width:100%;border-collapse:collapse;background:var(--panel);border:1px solid var(--border);border-radius:12px;overflow:hidden}
+.cmds td{padding:12px 16px;border-top:1px solid var(--border);vertical-align:top;font-size:.92rem}
+.cmds tr:first-child td{border-top:none}
+.cmds td.c{font-family:var(--mono);color:var(--teal);font-size:.85rem;white-space:nowrap;width:1%;padding-right:22px}
+.cmds td.d{color:var(--text)}
+.cmds td.d b{color:var(--white)}
+@media(max-width:640px){.cmds td.c{white-space:normal}.cmds td,.cmds td.c{display:block;width:auto}.cmds td.c{border-top:1px solid var(--border);padding-bottom:2px}.cmds td.d{padding-top:2px}}
+.note{margin-top:14px;background:var(--panel2);border:1px solid var(--border);border-left:3px solid var(--teal);border-radius:0 9px 9px 0;padding:14px 18px;font-size:.9rem;color:var(--muted)}
+.note b{color:var(--text)}
+.note code,.grp .why code,.lead code,.pill{font-family:var(--mono)}
+.note code{color:var(--teal);background:var(--bg);padding:1px 5px;border-radius:4px;font-size:.9em}
+.pill{display:inline-block;font-size:.72rem;color:var(--green);border:1px solid rgba(74,222,128,.32);background:rgba(74,222,128,.07);border-radius:20px;padding:2px 9px;margin-left:8px;vertical-align:middle}
+.file{font-family:var(--mono);font-size:.82rem;color:var(--muted)}
+.file b{color:var(--teal);font-weight:400}
+footer{border-top:1px solid var(--border);padding:44px 0;text-align:center;color:var(--muted);font-size:.9rem;margin-top:20px}
+footer a{color:var(--teal)}
+footer .fbrand{font-weight:800;color:var(--white);font-size:1.05rem;margin-bottom:8px;display:block}
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="wrap nav-in">
+    <a class="brand" href="index.html"><span class="dot"></span>GLIA</a>
+    <div class="nav-links">
+      <a href="index.html#what">Philosophy</a>
+      <a href="index.html#install">Install</a>
+      <a class="active" href="commands.html">Commands</a>
+      <a href="index.html#roadmap">Roadmap</a>
+      <a class="ghbtn" href="https://github.com/micheleperani76/GLIA" target="_blank" rel="noopener">GitHub ↗</a>
+    </div>
+  </div>
+</nav>
+
+<header class="head">
+  <div class="wrap">
+    <div class="eyebrow">Command reference</div>
+    <h1>Every <span class="g">glia</span> command, explained</h1>
+    <p class="lead">What each group is, why it exists, and what it does. The command is <code>glia</code> (you can rename the assistant — say to <code>mypc</code> — but <code>glia</code> always stays as a fallback). Flags follow standard conventions: <code>-h</code>, <code>-V</code>, <code>-a</code>, <code>-l</code>.</p>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="green">
+    <div class="gi"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z"/><path d="M2 21c0-3 1.85-5.36 5.08-6"/></svg></div>
+    <div>
+      <h3>Green by design — commands that skip the AI</h3>
+      <p>Every question to the model costs <b>GPU time, energy and, on some setups, money</b>. GLIA is built so you don't pay that cost twice. Turn any command you repeat into an <b>alias</b> that runs instantly with <b>no AI call</b> (<code>glia -a add</code>), and repeated questions are served from a <b>local answer cache</b> instead of re-running the model. The AI is there while you explore; it steps aside the moment you already know what you want. Fewer model calls means less energy — and a faster terminal.</p>
+    </div>
+  </div>
+
+  <div class="toc">
+    <a href="#basics">1 · Basics</a>
+    <a href="#ask">2 · Ask &amp; explain</a>
+    <a href="#alias">3 · Shortcuts</a>
+    <a href="#memory">4 · Memory</a>
+    <a href="#models">5 · Models</a>
+    <a href="#project">6 · Project mode</a>
+    <a href="#interactive">7 · Interactive</a>
+    <a href="#log">8 · Log</a>
+    <a href="#settings">9 · Settings</a>
+    <a href="#hardware">10 · Hardware</a>
+  </div>
+</div>
+
+<main class="wrap">
+
+  <section class="grp" id="basics">
+    <div class="grp-h"><span class="n">01</span><h2>The basics</h2></div>
+    <p class="why"><b>What it is:</b> you type a request in plain language and GLIA turns it into a real shell command. <b>Why it exists:</b> you should always see the command before it runs — you read it, approve it, and little by little you learn it. The AI proposes, you decide.</p>
+    <table class="cmds">
+      <tr><td class="c">glia &lt;request&gt;</td><td class="d">Proposes a command. <b>Enter</b> runs it, <b>n</b> cancels, <b>r</b> retries.</td></tr>
+      <tr><td class="c">glia</td><td class="d">On its own, opens the interactive prompt (see <a href="#interactive" style="color:var(--teal)">Interactive mode</a>).</td></tr>
+      <tr><td class="c">rm -rf · dd · mkfs · sudo · curl|sh</td><td class="d">Destructive commands ask a short <b>s / y / j</b> confirmation first (Enter = no).</td></tr>
+      <tr><td class="c">(root needed)</td><td class="d">Commands that need root get <b>sudo</b> added automatically.</td></tr>
+    </table>
+    <div class="note">Every executed command is logged to <code>~/.local/share/glia/glia.log</code>.</div>
+  </section>
+
+  <section class="grp" id="ask">
+    <div class="grp-h"><span class="n">02</span><h2>Ask &amp; explain</h2></div>
+    <p class="why"><b>What it is:</b> a plain-language answer with nothing executed. <b>Why it exists:</b> sometimes you want to understand a tool, not run it — a small lesson instead of an action.</p>
+    <table class="cmds">
+      <tr><td class="c">glia -d &lt;question&gt;</td><td class="d">Explains in words, runs nothing.</td></tr>
+      <tr><td class="c">glia --ask &lt;question&gt;</td><td class="d">Same as <code style="font-family:var(--mono);color:var(--teal)">-d</code>, long form.</td></tr>
+    </table>
+    <div class="note">Example: <code>glia -d what does rsync do</code></div>
+  </section>
+
+  <section class="grp" id="alias">
+    <div class="grp-h"><span class="n">03</span><h2>Shortcuts <span class="pill">no AI call</span></h2></div>
+    <p class="why"><b>What it is:</b> a shortcut saves a command you use often, so you recall it by name without ever asking the AI. <b>Why it exists:</b> the fastest, greenest path — an alias runs instantly and spends zero GPU. Ask the model once, save the result, reuse it forever.</p>
+    <table class="cmds">
+      <tr><td class="c">glia -a</td><td class="d">List your shortcuts (numbered).</td></tr>
+      <tr><td class="c">glia -a &lt;name|n&gt;</td><td class="d">Run a shortcut, by name or number.</td></tr>
+      <tr><td class="c">glia -a add</td><td class="d">Guided create — asks for name, command and type.</td></tr>
+      <tr><td class="c">glia -a add &lt;name&gt; &lt;cmd&gt;</td><td class="d">Create a direct shortcut on the fly.</td></tr>
+      <tr><td class="c">glia -a rm</td><td class="d">Guided remove — shows the list, asks the number.</td></tr>
+      <tr><td class="c">glia -a rm &lt;n|name&gt;</td><td class="d">Remove by number or name (with confirmation).</td></tr>
+      <tr><td class="c">glia -a save</td><td class="d">Save the last successful command as a shortcut.</td></tr>
+      <tr><td class="c">glia -a edit</td><td class="d">Open the shortcuts file in your editor.</td></tr>
+    </table>
+    <div class="note"><b>Two types.</b> <b>Direct</b> — runs the saved command immediately. <b>With-AI</b> — shows the command and asks: Enter = use the shortcut, <code>a</code> = ask the AI instead (handy when the original request was vague).<br><br>Names are case-insensitive · removal always confirms (Enter = no) · if you repeat the same request within 10 minutes, GLIA offers once to save it as a shortcut · <span class="file">file: <b>~/.config/glia/aliases</b></span></div>
+  </section>
+
+  <section class="grp" id="memory">
+    <div class="grp-h"><span class="n">04</span><h2>Memory</h2></div>
+    <p class="why"><b>What it is:</b> GLIA can remember short facts — machines, paths, habits — and adds them to the context of each request. <b>Why it exists:</b> so the AI keeps your setup in mind without you repeating it every time.</p>
+    <table class="cmds">
+      <tr><td class="c">glia --remember "&lt;fact&gt;"</td><td class="d">Remember a fact.</td></tr>
+      <tr><td class="c">glia --memory</td><td class="d">List the remembered facts (numbered).</td></tr>
+      <tr><td class="c">glia --forget &lt;n&gt;</td><td class="d">Forget fact number n.</td></tr>
+    </table>
+    <div class="note">Max 20 facts (the oldest are dropped) · a fact is used <b>only</b> when the request concerns it · <span class="file">file: <b>~/.config/glia/memory</b></span></div>
+  </section>
+
+  <section class="grp" id="models">
+    <div class="grp-h"><span class="n">05</span><h2>Models / AI</h2></div>
+    <p class="why"><b>What it is:</b> the models are downloaded and kept by Ollama; GLIA uses one at a time. <b>Why it exists:</b> different machines and tasks want different models — pick the right one, or override it just for a single command.</p>
+    <table class="cmds">
+      <tr><td class="c">glia -m</td><td class="d">List downloaded models (numbered) and choose the default (guided).</td></tr>
+      <tr><td class="c">glia -m &lt;n|name&gt;</td><td class="d">Set the default model.</td></tr>
+      <tr><td class="c">glia -m &lt;n|name&gt; &lt;task&gt;</td><td class="d">Use that model just for this command — default unchanged.</td></tr>
+    </table>
+    <div class="note">With Ollama: <code>ollama list</code> · <code>ollama pull &lt;name&gt;</code> · <code>ollama rm &lt;name&gt;</code><br><br>Default saved in <code>~/.config/glia/model</code> · <code>glia-hardware</code> recommends the right model for your machine.</div>
+  </section>
+
+  <section class="grp" id="project">
+    <div class="grp-h"><span class="n">06</span><h2>Project mode</h2></div>
+    <p class="why"><b>What it is:</b> plan a small project and write its files, with your confirmation at every step. <b>Why it exists:</b> for multi-file tasks that go beyond a single command — still transparent, still one approval at a time.</p>
+    <table class="cmds">
+      <tr><td class="c">glia -p &lt;idea&gt;</td><td class="d">Plan the steps and write the files (you confirm each one).</td></tr>
+    </table>
+    <div class="note">List the files you want <b>explicitly</b>, so the AI doesn't forget them · files are written only inside the projects folder <code>~/Documenti/glia</code> · requires <code>jq</code>.<br><br>Example: <code>glia -p a backup script with rsync and a README explaining it</code></div>
+  </section>
+
+  <section class="grp" id="interactive">
+    <div class="grp-h"><span class="n">07</span><h2>Interactive mode</h2></div>
+    <p class="why"><b>What it is:</b> a dedicated prompt where special characters are taken literally. <b>Why it exists:</b> the shell interprets <code>'  "  $  |  ;  &amp;  *  ( )  `</code> before GLIA ever sees them, breaking a sentence that contains them. The interactive prompt reads your request character by character instead.</p>
+    <table class="cmds">
+      <tr><td class="c">glia</td><td class="d">On its own, enters the prompt <code style="font-family:var(--mono);color:var(--teal)">glia&gt;</code>.</td></tr>
+      <tr><td class="c">glia -i</td><td class="d">Same, explicit form. Empty Enter = exit.</td></tr>
+    </table>
+    <div class="note">Use it whenever the request contains <code>'  "  $  |  ;  &amp;  *</code>. Type at the <code>glia&gt;</code> prompt, e.g. <code>count the *.log files in the current folder</code> or <code>how much space does $HOME use</code>. Simple sentences with no symbols still work inline: <code>glia find the largest files in /home</code>.</div>
+  </section>
+
+  <section class="grp" id="log">
+    <div class="grp-h"><span class="n">08</span><h2>Log</h2></div>
+    <p class="why"><b>What it is:</b> the history of commands GLIA actually executed. <b>Why it exists:</b> transparency you can audit — see exactly what ran on your machine.</p>
+    <table class="cmds">
+      <tr><td class="c">glia -l</td><td class="d">Show the log of executed commands.</td></tr>
+      <tr><td class="c">glia --log</td><td class="d">Same, long form.</td></tr>
+    </table>
+    <div class="note"><span class="file">file: <b>~/.local/share/glia/glia.log</b></span></div>
+  </section>
+
+  <section class="grp" id="settings">
+    <div class="grp-h"><span class="n">09</span><h2>Settings &amp; identity</h2></div>
+    <p class="why"><b>What it is:</b> naming, language and housekeeping. <b>Why it exists:</b> the assistant is yours to name and tune — and you can always find it again, because <code>glia</code> never goes away.</p>
+    <table class="cmds">
+      <tr><td class="c">glia --rename &lt;name&gt;</td><td class="d">Give the assistant a new name (e.g. <code style="font-family:var(--mono);color:var(--teal)">mypc</code>). The <code style="font-family:var(--mono);color:var(--teal)">glia</code> command always stays as a fallback.</td></tr>
+      <tr><td class="c">glia --lang &lt;it|en|de&gt;</td><td class="d">Change the interface language.</td></tr>
+      <tr><td class="c">glia --clear-cache</td><td class="d">Empty the answer cache.</td></tr>
+      <tr><td class="c">glia -V · --version</td><td class="d">Show the version.</td></tr>
+      <tr><td class="c">glia -h</td><td class="d">Show the built-in help.</td></tr>
+    </table>
+    <div class="note"><b>Recovery.</b> Even after you rename the assistant to, say, <code>mypc</code>, the <code>glia</code> command stays active as an emergency passkey — so you can never lock yourself out of your own assistant.</div>
+  </section>
+
+  <section class="grp" id="hardware">
+    <div class="grp-h"><span class="n">10</span><h2>Hardware helper</h2></div>
+    <p class="why"><b>What it is:</b> a companion command that reads your machine and recommends the right model tier. <b>Why it exists:</b> picking a model that's too big stalls; too small underperforms. Let the hardware decide.</p>
+    <table class="cmds">
+      <tr><td class="c">glia-hardware</td><td class="d">Hardware report (RAM / GPU / VRAM) and recommended models.</td></tr>
+      <tr><td class="c">glia-hardware -j</td><td class="d">JSON output — designed for the installer.</td></tr>
+    </table>
+    <div class="note">Tiers range from a 3–4B model on RAM-only laptops up to 30B-class models on 20 GB+ GPUs. See the full table on the <a href="index.html#install" style="color:var(--teal)">home page</a>.</div>
+  </section>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    <span class="fbrand">GLIA — GNU/Linux + AI</span>
+    <p>The AI proposes, you decide. · <a href="index.html">Back to home</a> · <a href="https://github.com/micheleperani76/GLIA" target="_blank" rel="noopener">GitHub</a></p>
+  </div>
+</footer>
+
+</body>
+</html>
