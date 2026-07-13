@@ -35,6 +35,10 @@ Every request in natural language becomes a real shell command, shown to you *be
 The assistant (`glia`, name configurable at install time) turns natural-language
 requests into shell commands, with configurable approval levels.
 
+**See it in action:** [a worked example](docs/example-guided-fix.md) — asking in
+plain words, guiding the AI with hints to fix a failed command, and turning the
+result into a saved shortcut.
+
 ## Project status
 
 | Phase | Status |
