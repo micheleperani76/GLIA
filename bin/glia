@@ -428,6 +428,7 @@ Esempi:
   $ASSIST_NAME trova i file più grandi in /home
   $ASSIST_NAME -d cosa fa il comando rsync
   $ASSIST_NAME -p uno script di backup con rsync e un README che lo spiega
+  $ASSIST_NAME -a add bangkok "TZ=Asia/Bangkok date"   (poi:  $ASSIST_NAME -a bangkok)
 
 Note:
   · i comandi pericolosi chiedono conferma con "$YES_KEY" (Invio o n = annulla)
@@ -469,6 +470,7 @@ Beispiele:
   $ASSIST_NAME finde die größten Dateien in /home
   $ASSIST_NAME -d was macht der Befehl rsync
   $ASSIST_NAME -p ein Backup-Skript mit rsync und eine README, die es erklärt
+  $ASSIST_NAME -a add bangkok "TZ=Asia/Bangkok date"   (dann:  $ASSIST_NAME -a bangkok)
 
 Hinweise:
   · gefährliche Befehle fragen mit "$YES_KEY" nach (Enter oder n = abbrechen)
@@ -510,6 +512,7 @@ Examples:
   $ASSIST_NAME find the largest files in /home
   $ASSIST_NAME -d what does the rsync command do
   $ASSIST_NAME -p a backup script with rsync and a README explaining it
+  $ASSIST_NAME -a add bangkok "TZ=Asia/Bangkok date"   (then:  $ASSIST_NAME -a bangkok)
 
 Notes:
   · dangerous commands ask for confirmation with "$YES_KEY" (Enter or n = cancel)
