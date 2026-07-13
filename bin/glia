@@ -513,7 +513,10 @@ Aiuto dettagliato per gruppo:
   $ASSIST_NAME --memory help   memoria (fatti ricordati)
   $ASSIST_NAME -p help         modalità progetto
 
-Impostazioni:  --rename · --lang · --clear-cache · -V · -h
+Impostazioni:
+  $ASSIST_NAME --rename <nome>     dai un nuovo nome all'assistente (glia resta sempre)
+  $ASSIST_NAME --lang <it|en|de>   cambia la lingua dell'interfaccia
+  altro:  --clear-cache · -V · -h
 
 Esempi:
   $ASSIST_NAME trova i file più grandi in /home
@@ -548,7 +551,10 @@ Ausführliche Hilfe pro Gruppe:
   $ASSIST_NAME --memory help   Gedächtnis (gemerkte Fakten)
   $ASSIST_NAME -p help         Projektmodus
 
-Einstellungen:  --rename · --lang · --clear-cache · -V · -h
+Einstellungen:
+  $ASSIST_NAME --rename <Name>    dem Assistenten einen neuen Namen geben (glia bleibt immer)
+  $ASSIST_NAME --lang <it|en|de>  Sprache der Oberfläche ändern
+  weiteres:  --clear-cache · -V · -h
 
 Beispiele:
   $ASSIST_NAME finde die größten Dateien in /home
@@ -583,7 +589,10 @@ Detailed help per group:
   $ASSIST_NAME --memory help   memory (remembered facts)
   $ASSIST_NAME -p help         project mode
 
-Settings:  --rename · --lang · --clear-cache · -V · -h
+Settings:
+  $ASSIST_NAME --rename <name>    give the assistant a new name (glia always stays)
+  $ASSIST_NAME --lang <it|en|de>  change the interface language
+  more:  --clear-cache · -V · -h
 
 Examples:
   $ASSIST_NAME find the largest files in /home
