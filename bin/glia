@@ -487,7 +487,7 @@ t() {
 show_help() {
     case "$UILANG" in
     it) cat <<EOF
-$ASSIST_NAME v2.4 - assistente IA da terminale (modello: ${MODEL#ollama:})
+$ASSIST_NAME v2.4 - assistente IA da terminale (modello in uso: ${MODEL#ollama:})
 Assistente: $ASSIST_NAME  ·  comando di emergenza sempre attivo: glia
 
 Uso:
@@ -532,7 +532,7 @@ Se l'IA non risponde:
 EOF
         ;;
     de) cat <<EOF
-$ASSIST_NAME v2.4 - KI-Terminal-Assistent (Modell: ${MODEL#ollama:})
+$ASSIST_NAME v2.4 - KI-Terminal-Assistent (aktives Modell: ${MODEL#ollama:})
 Assistent: $ASSIST_NAME  ·  Notfallbefehl immer aktiv: glia
 
 Verwendung:
@@ -577,7 +577,7 @@ Wenn die KI nicht antwortet:
 EOF
         ;;
     *) cat <<EOF
-$ASSIST_NAME v2.4 - AI terminal assistant (model: ${MODEL#ollama:})
+$ASSIST_NAME v2.4 - AI terminal assistant (model in use: ${MODEL#ollama:})
 Assistant: $ASSIST_NAME  ·  emergency command always on: glia
 
 Usage:
