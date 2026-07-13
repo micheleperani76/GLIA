@@ -397,6 +397,15 @@ t() {
         it:al_usage)        echo "Uso: $PROG -a add|list|rm|edit   ·   $PROG -a <nome>" ;;
         de:al_usage)        echo "Verwendung: $PROG -a add|list|rm|edit   ·   $PROG -a <Name>" ;;
         *:al_usage)         echo "Usage: $PROG -a add|list|rm|edit   ·   $PROG -a <name>" ;;
+        it:al_c_name)       echo "NOME" ;;
+        de:al_c_name)       echo "NAME" ;;
+        *:al_c_name)        echo "NAME" ;;
+        it:al_c_type)       echo "TIPO" ;;
+        de:al_c_type)       echo "TYP" ;;
+        *:al_c_type)        echo "TYPE" ;;
+        it:al_c_cmd)        echo "COMANDO" ;;
+        de:al_c_cmd)        echo "BEFEHL" ;;
+        *:al_c_cmd)         echo "COMMAND" ;;
     esac
 }
 
@@ -428,7 +437,8 @@ Esempi:
   $ASSIST_NAME trova i file più grandi in /home
   $ASSIST_NAME -d cosa fa il comando rsync
   $ASSIST_NAME -p uno script di backup con rsync e un README che lo spiega
-  $ASSIST_NAME -a add bangkok "TZ=Asia/Bangkok date"   (poi:  $ASSIST_NAME -a bangkok)
+  $ASSIST_NAME -a add bangkok "TZ=Asia/Bangkok date"
+  $ASSIST_NAME -a bangkok
 
 Note:
   · i comandi pericolosi chiedono conferma con "$YES_KEY" (Invio o n = annulla)
@@ -470,7 +480,8 @@ Beispiele:
   $ASSIST_NAME finde die größten Dateien in /home
   $ASSIST_NAME -d was macht der Befehl rsync
   $ASSIST_NAME -p ein Backup-Skript mit rsync und eine README, die es erklärt
-  $ASSIST_NAME -a add bangkok "TZ=Asia/Bangkok date"   (dann:  $ASSIST_NAME -a bangkok)
+  $ASSIST_NAME -a add bangkok "TZ=Asia/Bangkok date"
+  $ASSIST_NAME -a bangkok
 
 Hinweise:
   · gefährliche Befehle fragen mit "$YES_KEY" nach (Enter oder n = abbrechen)
@@ -512,7 +523,8 @@ Examples:
   $ASSIST_NAME find the largest files in /home
   $ASSIST_NAME -d what does the rsync command do
   $ASSIST_NAME -p a backup script with rsync and a README explaining it
-  $ASSIST_NAME -a add bangkok "TZ=Asia/Bangkok date"   (then:  $ASSIST_NAME -a bangkok)
+  $ASSIST_NAME -a add bangkok "TZ=Asia/Bangkok date"
+  $ASSIST_NAME -a bangkok
 
 Notes:
   · dangerous commands ask for confirmation with "$YES_KEY" (Enter or n = cancel)
@@ -529,6 +541,20 @@ If the AI does not answer:
 EOF
         ;;
     esac
+}
+
+# Show the help through a pager when writing to a terminal, so long help
+# stays readable on a bare server console (the first lines don't scroll
+# off the top). Piped/redirected output stays plain, for scripts.
+show_help_paged() {
+    [ -t 1 ] || { show_help; return; }
+    if [ -n "${PAGER:-}" ] && command -v "${PAGER%% *}" >/dev/null 2>&1; then
+        show_help | $PAGER
+    elif command -v less >/dev/null 2>&1; then
+        show_help | less -FRX
+    else
+        show_help
+    fi
 }
 
 # ------------------- FUNCTIONS ----------------------
@@ -749,7 +775,7 @@ alias_store() {
 
 alias_list() {
     if [ ! -s "$ALIASFILE" ]; then echo "$(t al_empty)"; return; fi
-    printf '%-16s %-5s %s\n' "NAME" "TYPE" "COMMAND"
+    printf '%-16s %-5s %s\n' "$(t al_c_name)" "$(t al_c_type)" "$(t al_c_cmd)"
     # awk keeps empty fields (unlike read+IFS=tab, which collapses them)
     awk -F'\t' 'NF {printf "%-16s %-5s %s\n", $1, $2, $4}' "$ALIASFILE"
 }
@@ -1155,7 +1181,7 @@ fi
 
 case "$1" in
     -h|--help|"")
-        show_help
+        show_help_paged
         ;;
     -V|--version)
         echo "$ASSIST_NAME 2.0 (GLIA)"
