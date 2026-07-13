@@ -515,6 +515,7 @@ Esempi:
   $ASSIST_NAME -p uno script di backup con rsync e un README che lo spiega
   $ASSIST_NAME -a add bangkok "TZ=Asia/Bangkok date"
   $ASSIST_NAME -a bangkok
+  $ASSIST_NAME -m 2 riscrivi questo script in modo più chiaro   (usa l'IA #2 solo qui)
 
 Note:
   · i comandi pericolosi chiedono conferma con "$YES_KEY" (Invio o n = annulla)
@@ -559,6 +560,7 @@ Beispiele:
   $ASSIST_NAME -p ein Backup-Skript mit rsync und eine README, die es erklärt
   $ASSIST_NAME -a add bangkok "TZ=Asia/Bangkok date"
   $ASSIST_NAME -a bangkok
+  $ASSIST_NAME -m 2 schreibe dieses Skript klarer   (nutzt KI #2 nur hier)
 
 Hinweise:
   · gefährliche Befehle fragen mit "$YES_KEY" nach (Enter oder n = abbrechen)
@@ -603,6 +605,7 @@ Examples:
   $ASSIST_NAME -p a backup script with rsync and a README explaining it
   $ASSIST_NAME -a add bangkok "TZ=Asia/Bangkok date"
   $ASSIST_NAME -a bangkok
+  $ASSIST_NAME -m 2 rewrite this script more clearly   (uses AI #2 for this only)
 
 Notes:
   · dangerous commands ask for confirmation with "$YES_KEY" (Enter or n = cancel)
