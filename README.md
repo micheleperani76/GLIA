@@ -341,6 +341,14 @@ GLIA is actively evolving. Planned and in-progress work:
   first.
 - **Btrfs snapshots** as a safety net, plus branding and polish (phase 5).
 - **Lightweight memory retrieval** if the stored facts outgrow the prompt.
+- **A terminal-first desktop — the long-term vision.** The most ambitious idea:
+  a minimal desktop where the terminal *is* the backdrop, in place of the
+  wallpaper every other desktop shows. GUI programs open as windows on top of it
+  that you can stash away and bring back at will, driven by a lightweight window
+  manager underneath. The shell and the AI together become how you run the
+  machine — launch an app, hide it, reopen it, arrange and interact with what's
+  on screen, all by talking to GLIA. A graphical desktop grown outward from the
+  command line, not bolted on top of it.
 
 Full details and history in [docs/ROADMAP.md](docs/ROADMAP.md).
 Contributions are welcome — open an issue or a pull request.
