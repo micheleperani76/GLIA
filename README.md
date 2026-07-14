@@ -40,6 +40,27 @@ requests into shell commands, with configurable approval levels.
 plain words, guiding the AI with hints to fix a failed command, and turning the
 result into a saved shortcut.
 
+## How GLIA is different
+
+Plenty of tools now translate plain language into a shell command — it's a
+crowded idea, and a good one. GLIA's difference isn't the translation itself;
+it's the intent and the shape around it:
+
+- **It teaches instead of replacing.** Every proposal also shows the real
+  command, so you *learn* the terminal rather than outsource it. Most assistants
+  aim to do the work for you; GLIA aims to make you able to do it yourself — then
+  step aside the moment you know how.
+- **It runs entirely offline.** Local Ollama on your own machine: no cloud, no
+  API keys, nothing leaves your computer. Repeated work becomes an alias or a
+  cached answer, so the model isn't called twice for the same thing.
+- **It's a whole distribution, not just a command.** GLIA ships as a minimal
+  Linux distro (live ISO + Calamares installer) that boots straight to the
+  terminal with the assistant already onboard — and the same `glia` also installs
+  onto the Arch, Debian or Fedora you already run.
+
+The translator is the easy part. The teaching-first, offline, whole-system
+approach is what makes GLIA GLIA.
+
 ## Project status
 
 | Phase | Status |
