@@ -64,9 +64,11 @@ and well argued:
   "the capability of a man to approach a complex problem situation, to gain
   comprehension to suit his particular needs." Augment, don't automate away.
   [Doug Engelbart Institute](https://www.dougengelbart.org/pubs/augment-3906.html)
-- Steve Jobs (1980): the computer as "the most remarkable tool … the equivalent
-  of a bicycle for our minds."
-  [The Marginalian](https://www.themarginalian.org/2011/12/21/steve-jobs-bicycle-for-the-mind-1990/)
+- Neal Stephenson, *In the Beginning Was the Command Line* (1999): "the
+  command-line interface opens a much more direct and explicit channel from user
+  to machine than the GUI." The terminal isn't a relic — it's the most direct way
+  to actually understand your own computer.
+  [nealstephenson.com](https://www.nealstephenson.com/in-the-beginning-was-the-command-line.html)
 - Seymour Papert, *Mindstorms* (1980): not "the computer programs the child" but
   "the child programs the computer," gaining mastery by doing.
   [MIT News](https://news.mit.edu/2016/seymour-papert-pioneer-of-constructionist-learning-dies-0801)
