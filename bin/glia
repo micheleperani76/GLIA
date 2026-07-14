@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ============================================================
 #  glia - AI terminal assistant (Ollama + aichat)
-#  Version: 2.11.0 - 2026-07-14
+#  Version: 2.12.2 - 2026-07-14
 #  Author: Michele (with Claude)
 #  Project: GLIA (GNU Linux IA)
 #
@@ -217,7 +217,7 @@
 # ============================================================
 
 # ----------------- CONFIGURATION -----------------
-VERSION="2.12.1"
+VERSION="2.12.2"
 DEFAULT_MODEL="qwen2.5-coder:7b"
 if [ -r "$HOME/.config/glia/model" ]; then
     MODEL="ollama:$(head -n1 "$HOME/.config/glia/model")"
@@ -1065,6 +1065,10 @@ rename_assistant() {
     # offer to migrate the projects folder to the new name (no = leave the old one).
     # v2.9.1: the folder may live in <Documents>/<name> (old) or ~/<name>-projects
     # (new); migrate keeping the same style.
+    # v2.12.2: 'glia' is the permanent anchor - its folder is NEVER moved. On the
+    # first rename (old = glia) we just keep the glia folder as is; anything made
+    # under the glia name stays there (move it by hand if you want). Only later
+    # renames (name1 -> name2) still offer to rename the folder.
     local oldproj newproj a
     if [ -d "$DOCS/$old" ]; then
         oldproj="$DOCS/$old"; newproj="$DOCS/$newname"
@@ -1072,7 +1076,10 @@ rename_assistant() {
         oldproj="$HOME/$old-projects"; newproj="$HOME/$newname-projects"
     fi
     if [ -d "$oldproj" ] && [ "$oldproj" != "$newproj" ]; then
-        if [ -e "$newproj" ]; then
+        if [ "$old" = "glia" ]; then
+            # permanent anchor: never move the glia folder, just leave it in place
+            echo "$(t proj_kept) ${oldproj/#$HOME/\~}"
+        elif [ -e "$newproj" ]; then
             echo -e "${YELLOW}$(t proj_target_exists) ${newproj/#$HOME/\~}${NC}"
         else
             echo -e "${BLUE}$(t proj_ask)${NC}"
