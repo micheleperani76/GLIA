@@ -221,6 +221,9 @@ cat error.log | glia why does it fail  # piped input becomes context for the AI
 glia -p a bash backup script with rsync and a README explaining how to use it   # project mode: plans the steps, then writes the files (with confirmation)
 glia -l                                # log of executed commands
 glia --doctor                          # one-shot health check (engine, model, RAM, config)
+glia -m pull                           # guided download: hardware check + the AI models that FIT this machine
+glia -m update                         # refresh the downloaded models (only fetches new versions)
+glia --update                          # update the Ollama engine itself (glia --update help: full guide)
 glia-hardware                           # hardware report and recommended models
 ```
 
@@ -234,8 +237,13 @@ running, or `e` to have the AI explain what it does. Bash tab-completion is in
 |---|---|---|
 | 1 | <16 GB RAM, no GPU | qwen3:4b, gemma3:4b, llama3.2:3b |
 | 2 | ≥16 GB RAM, no GPU | qwen2.5-coder:7b, qwen3:8b, mistral:7b |
+| 2+ | ≥24 GB RAM, no GPU | qwen3:30b-a3b (MoE: fast on CPU), qwen3:14b, qwen2.5-coder:14b |
 | 3 | GPU ≥12 GB VRAM | qwen2.5-coder:14b, phi4:14b, deepseek-r1:14b |
 | 4 | GPU ≥20 GB VRAM | qwen3-coder:30b, qwen2.5-coder:32b, devstral:24b |
+
+Beyond the tiers, `glia -m pull` (with no name) checks your RAM, GPU and disk
+and offers up to 10 models from a curated catalog that actually fit your
+machine — pick one by number, or run the `ollama pull` command it shows you.
 
 ## Roadmap & what's next
 

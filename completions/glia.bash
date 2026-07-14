@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ============================================================
 #  glia.bash - Bash completion for the glia AI assistant
-#  Version: 1.0 - 2026-07-13
+#  Version: 1.1 - 2026-07-14 (adds -m pull/update/rm/list and --update)
 #  Author: Michele (with Claude)
 #  Project: GLIA (GNU Linux IA)
 #
@@ -35,14 +35,25 @@ _glia() {
     prev="${COMP_WORDS[COMP_CWORD-1]}"
     flags="-h --help -V --version -i --interactive -d --ask -l --log
            -a --alias -m --model -p --project --remember --memory --forget
-           --clear-cache --doctor --rename --lang"
+           --clear-cache --doctor --update --rename --lang"
 
     case "$prev" in
         -a|--alias)
             COMPREPLY=( $(compgen -W "add list rm edit save help $(_glia_alias_names)" -- "$cur") )
             return ;;
         -m|--model)
-            COMPREPLY=( $(compgen -W "help $(_glia_model_names)" -- "$cur") )
+            COMPREPLY=( $(compgen -W "help list ls pull update rm $(_glia_model_names)" -- "$cur") )
+            return ;;
+        --update)
+            COMPREPLY=( $(compgen -W "help" -- "$cur") )
+            return ;;
+        pull)
+            # -m pull <name>: a NEW model name is free text, nothing to complete
+            return ;;
+        update)
+            # -m update <n|name>: complete with the downloaded models
+            [ "${COMP_WORDS[COMP_CWORD-2]}" = "-m" ] || [ "${COMP_WORDS[COMP_CWORD-2]}" = "--model" ] \
+                && COMPREPLY=( $(compgen -W "$(_glia_model_names)" -- "$cur") )
             return ;;
         --lang)
             COMPREPLY=( $(compgen -W "it en de" -- "$cur") )
@@ -54,9 +65,11 @@ _glia() {
             COMPREPLY=( $(compgen -W "help" -- "$cur") )
             return ;;
         rm|remove)
-            # -a rm <name>
-            [ "${COMP_WORDS[COMP_CWORD-2]}" = "-a" ] || [ "${COMP_WORDS[COMP_CWORD-2]}" = "--alias" ] \
-                && COMPREPLY=( $(compgen -W "$(_glia_alias_names)" -- "$cur") )
+            # -a rm <alias>  ·  -m rm <model>
+            case "${COMP_WORDS[COMP_CWORD-2]}" in
+                -a|--alias) COMPREPLY=( $(compgen -W "$(_glia_alias_names)" -- "$cur") ) ;;
+                -m|--model) COMPREPLY=( $(compgen -W "$(_glia_model_names)" -- "$cur") ) ;;
+            esac
             return ;;
     esac
 

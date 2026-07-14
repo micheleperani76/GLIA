@@ -243,12 +243,13 @@ footer .fbrand{font-weight:800;color:var(--white);font-size:1.1rem;margin-bottom
   <div class="wrap">
     <div class="eyebrow">Runs on your hardware</div>
     <h2>Model tiers <span class="accent">by machine</span></h2>
-    <p class="lead"><code style="font-family:var(--mono);color:var(--teal)">glia-hardware</code> detects your RAM, GPU and VRAM and recommends the right local model.</p>
+    <p class="lead"><code style="font-family:var(--mono);color:var(--teal)">glia-hardware</code> detects your RAM, GPU and VRAM and recommends the right local model — and <code style="font-family:var(--mono);color:var(--teal)">glia -m pull</code> turns that into a guided menu of up to 10 models that actually fit your machine.</p>
     <table class="tbl">
       <thead><tr><th>Tier</th><th>Hardware</th><th>Models</th></tr></thead>
       <tbody>
         <tr><td>1</td><td>&lt;16 GB RAM, no GPU</td><td class="mono">qwen3:4b · gemma3:4b · llama3.2:3b</td></tr>
         <tr><td>2</td><td>≥16 GB RAM, no GPU</td><td class="mono">qwen2.5-coder:7b · qwen3:8b · mistral:7b</td></tr>
+        <tr><td>2+</td><td>≥24 GB RAM, no GPU</td><td class="mono">qwen3:30b-a3b (MoE) · qwen3:14b · qwen2.5-coder:14b</td></tr>
         <tr><td>3</td><td>GPU ≥12 GB VRAM</td><td class="mono">qwen2.5-coder:14b · phi4:14b · deepseek-r1:14b</td></tr>
         <tr><td>4</td><td>GPU ≥20 GB VRAM</td><td class="mono">qwen3-coder:30b · qwen2.5-coder:32b · devstral:24b</td></tr>
       </tbody>

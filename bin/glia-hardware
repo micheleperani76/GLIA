@@ -1,16 +1,27 @@
 #!/usr/bin/env bash
 # ============================================================
 #  glia-hardware - Hardware detection and AI model recommendation
-#  Version: 1.0 - 2026-07-11
+#  Version: 1.1 - 2026-07-14
 #  Author: Michele (with Claude)
 #  Project: GLIA / LinuxIA
 #
 #  Detects RAM and GPU and recommends the right Ollama model tier.
 #  Used: manually, by the installer, and to switch AI engine.
 #
+#  What's new in v1.1 ("feasible list"):
+#   - CATALOG: curated model catalog with per-model requirements
+#     (min RAM/VRAM, download size, category)
+#   - `-l`: prints up to 10 models FEASIBLE on this machine, best first,
+#     machine-readable (name|download_gb|category|recommended) - used by
+#     `glia -m pull` for the guided download menu
+#   - CPU tier split: with >=24 GB RAM the recommended model is the MoE
+#     qwen3:30b-a3b (3B active params: fast on CPU, big-model quality)
+#   - JSON output gains "gpu_name"
+#
 #  Usage:
 #    glia-hardware          full report with recommended models
 #    glia-hardware -m       print only the recommended model (for scripts)
+#    glia-hardware -l       feasible models for this machine (for glia -m pull)
 #    glia-hardware -j       JSON output (for installer/Calamares)
 #    glia-hardware -h       this help
 # ============================================================
@@ -19,8 +30,34 @@
 # Models per tier: the first of each list is the recommended one
 TIER1_MODELS=("qwen3:4b" "gemma3:4b" "llama3.2:3b")                 # base (<16 GB RAM, no GPU)
 TIER2_MODELS=("qwen2.5-coder:7b" "qwen3:8b" "mistral:7b")           # mid  (>=16 GB RAM, no GPU)
+TIER2PLUS_MODELS=("qwen3:30b-a3b" "qwen3:14b" "qwen2.5-coder:14b")  # mid+ (>=24 GB RAM, no GPU: MoE fits)
 TIER3_MODELS=("qwen2.5-coder:14b" "phi4:14b" "deepseek-r1:14b")     # high (GPU >=12 GB VRAM)
 TIER4_MODELS=("qwen3-coder:30b" "qwen2.5-coder:32b" "devstral:24b") # top  (GPU >=20 GB VRAM)
+
+# Model catalog for the feasible list (-l), ordered best/biggest first.
+#   name | min RAM (or VRAM) GB to run it | download GB | category
+#   category: general | coding | light | moe | reasoning
+CATALOG=(
+    "qwen2.5-coder:32b|24|20|coding"
+    "deepseek-r1:32b|24|20|reasoning"
+    "qwen3-coder:30b|22|19|coding"
+    "qwen3:30b-a3b|22|19|moe"
+    "devstral:24b|18|14|coding"
+    "qwen3:14b|11|9.3|general"
+    "phi4:14b|11|9.1|general"
+    "qwen2.5-coder:14b|11|9.0|coding"
+    "deepseek-r1:14b|11|9.0|reasoning"
+    "gemma3:12b|10|8.1|general"
+    "qwen3:8b|6|5.2|general"
+    "deepseek-r1:8b|6|5.2|reasoning"
+    "llama3.1:8b|6|4.9|general"
+    "qwen2.5-coder:7b|6|4.7|coding"
+    "mistral:7b|5|4.1|general"
+    "gemma3:4b|4|3.3|light"
+    "qwen3:4b|4|2.6|light"
+    "llama3.2:3b|3|2.0|light"
+    "qwen3:1.7b|2|1.4|light"
+)
 # ---------------------------------------------------
 
 # ------------------- FUNCTIONS ----------------------
@@ -28,11 +65,12 @@ GREEN='\033[1;32m'; YELLOW='\033[1;33m'; BLUE='\033[1;34m'; NC='\033[0m'
 
 show_help() {
     cat <<EOF
-glia-hardware v1.0 - detects hardware and recommends the AI model for glia
+glia-hardware v1.1 - detects hardware and recommends the AI model for glia
 
 Usage:
   glia-hardware       full report
   glia-hardware -m    recommended model only
+  glia-hardware -l    feasible models for this machine (name|download_gb|category|recommended)
   glia-hardware -j    JSON output
   glia-hardware -h    this help
 EOF
@@ -78,6 +116,9 @@ pick_tier() {
     elif [ "$GPU_VRAM_GB" -ge 12 ]; then
         TIER=3; MODELS=("${TIER3_MODELS[@]}")
         REASON="$GPU_TYPE GPU with ${GPU_VRAM_GB} GB VRAM"
+    elif [ "$RAM_GB" -ge 24 ]; then
+        TIER=2; MODELS=("${TIER2PLUS_MODELS[@]}")
+        REASON="${RAM_GB} GB RAM, CPU inference (MoE fits)"
     elif [ "$RAM_GB" -ge 16 ]; then
         TIER=2; MODELS=("${TIER2_MODELS[@]}")
         REASON="${RAM_GB} GB RAM, CPU inference"
@@ -108,6 +149,32 @@ report() {
     echo "To install:  ollama pull $RECOMMENDED"
 }
 
+list_feasible() {
+    # prints up to 10 models FEASIBLE on this machine, best first, as:
+    #   name|download_gb|category|recommended(0/1)
+    # feasible = fits in RAM (or in GPU VRAM) AND the download fits on disk.
+    # Machine-readable on purpose: `glia -m pull` builds its menu from this.
+    local dir avail_gb entry name min_ram dl cat need rec_line="" lines=""
+    for dir in /usr/share/ollama /var/lib/ollama "$HOME/.ollama" "$HOME"; do
+        [ -d "$dir" ] && break
+    done
+    avail_gb=$(df -BG --output=avail "$dir" 2>/dev/null | tail -n1 | tr -dc '0-9')
+    for entry in "${CATALOG[@]}"; do
+        IFS='|' read -r name min_ram dl cat <<< "$entry"
+        # enough memory? (plain RAM, or dedicated GPU VRAM)
+        if [ "$min_ram" -le "$RAM_GB" ] || { [ "$GPU_VRAM_GB" -gt 0 ] && [ "$min_ram" -le "$GPU_VRAM_GB" ]; }; then
+            need=$(( ${dl%%.*} + 1 ))          # download size rounded up
+            [ -n "$avail_gb" ] && [ "$need" -gt "$avail_gb" ] && continue
+            if [ "$name" = "$RECOMMENDED" ]; then
+                rec_line="$name|$dl|$cat|1"
+            else
+                lines+="$name|$dl|$cat|0"$'\n'
+            fi
+        fi
+    done
+    printf '%s\n%s' "$rec_line" "$lines" | sed '/^$/d' | head -n 10
+}
+
 output_json() {
     local list m first=1
     for m in "${MODELS[@]}"; do
@@ -115,7 +182,7 @@ output_json() {
         list+="\"$m\""; first=0
     done
     cat <<EOF
-{"ram_gb":$RAM_GB,"gpu_type":"$GPU_TYPE","gpu_vram_gb":$GPU_VRAM_GB,"tier":$TIER,"recommended":"$RECOMMENDED","models":[$list]}
+{"ram_gb":$RAM_GB,"gpu_type":"$GPU_TYPE","gpu_name":"$GPU_NAME","gpu_vram_gb":$GPU_VRAM_GB,"tier":$TIER,"recommended":"$RECOMMENDED","models":[$list]}
 EOF
 }
 
@@ -127,6 +194,7 @@ pick_tier
 case "$1" in
     -h|--help) show_help ;;
     -m)        echo "$RECOMMENDED" ;;
+    -l)        list_feasible ;;
     -j)        output_json ;;
     "")        report ;;
     *)         show_help; exit 1 ;;
