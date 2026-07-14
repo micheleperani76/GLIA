@@ -336,9 +336,6 @@ GLIA is actively evolving. Planned and in-progress work:
   path instead of pacman/apt/dnf, `ollama serve`/launchd instead of systemd, and
   a modern bash. I won't be building this one myself — looking for a contributor
   to own and maintain the macOS port.
-- **GNOME Shell search provider.** Call `glia` straight from the GNOME overview
-  search: type a request, get the proposed command without opening a terminal
-  first.
 - **Btrfs snapshots** as a safety net, plus branding and polish (phase 5).
 - **Lightweight memory retrieval** if the stored facts outgrow the prompt.
 - **A terminal-first desktop — the long-term vision.** The most ambitious idea:
