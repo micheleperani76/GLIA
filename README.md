@@ -40,6 +40,40 @@ requests into shell commands, with configurable approval levels.
 plain words, guiding the AI with hints to fix a failed command, and turning the
 result into a saved shortcut.
 
+## Why now
+
+AI models keep getting smaller and sharper, and personal computers keep getting
+more powerful. Running a genuinely capable assistant — one that understands what
+you ask and can act on it — entirely on your own machine is about to go from
+exotic to ordinary.
+
+That's a fork in the road. All that local power can turn the computer into a
+black box you talk *at* and stop understanding — or it can become the best
+teacher the command line has ever had. GLIA takes the second road: not an
+assistant that uses the machine for you, but one that hands you the machine —
+from zero if you're just starting, or with far more reach if you already know
+your way around. The shell newcomers of that near future, with capable PCs and a
+local AI beside them, shouldn't be handed a black box. They should be helped in.
+That's who GLIA is for.
+
+**In good company.** The idea that a computer should *amplify* a person rather
+than replace them — and that you master a machine by driving it yourself — is old
+and well argued:
+
+- Douglas Engelbart, *Augmenting Human Intellect* (1962): tools should increase
+  "the capability of a man to approach a complex problem situation, to gain
+  comprehension to suit his particular needs." Augment, don't automate away.
+  [Doug Engelbart Institute](https://www.dougengelbart.org/pubs/augment-3906.html)
+- Steve Jobs (1980): the computer as "the most remarkable tool … the equivalent
+  of a bicycle for our minds."
+  [The Marginalian](https://www.themarginalian.org/2011/12/21/steve-jobs-bicycle-for-the-mind-1990/)
+- Seymour Papert, *Mindstorms* (1980): not "the computer programs the child" but
+  "the child programs the computer," gaining mastery by doing.
+  [MIT News](https://news.mit.edu/2016/seymour-papert-pioneer-of-constructionist-learning-dies-0801)
+- Why it's timely: small language models now run locally on ordinary hardware —
+  fast, private, capable — through tools like Ollama and llama.cpp.
+  [Running LLMs locally](https://daily.dev/blog/running-llms-locally-ollama-llama-cpp-self-hosted-ai-developers/)
+
 ## How GLIA is different
 
 Plenty of tools now translate plain language into a shell command — it's a
