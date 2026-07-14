@@ -1,7 +1,12 @@
 #!/usr/bin/env bash
 # ============================================================
 #  install-assistant.sh - GLIA assistant installer (any distro)
-#  Version: 1.1 - 2026-07-14
+#  Version: 1.2 - 2026-07-14
+#
+#  What's new in v1.2:
+#   - step 8/8: final health check with glia --doctor
+#   - dry-run asks NO questions anymore: it only shows what the real
+#     run will do (the model question included)
 #
 #  What's new in v1.1:
 #   - step 6/7: installs shell completions for YOUR shell (bash or fish;
@@ -364,9 +369,13 @@ step_model() {
     # the model offered is the one glia-hardware recommends for THIS machine
     REC_MODEL=$("$REPO/bin/glia-hardware" -m 2>/dev/null)
     [ -z "$REC_MODEL" ] && REC_MODEL="$DEFAULT_MODEL"
-    if [ "$DRY_RUN" -eq 0 ]; then
-        "$REPO/bin/glia-hardware" 2>/dev/null || true
+    if [ "$DRY_RUN" -eq 1 ]; then
+        # a dry run never asks questions: it only SHOWS what the real run will do
+        printf '   %s[dry-run]%s %s\n' "$DIM" "$NC" "$(L model_ask)"
+        printf '   %s[dry-run]%s ollama pull %s\n' "$DIM" "$NC" "$REC_MODEL"
+        return
     fi
+    "$REPO/bin/glia-hardware" 2>/dev/null || true
     if ask_yn "$(L model_ask)" n; then
         run_sh "ollama pull $REC_MODEL"
     else
