@@ -178,6 +178,13 @@ bash scripts/install-assistant.sh             # then the real install
 > Fedora** paths are work-in-progress and **not yet tested** — if you try them,
 > feedback, issues and PRs are very welcome.
 
+**Shell notes.** `glia` itself is a bash script but runs fine from any shell.
+The installer adapts to yours: if `~/.local/bin` is missing from your PATH it
+offers to fix the right config file (`.bashrc`, `.zshrc`, or `config.fish` via
+`fish_add_path`), and it installs TAB completion for **bash** and **fish**
+automatically. **zsh** has no native completion yet — you can load the bash
+one with `autoload bashcompinit && bashcompinit && source completions/glia.bash`.
+
 <details>
 <summary><b>Manual install</b> (for experts, or to see exactly what the script does)</summary>
 
@@ -192,6 +199,10 @@ sudo systemctl enable --now ollama
 ollama pull qwen2.5-coder:7b     # or the recommended one
 install -m 755 bin/glia bin/glia-hardware ~/.local/bin/
 mkdir -p ~/.config/aichat && cp config/aichat-config.yaml ~/.config/aichat/config.yaml
+# TAB completion — bash:
+mkdir -p ~/.local/share/bash-completion/completions && cp completions/glia.bash ~/.local/share/bash-completion/completions/glia
+# TAB completion — fish:
+mkdir -p ~/.config/fish/completions && cp completions/glia.fish ~/.config/fish/completions/
 ```
 
 On Debian, Fedora and other distros:

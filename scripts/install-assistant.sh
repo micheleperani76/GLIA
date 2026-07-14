@@ -1,7 +1,13 @@
 #!/usr/bin/env bash
 # ============================================================
 #  install-assistant.sh - GLIA assistant installer (any distro)
-#  Version: 1.0 - 2026-07-13
+#  Version: 1.1 - 2026-07-14
+#
+#  What's new in v1.1:
+#   - step 6/7: installs shell completions for YOUR shell (bash or fish;
+#     zsh gets a hint - it has no native completion here yet)
+#   - step 7/7: the offered model is the one RECOMMENDED by glia-hardware
+#     for this machine, not a fixed default
 #  Author: Michele (with Claude)
 #  Project: GLIA (GNU Linux IA)
 #
@@ -85,24 +91,33 @@ L() {
         it:pm_found)  echo "Distribuzione rilevata, package manager:" ;;
         de:pm_found)  echo "Distribution erkannt, Paketmanager:" ;;
         *:pm_found)   echo "Detected distro, package manager:" ;;
-        it:s_deps)    echo "1/6  Dipendenze di base (curl, jq)" ;;
-        de:s_deps)    echo "1/6  Basis-Abhaengigkeiten (curl, jq)" ;;
-        *:s_deps)     echo "1/6  Base dependencies (curl, jq)" ;;
-        it:s_ollama)  echo "2/6  Ollama (il motore che fa girare l'IA in locale)" ;;
-        de:s_ollama)  echo "2/6  Ollama (die lokale KI-Engine)" ;;
-        *:s_ollama)   echo "2/6  Ollama (the engine that runs the AI locally)" ;;
-        it:s_aichat)  echo "3/6  aichat (il ponte tra glia e ollama)" ;;
-        de:s_aichat)  echo "3/6  aichat (die Bruecke zwischen glia und ollama)" ;;
-        *:s_aichat)   echo "3/6  aichat (the bridge between glia and ollama)" ;;
-        it:s_files)   echo "4/6  Comando glia e glia-hardware in $INSTALL_DIR" ;;
-        de:s_files)   echo "4/6  Befehl glia und glia-hardware nach $INSTALL_DIR" ;;
-        *:s_files)    echo "4/6  glia and glia-hardware into $INSTALL_DIR" ;;
-        it:s_conf)    echo "5/6  Configurazione di aichat" ;;
-        de:s_conf)    echo "5/6  aichat-Konfiguration" ;;
-        *:s_conf)     echo "5/6  aichat configuration" ;;
-        it:s_model)   echo "6/6  Modello IA" ;;
-        de:s_model)   echo "6/6  KI-Modell" ;;
-        *:s_model)    echo "6/6  AI model" ;;
+        it:s_deps)    echo "1/7  Dipendenze di base (curl, jq)" ;;
+        de:s_deps)    echo "1/7  Basis-Abhaengigkeiten (curl, jq)" ;;
+        *:s_deps)     echo "1/7  Base dependencies (curl, jq)" ;;
+        it:s_ollama)  echo "2/7  Ollama (il motore che fa girare l'IA in locale)" ;;
+        de:s_ollama)  echo "2/7  Ollama (die lokale KI-Engine)" ;;
+        *:s_ollama)   echo "2/7  Ollama (the engine that runs the AI locally)" ;;
+        it:s_aichat)  echo "3/7  aichat (il ponte tra glia e ollama)" ;;
+        de:s_aichat)  echo "3/7  aichat (die Bruecke zwischen glia und ollama)" ;;
+        *:s_aichat)   echo "3/7  aichat (the bridge between glia and ollama)" ;;
+        it:s_files)   echo "4/7  Comando glia e glia-hardware in $INSTALL_DIR" ;;
+        de:s_files)   echo "4/7  Befehl glia und glia-hardware nach $INSTALL_DIR" ;;
+        *:s_files)    echo "4/7  glia and glia-hardware into $INSTALL_DIR" ;;
+        it:s_conf)    echo "5/7  Configurazione di aichat" ;;
+        de:s_conf)    echo "5/7  aichat-Konfiguration" ;;
+        *:s_conf)     echo "5/7  aichat configuration" ;;
+        it:s_comp)    echo "6/7  Completamento TAB per la tua shell" ;;
+        de:s_comp)    echo "6/7  TAB-Vervollstaendigung fuer deine Shell" ;;
+        *:s_comp)     echo "6/7  TAB completion for your shell" ;;
+        it:comp_zsh)  echo "zsh: nessun completamento nativo per ora. Puoi usare quello bash con: autoload bashcompinit && bashcompinit && source completions/glia.bash" ;;
+        de:comp_zsh)  echo "zsh: noch keine native Vervollstaendigung. Die bash-Variante geht mit: autoload bashcompinit && bashcompinit && source completions/glia.bash" ;;
+        *:comp_zsh)   echo "zsh: no native completion yet. You can use the bash one with: autoload bashcompinit && bashcompinit && source completions/glia.bash" ;;
+        it:comp_skip) echo "shell non riconosciuta: completamento saltato (vedi la cartella completions/ del repo)." ;;
+        de:comp_skip) echo "Shell nicht erkannt: Vervollstaendigung uebersprungen (siehe completions/ im Repo)." ;;
+        *:comp_skip)  echo "shell not recognized: completion skipped (see the repo's completions/ folder)." ;;
+        it:s_model)   echo "7/7  Modello IA" ;;
+        de:s_model)   echo "7/7  KI-Modell" ;;
+        *:s_model)    echo "7/7  AI model" ;;
         it:have)      echo "gia' presente, salto." ;;
         de:have)      echo "bereits vorhanden, uebersprungen." ;;
         *:have)       echo "already present, skipping." ;;
@@ -115,12 +130,12 @@ L() {
         it:aichat_fail) echo "Non sono riuscito a scaricare aichat. Prendilo a mano da: https://github.com/$AICHAT_REPO/releases" ;;
         de:aichat_fail) echo "aichat-Download fehlgeschlagen. Hol es manuell: https://github.com/$AICHAT_REPO/releases" ;;
         *:aichat_fail)  echo "Could not download aichat. Get it by hand from: https://github.com/$AICHAT_REPO/releases" ;;
-        it:model_ask) echo "Scarico ora il modello $DEFAULT_MODEL (~5 GB)? [s/N]: " ;;
-        de:model_ask) echo "Modell $DEFAULT_MODEL (~5 GB) jetzt laden? [j/N]: " ;;
-        *:model_ask)  echo "Download model $DEFAULT_MODEL (~5 GB) now? [y/N]: " ;;
-        it:model_skip) echo "Salto il download. Piu' tardi:  ollama pull $DEFAULT_MODEL   (o segui glia-hardware)" ;;
-        de:model_skip) echo "Uebersprungen. Spaeter:  ollama pull $DEFAULT_MODEL   (oder glia-hardware folgen)" ;;
-        *:model_skip)  echo "Skipped. Later:  ollama pull $DEFAULT_MODEL   (or follow glia-hardware)" ;;
+        it:model_ask) echo "Scarico ora il modello consigliato per questa macchina, $REC_MODEL? [s/N]: " ;;
+        de:model_ask) echo "Das fuer diesen Rechner empfohlene Modell $REC_MODEL jetzt laden? [j/N]: " ;;
+        *:model_ask)  echo "Download $REC_MODEL, the model recommended for this machine, now? [y/N]: " ;;
+        it:model_skip) echo "Salto il download. Piu' tardi:  ollama pull $REC_MODEL   (o: glia -m pull, guidato)" ;;
+        de:model_skip) echo "Uebersprungen. Spaeter:  ollama pull $REC_MODEL   (oder: glia -m pull, gefuehrt)" ;;
+        *:model_skip)  echo "Skipped. Later:  ollama pull $REC_MODEL   (or: glia -m pull, guided)" ;;
         it:path_warn) echo "Attenzione: $INSTALL_DIR non e' nel PATH: il comando non partirebbe scrivendo solo 'glia'." ;;
         de:path_warn) echo "Achtung: $INSTALL_DIR ist nicht im PATH: 'glia' wuerde so nicht starten." ;;
         *:path_warn)  echo "Note: $INSTALL_DIR is not in your PATH, so typing just 'glia' would not work." ;;
@@ -318,13 +333,39 @@ step_path() {
     echo -e "   ${GREEN}$(L path_done)${NC}"
 }
 
+step_completions() {
+    # TAB completion for the user's shell; generic, nothing machine-specific
+    echo -e "${BLUE}$(L s_comp)${NC}"
+    local shname
+    shname="$(basename "${SHELL:-bash}")"
+    case "$shname" in
+        fish)
+            run mkdir -p "$HOME/.config/fish/completions"
+            run cp "$REPO/completions/glia.fish" "$HOME/.config/fish/completions/glia.fish"
+            ;;
+        bash)
+            run mkdir -p "$HOME/.local/share/bash-completion/completions"
+            run cp "$REPO/completions/glia.bash" "$HOME/.local/share/bash-completion/completions/glia"
+            ;;
+        zsh)
+            echo -e "   ${DIM}$(L comp_zsh)${NC}"
+            ;;
+        *)
+            echo -e "   ${DIM}$(L comp_skip)${NC}"
+            ;;
+    esac
+}
+
 step_model() {
     echo -e "${BLUE}$(L s_model)${NC}"
-    if [ "$DRY_RUN" -eq 0 ] && [ -x "$INSTALL_DIR/glia-hardware" ]; then
-        "$INSTALL_DIR/glia-hardware" 2>/dev/null || true
+    # the model offered is the one glia-hardware recommends for THIS machine
+    REC_MODEL=$("$REPO/bin/glia-hardware" -m 2>/dev/null)
+    [ -z "$REC_MODEL" ] && REC_MODEL="$DEFAULT_MODEL"
+    if [ "$DRY_RUN" -eq 0 ]; then
+        "$REPO/bin/glia-hardware" 2>/dev/null || true
     fi
     if ask_yn "$(L model_ask)" n; then
-        run_sh "ollama pull $DEFAULT_MODEL"
+        run_sh "ollama pull $REC_MODEL"
     else
         echo -e "   ${DIM}$(L model_skip)${NC}"
     fi
@@ -372,6 +413,7 @@ step_ollama
 step_aichat
 step_files
 step_config
+step_completions
 step_path
 step_model
 
