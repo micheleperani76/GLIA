@@ -1,7 +1,12 @@
 #!/usr/bin/env bash
 # ============================================================
 #  install-assistant.sh - GLIA assistant installer (any distro)
-#  Version: 1.2 - 2026-07-14
+#  Version: 1.3 - 2026-07-14
+#
+#  What's new in v1.3:
+#   - step 7/8 checks Ollama for models ALREADY downloaded: pick one of
+#     them as the default (numbered list) or download a new one (the
+#     recommended); the chosen default is written to ~/.config/glia/model
 #
 #  What's new in v1.2:
 #   - step 8/8: final health check with glia --doctor
@@ -138,6 +143,18 @@ L() {
         it:aichat_fail) echo "Non sono riuscito a scaricare aichat. Prendilo a mano da: https://github.com/$AICHAT_REPO/releases" ;;
         de:aichat_fail) echo "aichat-Download fehlgeschlagen. Hol es manuell: https://github.com/$AICHAT_REPO/releases" ;;
         *:aichat_fail)  echo "Could not download aichat. Get it by hand from: https://github.com/$AICHAT_REPO/releases" ;;
+        it:model_found) echo "Ho trovato queste IA già scaricate in Ollama:" ;;
+        de:model_found) echo "Diese KIs sind in Ollama schon vorhanden:" ;;
+        *:model_found)  echo "Found these AIs already downloaded in Ollama:" ;;
+        it:model_new)  echo "scarica una nuova IA — consigliata:" ;;
+        de:model_new)  echo "eine neue KI laden — empfohlen:" ;;
+        *:model_new)   echo "download a new AI — recommended:" ;;
+        it:model_pick_q) echo "Quale predefinita? numero o n (Invio = 1): " ;;
+        de:model_pick_q) echo "Welche als Standard? Nummer oder n (Enter = 1): " ;;
+        *:model_pick_q)  echo "Which default? number or n (Enter = 1): " ;;
+        it:model_set)  echo "Modello predefinito impostato:" ;;
+        de:model_set)  echo "Standardmodell gesetzt:" ;;
+        *:model_set)   echo "Default model set:" ;;
         it:model_ask) echo "Scarico ora il modello consigliato per questa macchina, $REC_MODEL? [s/N]: " ;;
         de:model_ask) echo "Das fuer diesen Rechner empfohlene Modell $REC_MODEL jetzt laden? [j/N]: " ;;
         *:model_ask)  echo "Download $REC_MODEL, the model recommended for this machine, now? [y/N]: " ;;
@@ -369,15 +386,58 @@ step_model() {
     # the model offered is the one glia-hardware recommends for THIS machine
     REC_MODEL=$("$REPO/bin/glia-hardware" -m 2>/dev/null)
     [ -z "$REC_MODEL" ] && REC_MODEL="$DEFAULT_MODEL"
+    # models ALREADY downloaded in ollama (v1.3): offer them first
+    local models
+    models=$(ollama list 2>/dev/null | awk 'NR>1 && $1!="" {print $1}' | sort)
+
     if [ "$DRY_RUN" -eq 1 ]; then
         # a dry run never asks questions: it only SHOWS what the real run will do
-        printf '   %s[dry-run]%s %s\n' "$DIM" "$NC" "$(L model_ask)"
-        printf '   %s[dry-run]%s ollama pull %s\n' "$DIM" "$NC" "$REC_MODEL"
+        if [ -n "$models" ]; then
+            printf '   %s[dry-run]%s %s\n' "$DIM" "$NC" "$(L model_found)"
+            printf '%s\n' "$models" | sed 's/^/              /'
+            printf '   %s[dry-run]%s %s\n' "$DIM" "$NC" "$(L model_pick_q)"
+        else
+            printf '   %s[dry-run]%s %s\n' "$DIM" "$NC" "$(L model_ask)"
+            printf '   %s[dry-run]%s ollama pull %s\n' "$DIM" "$NC" "$REC_MODEL"
+        fi
         return
     fi
+
+    if [ -n "$models" ]; then
+        # something is already there: pick a default, or pull a new one
+        local i=1 name choice sel
+        echo "   $(L model_found)"
+        while IFS= read -r name; do
+            printf '     %d) %s\n' "$i" "$name"
+            i=$((i+1))
+        done <<< "$models"
+        printf '     n) %s %s\n' "$(L model_new)" "$REC_MODEL"
+        if tty_ok && [ "$ASSUME_YES" -eq 0 ]; then
+            read -r -p "   $(L model_pick_q)" choice < /dev/tty || choice=""
+        else
+            choice=""
+        fi
+        sel=""
+        case "$choice" in
+            n|N) run_sh "ollama pull $REC_MODEL"; sel="$REC_MODEL" ;;
+            *)   [ -z "$choice" ] && choice=1
+                 sel=$(printf '%s\n' "$models" | sed -n "${choice}p")
+                 [ -z "$sel" ] && sel=$(printf '%s\n' "$models" | head -n1) ;;
+        esac
+        mkdir -p "$HOME/.config/glia"
+        printf '%s\n' "$sel" > "$HOME/.config/glia/model"
+        echo -e "   ${GREEN}$(L model_set) $sel${NC}   ${DIM}(echo '$sel' > ~/.config/glia/model)${NC}"
+        log "MODEL default: $sel"
+        return
+    fi
+
+    # nothing downloaded yet: offer the recommended model
     "$REPO/bin/glia-hardware" 2>/dev/null || true
     if ask_yn "$(L model_ask)" n; then
         run_sh "ollama pull $REC_MODEL"
+        mkdir -p "$HOME/.config/glia"
+        printf '%s\n' "$REC_MODEL" > "$HOME/.config/glia/model"
+        log "MODEL default: $REC_MODEL"
     else
         echo -e "   ${DIM}$(L model_skip)${NC}"
     fi
