@@ -331,6 +331,11 @@ GLIA is actively evolving. Planned and in-progress work:
   and Fedora, but the automated installer has so far been tested on
   Arch/CachyOS only. **Debian and Fedora need testers** — feedback, issues and
   PRs are very welcome.
+- **macOS support — help wanted (contributor-led).** The assistant only, never a
+  standalone distro: pure GLIA support for people on a Mac. It needs a Homebrew
+  path instead of pacman/apt/dnf, `ollama serve`/launchd instead of systemd, and
+  a modern bash. I won't be building this one myself — looking for a contributor
+  to own and maintain the macOS port.
 - **GNOME Shell search provider.** Call `glia` straight from the GNOME overview
   search: type a request, get the proposed command without opening a terminal
   first.
