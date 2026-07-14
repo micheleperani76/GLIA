@@ -176,6 +176,15 @@ L() {
         it:try)       echo "Provalo cosi':" ;;
         de:try)       echo "Probier es so:" ;;
         *:try)        echo "Try it like this:" ;;
+        it:try_req)   echo "scrivi cosa vuoi fare, a parole tue" ;;
+        de:try_req)   echo "schreibe in deinen Worten, was du tun willst" ;;
+        *:try_req)    echo "type what you want to do, in your own words" ;;
+        it:try_help)  echo "l'aiuto: ti assiste sempre, per qualsiasi informazione" ;;
+        de:try_help)  echo "die Hilfe: sie steht dir immer zur Seite, fuer alles" ;;
+        *:try_help)   echo "the help: it always has your back, for everything" ;;
+        it:try_rename) echo "dai all'assistente il nome che ti piace ('glia' resta sempre)" ;;
+        de:try_rename) echo "gib dem Assistenten den Namen, der dir gefaellt ('glia' bleibt immer)" ;;
+        *:try_rename)  echo "give the assistant the name you like ('glia' always stays)" ;;
         it:logat)     echo "Log dell'installazione:" ;;
         de:logat)     echo "Installationsprotokoll:" ;;
         *:logat)      echo "Install log:" ;;
@@ -504,6 +513,8 @@ step_check
 echo
 echo -e "${GREEN}$(L done)${NC}"
 echo -e "$(L try)"
-echo "   ${ASSIST_NAME} \"...\"       # $( [ "$UILANG" = it ] && echo 'scrivi cosa vuoi fare' || echo 'type what you want to do' )"
+echo "   ${ASSIST_NAME} \"...\"                # $(L try_req)"
+echo "   ${ASSIST_NAME} -h                   # $(L try_help)"
+echo "   ${ASSIST_NAME} --rename <nome>      # $(L try_rename)"
 echo -e "${DIM}$(L logat) $LOGFILE${NC}"
 log "END"
