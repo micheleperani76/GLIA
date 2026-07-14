@@ -1,6 +1,6 @@
 # ============================================================
 #  glia.fish - Fish completion for the glia AI assistant
-#  Version: 1.0 - 2026-07-14
+#  Version: 1.1 - 2026-07-14 (adds --update glia self-update)
 #  Author: Michele (with Claude)
 #  Project: GLIA (GNU Linux IA)
 #
@@ -82,6 +82,9 @@ complete -c glia -n 'contains -- (__glia_prev) --lang' -a 'it en de'
 
 # groups that take "help"
 complete -c glia -n 'contains -- (__glia_prev) --update --memory -p --project -i --interactive' -a 'help'
+
+# --update glia: update the GLIA program itself (self-update)
+complete -c glia -n 'contains -- (__glia_prev) --update' -a 'glia' -d 'update GLIA itself'
 
 # renamed assistant? add its name too, e.g.:
 # complete -c arx --wraps glia

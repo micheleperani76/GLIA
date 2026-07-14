@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ============================================================
 #  glia.bash - Bash completion for the glia AI assistant
-#  Version: 1.1 - 2026-07-14 (adds -m pull/update/rm/list and --update)
+#  Version: 1.2 - 2026-07-14 (adds --update glia self-update)
 #  Author: Michele (with Claude)
 #  Project: GLIA (GNU Linux IA)
 #
@@ -45,7 +45,7 @@ _glia() {
             COMPREPLY=( $(compgen -W "help list ls ps stop pull update rm $(_glia_model_names)" -- "$cur") )
             return ;;
         --update)
-            COMPREPLY=( $(compgen -W "help" -- "$cur") )
+            COMPREPLY=( $(compgen -W "help glia" -- "$cur") )
             return ;;
         pull)
             # -m pull <name>: a NEW model name is free text, nothing to complete

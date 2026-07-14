@@ -217,7 +217,7 @@
 # ============================================================
 
 # ----------------- CONFIGURATION -----------------
-VERSION="2.11.0"
+VERSION="2.12.0"
 DEFAULT_MODEL="qwen2.5-coder:7b"
 if [ -r "$HOME/.config/glia/model" ]; then
     MODEL="ollama:$(head -n1 "$HOME/.config/glia/model")"
@@ -665,6 +665,30 @@ t() {
         it:eng_restart)     echo "Riavvio il servizio per attivare la nuova versione:" ;;
         de:eng_restart)     echo "Ich starte den Dienst neu, um die neue Version zu aktivieren:" ;;
         *:eng_restart)      echo "Restarting the service to activate the new version:" ;;
+        it:su_current)      echo "Versione locale:" ;;
+        de:su_current)      echo "Lokale Version:" ;;
+        *:su_current)       echo "Local version:" ;;
+        it:su_dlfail)       echo "Download del programma fallito." ;;
+        de:su_dlfail)       echo "Download des Programms fehlgeschlagen." ;;
+        *:su_dlfail)        echo "Program download failed." ;;
+        it:su_badfile)      echo "File scaricato non valido (controllo sintassi fallito)." ;;
+        de:su_badfile)      echo "Heruntergeladene Datei ungueltig (Syntaxpruefung fehlgeschlagen)." ;;
+        *:su_badfile)       echo "Downloaded file is invalid (syntax check failed)." ;;
+        it:su_uptodate)     echo "Sei gia' alla versione piu' recente." ;;
+        de:su_uptodate)     echo "Du hast bereits die neueste Version." ;;
+        *:su_uptodate)      echo "You are already on the latest version." ;;
+        it:su_new)          echo "Nuova versione disponibile:" ;;
+        de:su_new)          echo "Neue Version verfuegbar:" ;;
+        *:su_new)           echo "New version available:" ;;
+        it:su_confirm)      echo "Invio = aggiorna | n = annulla: " ;;
+        de:su_confirm)      echo "Enter = aktualisieren | n = abbrechen: " ;;
+        *:su_confirm)       echo "Enter = update | n = cancel: " ;;
+        it:su_denied)       echo "Aggiornamento annullato." ;;
+        de:su_denied)       echo "Update abgebrochen." ;;
+        *:su_denied)        echo "Update cancelled." ;;
+        it:su_done)         echo "Programma aggiornato." ;;
+        de:su_done)         echo "Programm aktualisiert." ;;
+        *:su_done)          echo "Program updated." ;;
         it:mp_machine)      echo "Macchina:" ;;
         de:mp_machine)      echo "Rechner:" ;;
         *:mp_machine)       echo "Machine:" ;;
@@ -814,6 +838,7 @@ Impostazioni:
   $ASSIST_NAME --lang <it|en|de>   cambia la lingua dell'interfaccia
   $ASSIST_NAME --doctor            controllo rapido: motore, modello, RAM, config
   $ASSIST_NAME --update            aggiorna il motore Ollama
+  $ASSIST_NAME --update glia       aggiorna GLIA stesso (il programma)
   $ASSIST_NAME --clear-cache       svuota la cache delle risposte
   $ASSIST_NAME --kaboom            disinstalla (chiede: solo il programma, o anche motore e IA)
   $ASSIST_NAME -V, --version       mostra la versione
@@ -861,6 +886,7 @@ Einstellungen:
   $ASSIST_NAME --lang <it|en|de>  Sprache der Oberfläche ändern
   $ASSIST_NAME --doctor           Schnellcheck: Engine, Modell, RAM, Config
   $ASSIST_NAME --update           Ollama-Engine aktualisieren
+  $ASSIST_NAME --update glia      GLIA selbst aktualisieren (das Programm)
   $ASSIST_NAME --clear-cache      Antwort-Cache leeren
   $ASSIST_NAME --kaboom           deinstallieren (fragt: nur Programm, oder auch Engine und KIs)
   $ASSIST_NAME -V, --version      Version anzeigen
@@ -908,6 +934,7 @@ Settings:
   $ASSIST_NAME --lang <it|en|de>  change the interface language
   $ASSIST_NAME --doctor           quick check: engine, model, RAM, config
   $ASSIST_NAME --update           update the Ollama engine
+  $ASSIST_NAME --update glia      update GLIA itself (the program)
   $ASSIST_NAME --clear-cache      empty the answer cache
   $ASSIST_NAME --kaboom           uninstall (asks: program only, or engine and AIs too)
   $ASSIST_NAME -V, --version      show the version
@@ -1276,6 +1303,44 @@ engine_update() {
     else
         return 1
     fi
+}
+
+# ---- self-update (v2.12): update the GLIA program itself ----
+self_update() {
+    # Update the GLIA PROGRAM (this script), distinct from the engine.
+    # Download bin/glia from GitHub main, compare VERSION, syntax-check, ask,
+    # then install over the running command in place (sudo only if needed).
+    # Rename symlinks survive: they point to 'glia', replaced on disk.
+    # glia-hardware and the shell completions are refreshed too (best effort,
+    # only where they already exist).
+    local base="https://raw.githubusercontent.com/micheleperani76/GLIA/main"
+    local self dir tmp newver answer sudo=""
+    self="$(realpath "$0" 2>/dev/null)"; dir="$(dirname "$self")"
+    echo -e "${BLUE}$(t su_current)${NC} $VERSION"
+    tmp="$(mktemp)" || return 1
+    curl -fsSL "$base/bin/glia" -o "$tmp" || { echo -e "${RED}$(t su_dlfail)${NC}" >&2; rm -f "$tmp"; return 1; }
+    bash -n "$tmp" 2>/dev/null            || { echo -e "${RED}$(t su_badfile)${NC}" >&2; rm -f "$tmp"; return 1; }
+    newver="$(grep -m1 -oE 'VERSION="[0-9.]+"' "$tmp" | grep -oE '[0-9.]+')"
+    if [ "$newver" = "$VERSION" ]; then
+        echo -e "${GREEN}$(t su_uptodate)${NC}"; rm -f "$tmp"; return 0
+    fi
+    echo -e "$(t su_new) ${GREEN}${newver:-?}${NC}"
+    (exec 3</dev/tty) 2>/dev/null || { echo "$(t cancelled)"; rm -f "$tmp"; return 1; }
+    read -r -p "$(t su_confirm)" answer < /dev/tty || { rm -f "$tmp"; return 1; }
+    case "${answer,,}" in ""|"$YES_KEY") : ;; *) echo "$(t su_denied)"; rm -f "$tmp"; return 0 ;; esac
+    [ -w "$dir" ] || sudo="sudo"
+    $sudo install -m755 "$tmp" "$dir/glia" || { echo -e "${RED}$(t su_dlfail)${NC}" >&2; rm -f "$tmp"; return 1; }
+    write_log "self update" "$VERSION -> $newver"; rm -f "$tmp"
+    # companion files, best effort, only where they already exist
+    _su_get() { [ -e "$2" ] || return 0; local f s=""; f="$(mktemp)" || return 0
+        curl -fsSL "$base/$1" -o "$f" && { [ -w "$(dirname "$2")" ] || s="sudo"; $s install -m"$3" "$f" "$2"; }; rm -f "$f"; }
+    _su_get bin/glia-hardware "$dir/glia-hardware" 755
+    _su_get completions/glia.bash "$HOME/.local/share/bash-completion/completions/glia" 644
+    _su_get completions/glia.fish "$HOME/.config/fish/completions/glia.fish" 644
+    unset -f _su_get
+    echo -e "${GREEN}$(t su_done)${NC}"
+    show_equiv "curl -fsSL $base/bin/glia -o /tmp/glia && install -m755 /tmp/glia $dir/glia"
+    "$dir/glia" -V
 }
 
 # ---- kaboom (v2.11): guided uninstall ----
@@ -1882,6 +1947,10 @@ Due cose diverse, due aggiornamenti diversi.
 Motore:
   $ASSIST_NAME --update            aggiorna Ollama (usa il package manager di QUESTA macchina)
 
+Programma:
+  $ASSIST_NAME --update glia        aggiorna GLIA stesso (scarica l'ultima versione da GitHub)
+  a mano:  git clone https://github.com/micheleperani76/GLIA && ./GLIA/scripts/install-assistant.sh
+
 Modelli:
   $ASSIST_NAME -m pull             (da solo) check hardware + lista di IA fattibili, scegli e scarica
   $ASSIST_NAME -m pull <nome>      scarica una IA per nome (es. qwen3:8b)
@@ -1916,6 +1985,10 @@ Zwei verschiedene Dinge, zwei verschiedene Updates.
 Engine:
   $ASSIST_NAME --update            Ollama aktualisieren (nutzt den Paketmanager DIESES Rechners)
 
+Programm:
+  $ASSIST_NAME --update glia        GLIA selbst aktualisieren (laedt die neueste Version von GitHub)
+  manuell: git clone https://github.com/micheleperani76/GLIA && ./GLIA/scripts/install-assistant.sh
+
 Modelle:
   $ASSIST_NAME -m pull             (allein) Hardware-Check + Liste machbarer KIs, waehlen und laden
   $ASSIST_NAME -m pull <Name>      eine KI per Name laden (z. B. qwen3:8b)
@@ -1949,6 +2022,10 @@ Two different things, two different updates.
 
 Engine:
   $ASSIST_NAME --update            update Ollama (uses THIS machine's package manager)
+
+Program:
+  $ASSIST_NAME --update glia        update GLIA itself (downloads the latest version from GitHub)
+  by hand: git clone https://github.com/micheleperani76/GLIA && ./GLIA/scripts/install-assistant.sh
 
 Models:
   $ASSIST_NAME -m pull             (alone) hardware check + list of feasible AIs, pick and download
@@ -2713,8 +2790,9 @@ case "$1" in
     --update)
         shift
         case "${1:-}" in
-            help|-h|--help) page update_help ;;
-            *)              engine_update ;;
+            help|-h|--help)      page update_help ;;
+            glia|"$ASSIST_NAME") self_update ;;
+            *)                   engine_update ;;
         esac
         ;;
     --kaboom)
