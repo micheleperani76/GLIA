@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
 # ============================================================
 #  install-assistant.sh - GLIA assistant installer (any distro)
-#  Version: 1.3 - 2026-07-14
+#  Version: 1.4 - 2026-07-14
+#
+#  What's new in v1.4:
+#   - step 2/8 does NOT re-enable Ollama if the service is already
+#     active (avoids a needless sudo systemctl on existing setups)
 #
 #  What's new in v1.3:
 #   - step 7/8 checks Ollama for models ALREADY downloaded: pick one of
@@ -107,6 +111,9 @@ L() {
         it:s_ollama)  echo "2/8  Ollama (il motore che fa girare l'IA in locale)" ;;
         de:s_ollama)  echo "2/8  Ollama (die lokale KI-Engine)" ;;
         *:s_ollama)   echo "2/8  Ollama (the engine that runs the AI locally)" ;;
+        it:svc_active) echo "servizio ollama: gia' attivo" ;;
+        de:svc_active) echo "ollama-Dienst: bereits aktiv" ;;
+        *:svc_active)  echo "ollama service: already running" ;;
         it:s_aichat)  echo "3/8  aichat (il ponte tra glia e ollama)" ;;
         de:s_aichat)  echo "3/8  aichat (die Bruecke zwischen glia und ollama)" ;;
         *:s_aichat)   echo "3/8  aichat (the bridge between glia and ollama)" ;;
@@ -287,9 +294,14 @@ step_ollama() {
         echo -e "   ${DIM}$(L ollama_note)${NC}"
         run_sh "curl -fsSL $OLLAMA_INSTALL_URL | sh"
     fi
-    # make sure the service is up (the official script usually does this already)
+    # make sure the service is up (the official script usually does this already);
+    # skip if it's already active, to avoid a needless sudo on existing setups
     if command -v systemctl >/dev/null 2>&1; then
-        run $SUDO systemctl enable --now ollama
+        if systemctl is-active --quiet ollama; then
+            echo "   $(L svc_active)"
+        else
+            run $SUDO systemctl enable --now ollama
+        fi
     fi
 }
 

@@ -217,7 +217,7 @@
 # ============================================================
 
 # ----------------- CONFIGURATION -----------------
-VERSION="2.12.0"
+VERSION="2.12.1"
 DEFAULT_MODEL="qwen2.5-coder:7b"
 if [ -r "$HOME/.config/glia/model" ]; then
     MODEL="ollama:$(head -n1 "$HOME/.config/glia/model")"
@@ -412,6 +412,9 @@ t() {
         it:mem_empty)       echo "Nessun fatto memorizzato ($MEMFILE)." ;;
         de:mem_empty)       echo "Keine Fakten gespeichert ($MEMFILE)." ;;
         *:mem_empty)        echo "No facts stored ($MEMFILE)." ;;
+        it:mem_file)        echo "il file lo puoi modificare in:" ;;
+        de:mem_file)        echo "die Datei kannst du bearbeiten in:" ;;
+        *:mem_file)         echo "you can edit the file at:" ;;
         it:mem_usage)       echo "Uso: $PROG --remember \"<fatto>\"" ;;
         de:mem_usage)       echo "Verwendung: $PROG --remember \"<Fakt>\"" ;;
         *:mem_usage)        echo "Usage: $PROG --remember \"<fact>\"" ;;
@@ -1440,6 +1443,7 @@ remember_fact() {
 show_memory() {
     if [ -s "$MEMFILE" ]; then
         nl -w2 -s'. ' "$MEMFILE"
+        echo -e "${YELLOW}$(t mem_file) ${MEMFILE/#$HOME/\~}${NC}"
     else
         echo "$(t mem_empty)"
     fi
