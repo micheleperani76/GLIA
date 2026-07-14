@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ============================================================
 #  glia - AI terminal assistant (Ollama + aichat)
-#  Version: 2.13.0 - 2026-07-14
+#  Version: 2.13.1 - 2026-07-15
 #  Author: Michele (with Claude)
 #  Project: GLIA (GNU Linux IA)
 #
@@ -20,6 +20,8 @@
 #     detail. Region via WEB_REGION; results/pages tunable at the top.
 #   - teaching pillar: prints the equivalent `w3m -dump ...` command.
 #     Needs w3m; a guided install hint is shown if it is missing.
+#   - v2.13.1: the setup script installs w3m (base deps) and `--doctor`
+#     checks it; the website documents -w/-w+ under "Ask & explain".
 #
 #  What's new in v2.11 ("kaboom"):
 #   - `--kaboom`: guided uninstall. Asks what to remove: 1) only the
@@ -230,7 +232,7 @@
 # ============================================================
 
 # ----------------- CONFIGURATION -----------------
-VERSION="2.13.0"
+VERSION="2.13.1"
 DEFAULT_MODEL="qwen2.5-coder:7b"
 if [ -r "$HOME/.config/glia/model" ]; then
     MODEL="ollama:$(head -n1 "$HOME/.config/glia/model")"
