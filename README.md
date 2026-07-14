@@ -323,6 +323,38 @@ Beyond the tiers, `glia -m pull` (with no name) checks your RAM, GPU and disk
 and offers up to 10 models from a curated catalog that actually fit your
 machine — pick one by number, or run the `ollama pull` command it shows you.
 
+## Using other models — Hugging Face & GGUF
+
+GLIA runs on **Ollama**, and you are not limited to the models in the tiers
+above. Ollama can load models from two places:
+
+- **Ollama's official library** — a curated set of popular models, ready to
+  use: `ollama pull gemma3:4b`. This is what the tiers and `glia -m pull`
+  draw from.
+- **Any GGUF model from Hugging Face** — Ollama pulls community models
+  directly, as long as they are in **GGUF** format:
+
+  ```bash
+  ollama pull hf.co/<user>/<repo-GGUF>
+  # example:
+  ollama pull hf.co/bartowski/gemma-2-2b-it-GGUF
+  ```
+
+**What is GGUF?** It's the file format used by llama.cpp — the engine under
+Ollama — to run models efficiently on CPU and GPU. On Hugging Face the same
+model usually exists in two flavours, and only one of them runs here:
+
+- **GGUF** → ready to *run*. Look for repos whose name ends in `-GGUF` (often
+  published by users like `bartowski`, `unsloth` or `TheBloke`).
+- **safetensors / PyTorch** → the raw weights, meant for *training and
+  fine-tuning*, not direct execution. Ollama will **not** load these. (This is
+  the job of a tool like Unsloth: it fine-tunes models, it does not serve
+  them — so it is not a replacement for Ollama.)
+
+**On a CPU-only machine**, pick a light quantization — **Q4_K_M** is the usual
+sweet spot between size, speed and quality. Most GGUF repos offer several quant
+levels: the smaller the file, the faster it runs and the lower the quality.
+
 ## Roadmap & what's next
 
 GLIA is actively evolving. Planned and in-progress work:
