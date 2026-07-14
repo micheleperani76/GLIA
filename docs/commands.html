@@ -138,7 +138,7 @@ footer .fbrand{font-weight:800;color:var(--white);font-size:1.05rem;margin-botto
     <div class="grp-h"><span class="n">01</span><h2>The basics</h2></div>
     <p class="why"><b>What it is:</b> you type a request in plain language and GLIA turns it into a real shell command. <b>Why it exists:</b> you should always see the command before it runs — you read it, approve it, and little by little you learn it. The AI proposes, you decide.</p>
     <table class="cmds">
-      <tr><td class="c">glia &lt;request&gt;</td><td class="d">Proposes a command. <b>Enter</b> runs it, <b>n</b> cancels, <b>r</b> retries, <b>m</b> edits it in place before running, <b>e</b> asks the AI to explain it.</td></tr>
+      <tr><td class="c">glia &lt;request&gt;</td><td class="d">Proposes a command. <b>Enter</b> runs it, <b>n</b> cancels, <b>r</b> retries, <b>m</b> edits it in place before running, <b>e</b> asks the AI to explain it — or <b>type a hint</b> (any text) right at the prompt to steer the AI toward a better command (hints accumulate).</td></tr>
       <tr><td class="c">glia</td><td class="d">On its own, opens the interactive prompt (see <a href="#interactive" style="color:var(--teal)">Interactive mode</a>).</td></tr>
       <tr><td class="c">cat file | glia &lt;request&gt;</td><td class="d">Piped input becomes context for the AI — e.g. <code>cat error.log | glia why does it fail</code>.</td></tr>
       <tr><td class="c">rm -rf · dd · mkfs · curl|sh</td><td class="d">Destructive commands are explained by the AI first, then ask a short <b>s / y / j</b> confirmation (Enter = no). Routine <code>sudo</code> commands don't trip this — only genuinely destructive patterns do.</td></tr>
@@ -196,9 +196,12 @@ footer .fbrand{font-weight:800;color:var(--white);font-size:1.05rem;margin-botto
       <tr><td class="c">glia -m pull &lt;name&gt;</td><td class="d">Download a model by name (free-RAM check first, then offers to make it the default).</td></tr>
       <tr><td class="c">glia -m update [n|name]</td><td class="d">Re-pull every downloaded model — or just that one. Ollama only fetches versions that changed.</td></tr>
       <tr><td class="c">glia -m rm &lt;n|name&gt;</td><td class="d">Remove a model (asks confirmation; clears the saved default if it was the one removed).</td></tr>
+      <tr><td class="c">glia -m ps</td><td class="d">Show which model is loaded in RAM right now (same as <code>ollama ps</code>).</td></tr>
+      <tr><td class="c">glia -m stop &lt;n|name&gt;</td><td class="d">Unload a model from RAM immediately (same as <code>ollama stop</code>) — frees memory without deleting the download.</td></tr>
       <tr><td class="c">glia --update</td><td class="d">Update the Ollama <b>engine</b> itself, using this machine's package manager. <code>glia --update help</code> is the full guide to downloading and updating.</td></tr>
+      <tr><td class="c">glia --update glia</td><td class="d">Update <b>GLIA itself</b> (the program): downloads the latest version from GitHub, syntax-checks it, and asks before replacing — installs over the running command in place.</td></tr>
     </table>
-    <div class="note">Same words as Ollama, on purpose: <code>ollama list</code> · <code>ollama pull &lt;name&gt;</code> · <code>ollama rm &lt;name&gt;</code> — what you learn here works there too.<br><br>Default saved in <code>~/.config/glia/model</code> · the feasible-model list comes from <code>glia-hardware -l</code> (curated catalog + this machine's hardware).</div>
+    <div class="note">Same words as Ollama, on purpose: <code>ollama list</code> · <code>ollama pull &lt;name&gt;</code> · <code>ollama rm &lt;name&gt;</code> · <code>ollama ps</code> · <code>ollama stop</code> — what you learn here works there too.<br><br>Switching the default model <b>unloads the previous one from RAM automatically</b>, so you never keep two models resident at once.<br><br>Default saved in <code>~/.config/glia/model</code> · the feasible-model list comes from <code>glia-hardware -l</code> (curated catalog + this machine's hardware).</div>
   </section>
 
   <section class="grp" id="project">
@@ -240,6 +243,7 @@ footer .fbrand{font-weight:800;color:var(--white);font-size:1.05rem;margin-botto
       <tr><td class="c">glia --lang &lt;it|en|de&gt;</td><td class="d">Change the interface language.</td></tr>
       <tr><td class="c">glia --doctor</td><td class="d">One-shot health check: engine, model, RAM, dependencies, PATH, folders — with a fix hint for anything wrong.</td></tr>
       <tr><td class="c">glia --clear-cache</td><td class="d">Empty the answer cache.</td></tr>
+      <tr><td class="c">glia --kaboom</td><td class="d">Guided uninstall, two levels: <b>1</b> = only the program (engine and AIs stay), <b>2</b> = everything. Every command is shown first, then it asks you to type <code>YES</code> to proceed. Shared tools (curl, jq) are never touched.</td></tr>
       <tr><td class="c">glia -V · --version</td><td class="d">Show the version.</td></tr>
       <tr><td class="c">glia -h</td><td class="d">Show the built-in help.</td></tr>
     </table>

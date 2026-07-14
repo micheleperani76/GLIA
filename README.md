@@ -234,7 +234,11 @@ glia -l                                # log of executed commands
 glia --doctor                          # one-shot health check (engine, model, RAM, config)
 glia -m pull                           # guided download: hardware check + the AI models that FIT this machine
 glia -m update                         # refresh the downloaded models (only fetches new versions)
+glia -m ps                             # which model is loaded in RAM right now (= ollama ps)
+glia -m stop <n|name>                  # unload a model from RAM immediately (= ollama stop)
 glia --update                          # update the Ollama engine itself (glia --update help: full guide)
+glia --update glia                     # update GLIA itself: pulls the latest version from GitHub, asks before replacing
+glia --kaboom                          # guided uninstall (level 1: program only · level 2: everything) — asks you to type YES
 glia-hardware                           # hardware report and recommended models
 ```
 
