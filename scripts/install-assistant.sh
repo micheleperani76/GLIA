@@ -99,15 +99,15 @@ L() {
         it:norepo)    echo "Non trovo bin/glia. Lancia lo script dalla cartella del repo GLIA (git clone ... && cd glia)." ;;
         de:norepo)    echo "bin/glia nicht gefunden. Starte das Skript im GLIA-Repo-Ordner (git clone ... && cd glia)." ;;
         *:norepo)     echo "Can't find bin/glia. Run this from the GLIA repo folder (git clone ... && cd glia)." ;;
-        it:no_pm)     echo "Package manager non riconosciuto. Installa a mano: curl, jq, ollama, aichat." ;;
-        de:no_pm)     echo "Paketmanager nicht erkannt. Manuell installieren: curl, jq, ollama, aichat." ;;
-        *:no_pm)      echo "Unknown package manager. Install by hand: curl, jq, ollama, aichat." ;;
+        it:no_pm)     echo "Package manager non riconosciuto. Installa a mano: curl, jq, w3m, ollama, aichat." ;;
+        de:no_pm)     echo "Paketmanager nicht erkannt. Manuell installieren: curl, jq, w3m, ollama, aichat." ;;
+        *:no_pm)      echo "Unknown package manager. Install by hand: curl, jq, w3m, ollama, aichat." ;;
         it:pm_found)  echo "Distribuzione rilevata, package manager:" ;;
         de:pm_found)  echo "Distribution erkannt, Paketmanager:" ;;
         *:pm_found)   echo "Detected distro, package manager:" ;;
-        it:s_deps)    echo "1/8  Dipendenze di base (curl, jq)" ;;
-        de:s_deps)    echo "1/8  Basis-Abhaengigkeiten (curl, jq)" ;;
-        *:s_deps)     echo "1/8  Base dependencies (curl, jq)" ;;
+        it:s_deps)    echo "1/8  Dipendenze di base (curl, jq, w3m)" ;;
+        de:s_deps)    echo "1/8  Basis-Abhaengigkeiten (curl, jq, w3m)" ;;
+        *:s_deps)     echo "1/8  Base dependencies (curl, jq, w3m)" ;;
         it:s_ollama)  echo "2/8  Ollama (il motore che fa girare l'IA in locale)" ;;
         de:s_ollama)  echo "2/8  Ollama (die lokale KI-Engine)" ;;
         *:s_ollama)   echo "2/8  Ollama (the engine that runs the AI locally)" ;;
@@ -279,8 +279,9 @@ step_deps() {
     local missing=()
     command -v curl >/dev/null 2>&1 || missing+=(curl)
     command -v jq   >/dev/null 2>&1 || missing+=(jq)
+    command -v w3m  >/dev/null 2>&1 || missing+=(w3m)
     if [ "${#missing[@]}" -eq 0 ]; then
-        echo "   curl, jq: $(L have)"
+        echo "   curl, jq, w3m: $(L have)"
     else
         pm_install "${missing[@]}"
     fi

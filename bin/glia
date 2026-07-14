@@ -807,6 +807,9 @@ t() {
         it:doc_jq)          echo "jq installato (serve alla modalità progetto)" ;;
         de:doc_jq)          echo "jq installiert (für den Projektmodus)" ;;
         *:doc_jq)           echo "jq installed (needed by project mode)" ;;
+        it:doc_w3m)         echo "w3m installato (serve alla ricerca web -w)" ;;
+        de:doc_w3m)         echo "w3m installiert (für die Websuche -w)" ;;
+        *:doc_w3m)          echo "w3m installed (needed by web search -w)" ;;
         it:doc_ollama)      echo "ollama installato" ;;
         de:doc_ollama)      echo "ollama installiert" ;;
         *:doc_ollama)       echo "ollama installed" ;;
@@ -2402,6 +2405,7 @@ doctor() {
     echo -e "${BLUE}=== $(t doc_title) ===${NC}"
     command -v aichat >/dev/null 2>&1;  doc_line $? "$(t doc_aichat)" "$(pkg_install_cmd aichat)"
     command -v jq >/dev/null 2>&1;      doc_line $? "$(t doc_jq)" "$(pkg_install_cmd jq)"
+    command -v w3m >/dev/null 2>&1;     doc_line $? "$(t doc_w3m)" "$(pkg_install_cmd w3m)"
     command -v ollama >/dev/null 2>&1;  doc_line $? "$(t doc_ollama)" "https://ollama.com/download"
     curl -fsS --max-time 2 "$OLLAMA_URL/api/tags" >/dev/null 2>&1
     doc_line $? "$(t doc_api)" "systemctl start ollama"
