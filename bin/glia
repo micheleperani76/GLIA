@@ -862,9 +862,15 @@ t() {
         it:web_sys)         echo "Sei un assistente esperto. Rispondi alla DOMANDA in italiano usando SOLO le FONTI qui sotto. Sii conciso, accurato e concreto. Se le fonti non bastano o si contraddicono, dillo. Chiudi SEMPRE con una riga vuota e poi 'Fonti:' elencando solo le fonti che hai citato, come [n] titolo - url." ;;
         de:web_sys)         echo "Du bist ein erfahrener Assistent. Beantworte die FRAGE auf Deutsch und nutze NUR die QUELLEN unten. Sei knapp, genau und konkret. Wenn die Quellen nicht reichen oder sich widersprechen, sage es. Schließe IMMER mit einer Leerzeile und dann 'Quellen:' und liste nur die zitierten Quellen als [n] Titel - url." ;;
         *:web_sys)          echo "You are an expert assistant. Answer the QUESTION using ONLY the SOURCES below. Be concise, accurate and concrete. If the sources are insufficient or conflicting, say so. ALWAYS end with a blank line then 'Sources:' listing only the sources you cited, as [n] title - url." ;;
-        it:web_remind)      echo "Ora rispondi conciso e chiudi SEMPRE, come ultima cosa, con una riga 'Fonti:' che elenca [n] titolo - url delle fonti che citi." ;;
-        de:web_remind)      echo "Antworte jetzt knapp und schließe IMMER als Letztes mit einer Zeile 'Quellen:' ab, die [n] Titel - url der zitierten Quellen auflistet." ;;
-        *:web_remind)       echo "Now answer concisely and ALWAYS finish with a final 'Sources:' line listing [n] title - url of the sources you cite." ;;
+        it:web_remind)      echo "Regole finali: (1) preferisci le fonti PIÙ RECENTI e autorevoli (siti ufficiali); se una fonte sembra datata o in conflitto con altre, scartala. (2) Per prezzi o dati molto volatili, precisa che sono indicativi. (3) Rispondi conciso e chiudi SEMPRE, come ultima cosa, con una riga 'Fonti:' che elenca [n] titolo - url delle fonti citate." ;;
+        de:web_remind)      echo "Schlussregeln: (1) bevorzuge die AKTUELLSTEN und verlässlichsten Quellen (offizielle Seiten); veraltete oder widersprüchliche Quellen verwerfen. (2) Bei Preisen oder sehr volatilen Daten darauf hinweisen, dass sie ungefähr sind. (3) Knapp antworten und IMMER zuletzt mit einer Zeile 'Quellen:' [n] Titel - url abschließen." ;;
+        *:web_remind)       echo "Final rules: (1) prefer the MOST RECENT and authoritative sources (official sites); discard outdated or conflicting ones. (2) For prices or highly volatile data, note they are approximate. (3) Answer concisely and ALWAYS finish with a 'Sources:' line listing [n] title - url of the cited sources." ;;
+        it:web_today)       echo "Oggi è:" ;;
+        de:web_today)       echo "Heute ist:" ;;
+        *:web_today)        echo "Today is:" ;;
+        it:web_cmd_expl)    echo "Interrogo DuckDuckGo con il browser testuale w3m (senza chiavi), leggo i risultati e li faccio riassumere al modello:" ;;
+        de:web_cmd_expl)    echo "Ich frage DuckDuckGo mit dem Textbrowser w3m ab (ohne Schlüssel), lese die Ergebnisse und lasse sie vom Modell zusammenfassen:" ;;
+        *:web_cmd_expl)     echo "I query DuckDuckGo with the w3m text browser (no keys), read the results and have the model summarize them:" ;;
     esac
 }
 
@@ -2926,11 +2932,12 @@ web_answer() {
     check_ai
     pages="$WEB_PAGES"; [ "$deep" = 1 ] && pages="$WEB_PAGES_DEEP"
     echo -e "${BLUE}$(t web_searching)${NC} ${GREEN}$q${NC}" >&2
+    echo -e "$(t web_cmd_expl)" >&2
     show_equiv "w3m -dump -cols $WEB_COLS '${WEB_URL}$(web_urlenc "$q")&kl=${WEB_REGION}'" >&2
     ctx="$(build_web_context "$q" "$pages")"
     if [ -z "$ctx" ]; then echo -e "${RED}$(t web_noresult)${NC}" >&2; exit 1; fi
     sys="$(t web_sys)"
-    prompt="$(t web_question): $q"$'\n\n'"$(t web_sources_h):"$'\n'"$ctx"$'\n\n'"$(t web_remind)"
+    prompt="$(t web_today) $(date +%F)."$'\n\n'"$(t web_question): $q"$'\n\n'"$(t web_sources_h):"$'\n'"$ctx"$'\n\n'"$(t web_remind)"
     # stream:true -> the answer appears while it is written; keep_alive keeps
     # the model warm so the NEXT -w skips the cold load (biggest time saver)
     body="$(jq -n --arg m "${MODEL#ollama:}" --arg s "$sys" --arg p "$prompt" \
