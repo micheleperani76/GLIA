@@ -42,7 +42,7 @@ _glia() {
             COMPREPLY=( $(compgen -W "add list rm edit save help $(_glia_alias_names)" -- "$cur") )
             return ;;
         -m|--model)
-            COMPREPLY=( $(compgen -W "help list ls pull update rm $(_glia_model_names)" -- "$cur") )
+            COMPREPLY=( $(compgen -W "help list ls ps stop pull update rm $(_glia_model_names)" -- "$cur") )
             return ;;
         --update)
             COMPREPLY=( $(compgen -W "help" -- "$cur") )
@@ -50,8 +50,8 @@ _glia() {
         pull)
             # -m pull <name>: a NEW model name is free text, nothing to complete
             return ;;
-        update)
-            # -m update <n|name>: complete with the downloaded models
+        update|stop)
+            # -m update/stop <n|name>: complete with the downloaded models
             [ "${COMP_WORDS[COMP_CWORD-2]}" = "-m" ] || [ "${COMP_WORDS[COMP_CWORD-2]}" = "--model" ] \
                 && COMPREPLY=( $(compgen -W "$(_glia_model_names)" -- "$cur") )
             return ;;

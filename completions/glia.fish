@@ -63,11 +63,11 @@ complete -c glia -n __glia_first -a '--lang'      -d 'interface language'
 
 # ------------------- sub-actions -------------------
 # after -m / --model
-complete -c glia -n 'contains -- (__glia_prev) -m --model' -a 'help list ls pull update rm'
+complete -c glia -n 'contains -- (__glia_prev) -m --model' -a 'help list ls ps stop pull update rm'
 complete -c glia -n 'contains -- (__glia_prev) -m --model' -a '(__glia_models)'
 
-# -m update <model> · -m rm <model>
-complete -c glia -n 'contains -- (__glia_prev2) -m --model; and contains -- (__glia_prev) update rm' -a '(__glia_models)'
+# -m update <model> · -m rm <model> · -m stop <model>
+complete -c glia -n 'contains -- (__glia_prev2) -m --model; and contains -- (__glia_prev) update rm stop' -a '(__glia_models)'
 # -m pull <name>: a NEW model name is free text, nothing to complete
 
 # after -a / --alias

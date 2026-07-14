@@ -1,12 +1,32 @@
 #!/usr/bin/env bash
 # ============================================================
 #  glia - AI terminal assistant (Ollama + aichat)
-#  Version: 2.10.0 - 2026-07-14
+#  Version: 2.11.0 - 2026-07-14
 #  Author: Michele (with Claude)
 #  Project: GLIA (GNU Linux IA)
 #
 #  Design pillar: commands follow standard terminal conventions, so
 #  what you learn here you can reuse in other programs (and vice versa).
+#
+#  What's new in v2.11 ("kaboom"):
+#   - `--kaboom`: guided uninstall. Asks what to remove: 1) only the
+#     program (glia, config, memory, aliases, completions - Ollama, aichat
+#     and the downloaded AIs stay) or 2) everything (also aichat, the
+#     Ollama engine and the models). Shows EVERY command it will run
+#     before running it (teaching pillar), requires the heavy typed
+#     confirmation (SI/JA/YES), and never touches shared dependencies
+#     (curl, jq): they belong to other programs too.
+#   - reasoning models handled: <think>...</think> blocks are stripped
+#     from every AI reply (strip_think), and qwen3 gets the /no_think
+#     switch - a shell command needs the answer, not the thoughts
+#   - hint at the proposal prompt: any text longer than one letter typed
+#     at "Proposed command:" becomes extra context and the command is
+#     regenerated with it (same accumulating hints as the fix loop)
+#   - RAM housekeeping: switching the default model STOPS the old one
+#     right away (ollama stop, shown to the user) instead of leaving it
+#     in RAM for the keep_alive window; the low-RAM warning is skipped
+#     when the active model is already loaded; ollama ps/stop documented
+#     in -m help and --update help
 #
 #  What's new in v2.10 ("manage your AIs"):
 #   - `-m pull <name>`: download a new AI model (checks free RAM first,
@@ -189,6 +209,7 @@
 #    glia --doctor         one-shot health check (engine, model, RAM, config)
 #    glia -m pull [name]   download a new AI model (alone: guided menu; update/rm)
 #    glia --update         update the Ollama engine itself (--update help: guide)
+#    glia --kaboom         guided uninstall (program only, or everything)
 #    glia --rename <name>  rename the assistant (glia always stays too)
 #    glia --lang <code>    set interface language (en, it, de)
 #    glia -V|--version     show the version
@@ -196,7 +217,7 @@
 # ============================================================
 
 # ----------------- CONFIGURATION -----------------
-VERSION="2.10.0"
+VERSION="2.11.0"
 DEFAULT_MODEL="qwen2.5-coder:7b"
 if [ -r "$HOME/.config/glia/model" ]; then
     MODEL="ollama:$(head -n1 "$HOME/.config/glia/model")"
@@ -321,8 +342,9 @@ CONTEXT="System: ${OS_NAME:-Linux}, user: $USER.${PKGMGR:+ The package manager o
 Commands will be executed with bash. When something can be solved by restarting a \
 single service, prefer 'systemctl restart <service>' over rebooting the whole \
 machine; suggest a full reboot ONLY when strictly necessary (e.g. after a kernel \
-update). Reply ONLY with a single-line bash command, no explanations, no markdown, \
-no backticks."
+update). For commands that would run FOREVER (ping, top, tail -f, watch) prefer a \
+bounded variant instead, e.g. 'ping -c 5'. Reply ONLY with a single-line bash command, \
+no explanations, no markdown, no backticks."
 # ---------------------------------------------------
 
 # ------------------- LANGUAGE ----------------------
@@ -351,9 +373,9 @@ t() {
         it:ask_reboot)      echo "Questo RIAVVIA/SPEGNE la macchina. $YES_KEY = procedi | Invio o n = annulla | r = riprova | m = modifica: " ;;
         de:ask_reboot)      echo "Dies STARTET/SCHALTET die Maschine. $YES_KEY = fortfahren | Enter oder n = abbrechen | r = wiederholen | m = bearbeiten: " ;;
         *:ask_reboot)       echo "This will REBOOT/SHUT DOWN the machine. $YES_KEY = proceed | Enter or n = cancel | r = retry | m = edit: " ;;
-        it:ask_normal)      echo "Invio = esegui | n = annulla | r = riprova | m = modifica | e = spiega: " ;;
-        de:ask_normal)      echo "Enter = ausführen | n = abbrechen | r = wiederholen | m = bearbeiten | e = erklären: " ;;
-        *:ask_normal)       echo "Enter = run | n = cancel | r = retry | m = edit | e = explain: " ;;
+        it:ask_normal)      echo "Invio = esegui | n = annulla | r = riprova | m = modifica | e = spiega | testo = indizio per l'IA: " ;;
+        de:ask_normal)      echo "Enter = ausführen | n = abbrechen | r = wiederholen | m = bearbeiten | e = erklären | Text = Hinweis für die KI: " ;;
+        *:ask_normal)       echo "Enter = run | n = cancel | r = retry | m = edit | e = explain | text = hint for the AI: " ;;
         it:edit_cmd)        echo "Modifica il comando e premi Invio (vuoto = annulla):" ;;
         de:edit_cmd)        echo "Befehl bearbeiten und Enter drücken (leer = abbrechen):" ;;
         *:edit_cmd)         echo "Edit the command and press Enter (empty = cancel):" ;;
@@ -591,6 +613,9 @@ t() {
         it:model_oneoff)    echo "Solo per questo comando uso:" ;;
         de:model_oneoff)    echo "Nur für diesen Befehl nutze ich:" ;;
         *:model_oneoff)     echo "For this command only I use:" ;;
+        it:ms_unload)       echo "Spengo la vecchia IA per liberare subito la RAM:" ;;
+        de:ms_unload)       echo "Ich stoppe die alte KI, um den RAM sofort freizugeben:" ;;
+        *:ms_unload)        echo "Stopping the old AI to free the RAM right away:" ;;
         # ---- model management (v2.10) ----
         it:mp_usage)        echo "Uso: $PROG -m pull <nome>   (es. $PROG -m pull qwen3:8b)" ;;
         de:mp_usage)        echo "Verwendung: $PROG -m pull <Name>   (z. B. $PROG -m pull qwen3:8b)" ;;
@@ -610,6 +635,12 @@ t() {
         it:mu_done)         echo "Aggiornamento modelli completato." ;;
         de:mu_done)         echo "Modell-Update abgeschlossen." ;;
         *:mu_done)          echo "Model update finished." ;;
+        it:mstop_doing)     echo "Scarico dalla RAM:" ;;
+        de:mstop_doing)     echo "Entlade aus dem RAM:" ;;
+        *:mstop_doing)      echo "Unloading from RAM:" ;;
+        it:mstop_usage)     echo "Uso: $PROG -m stop <n|nome>   (vedi chi è in RAM con: $PROG -m ps)" ;;
+        de:mstop_usage)     echo "Verwendung: $PROG -m stop <n|Name>   (wer im RAM ist: $PROG -m ps)" ;;
+        *:mstop_usage)      echo "Usage: $PROG -m stop <n|name>   (see who is in RAM with: $PROG -m ps)" ;;
         it:mr_usage)        echo "Uso: $PROG -m rm <n|nome>   (vedi: $PROG -m list)" ;;
         de:mr_usage)        echo "Verwendung: $PROG -m rm <n|Name>   (siehe: $PROG -m list)" ;;
         *:mr_usage)         echo "Usage: $PROG -m rm <n|name>   (see: $PROG -m list)" ;;
@@ -631,6 +662,9 @@ t() {
         it:eng_confirm)     echo "Invio = procedi | n = annulla: " ;;
         de:eng_confirm)     echo "Enter = fortfahren | n = abbrechen: " ;;
         *:eng_confirm)      echo "Enter = proceed | n = cancel: " ;;
+        it:eng_restart)     echo "Riavvio il servizio per attivare la nuova versione:" ;;
+        de:eng_restart)     echo "Ich starte den Dienst neu, um die neue Version zu aktivieren:" ;;
+        *:eng_restart)      echo "Restarting the service to activate the new version:" ;;
         it:mp_machine)      echo "Macchina:" ;;
         de:mp_machine)      echo "Rechner:" ;;
         *:mp_machine)       echo "Machine:" ;;
@@ -667,6 +701,43 @@ t() {
         it:cat_reasoning)   echo "ragionamento" ;;
         de:cat_reasoning)   echo "Reasoning" ;;
         *:cat_reasoning)    echo "reasoning" ;;
+        # ---- kaboom (v2.11) ----
+        it:kb_title)        echo "KABOOM — disinstallazione di $ASSIST_NAME (GLIA)" ;;
+        de:kb_title)        echo "KABOOM — Deinstallation von $ASSIST_NAME (GLIA)" ;;
+        *:kb_title)         echo "KABOOM — uninstalling $ASSIST_NAME (GLIA)" ;;
+        it:kb_what)         echo "Cosa rimuovo?" ;;
+        de:kb_what)         echo "Was soll ich entfernen?" ;;
+        *:kb_what)          echo "What should I remove?" ;;
+        it:kb_opt1)         echo "  1) Solo il programma — $ASSIST_NAME, config, memoria, alias, completamenti TAB. Ollama, aichat e le IA scaricate restano." ;;
+        de:kb_opt1)         echo "  1) Nur das Programm — $ASSIST_NAME, Config, Gedaechtnis, Aliase, TAB-Vervollstaendigung. Ollama, aichat und die KIs bleiben." ;;
+        *:kb_opt1)          echo "  1) Only the program — $ASSIST_NAME, config, memory, aliases, TAB completions. Ollama, aichat and the downloaded AIs stay." ;;
+        it:kb_opt2)         echo "  2) Tutto — anche aichat, il motore Ollama e le IA scaricate." ;;
+        de:kb_opt2)         echo "  2) Alles — auch aichat, die Ollama-Engine und die geladenen KIs." ;;
+        *:kb_opt2)          echo "  2) Everything — also aichat, the Ollama engine and the downloaded AIs." ;;
+        it:kb_opt3)         echo "  3) Annulla" ;;
+        de:kb_opt3)         echo "  3) Abbrechen" ;;
+        *:kb_opt3)          echo "  3) Cancel" ;;
+        it:kb_choose)       echo "Scelta [1/2/3]: " ;;
+        de:kb_choose)       echo "Auswahl [1/2/3]: " ;;
+        *:kb_choose)        echo "Choice [1/2/3]: " ;;
+        it:kb_cmds)         echo "Questi sono i comandi che eseguirò:" ;;
+        de:kb_cmds)         echo "Diese Befehle werde ich ausfuehren:" ;;
+        *:kb_cmds)          echo "These are the commands I will run:" ;;
+        it:kb_deps)         echo "Le dipendenze condivise (curl, jq) NON vengono toccate: servono anche ad altri programmi." ;;
+        de:kb_deps)         echo "Geteilte Abhaengigkeiten (curl, jq) werden NICHT angeruehrt: andere Programme brauchen sie auch." ;;
+        *:kb_deps)          echo "Shared dependencies (curl, jq) are NOT touched: other programs need them too." ;;
+        it:kb_confirm)      echo "Per confermare scrivi $CONFIRM_WORD (Invio = annulla): " ;;
+        de:kb_confirm)      echo "Zum Bestaetigen $CONFIRM_WORD eingeben (Enter = abbrechen): " ;;
+        *:kb_confirm)       echo "To confirm, type $CONFIRM_WORD (Enter = cancel): " ;;
+        it:kb_run)          echo "Eseguo:" ;;
+        de:kb_run)          echo "Fuehre aus:" ;;
+        *:kb_run)           echo "Running:" ;;
+        it:kb_path_note)    echo "Nella config della shell resta la riga PATH aggiunta dall'installer; se vuoi toglierla, aprila e cancella il blocco '# added by GLIA install-assistant'." ;;
+        de:kb_path_note)    echo "In der Shell-Config bleibt die vom Installer ergaenzte PATH-Zeile; zum Entfernen den Block '# added by GLIA install-assistant' loeschen." ;;
+        *:kb_path_note)     echo "Your shell config still has the PATH line the installer added; to remove it, delete the '# added by GLIA install-assistant' block." ;;
+        it:kb_done)         echo "Fatto. GLIA è stato rimosso. Grazie di averlo provato — il terminale ora è tutto tuo." ;;
+        de:kb_done)         echo "Fertig. GLIA wurde entfernt. Danke fuers Ausprobieren — das Terminal gehoert jetzt ganz dir." ;;
+        *:kb_done)          echo "Done. GLIA has been removed. Thanks for trying it — the terminal is all yours now." ;;
         it:eng_noollama)    echo "ollama non è installato:  $(pkg_install_cmd ollama)" ;;
         de:eng_noollama)    echo "ollama ist nicht installiert:  $(pkg_install_cmd ollama)" ;;
         *:eng_noollama)     echo "ollama is not installed:  $(pkg_install_cmd ollama)" ;;
@@ -744,6 +815,7 @@ Impostazioni:
   $ASSIST_NAME --doctor            controllo rapido: motore, modello, RAM, config
   $ASSIST_NAME --update            aggiorna il motore Ollama
   $ASSIST_NAME --clear-cache       svuota la cache delle risposte
+  $ASSIST_NAME --kaboom            disinstalla (chiede: solo il programma, o anche motore e IA)
   $ASSIST_NAME -V, --version       mostra la versione
   $ASSIST_NAME -h                  questo aiuto
 
@@ -790,6 +862,7 @@ Einstellungen:
   $ASSIST_NAME --doctor           Schnellcheck: Engine, Modell, RAM, Config
   $ASSIST_NAME --update           Ollama-Engine aktualisieren
   $ASSIST_NAME --clear-cache      Antwort-Cache leeren
+  $ASSIST_NAME --kaboom           deinstallieren (fragt: nur Programm, oder auch Engine und KIs)
   $ASSIST_NAME -V, --version      Version anzeigen
   $ASSIST_NAME -h                 diese Hilfe
 
@@ -836,6 +909,7 @@ Settings:
   $ASSIST_NAME --doctor           quick check: engine, model, RAM, config
   $ASSIST_NAME --update           update the Ollama engine
   $ASSIST_NAME --clear-cache      empty the answer cache
+  $ASSIST_NAME --kaboom           uninstall (asks: program only, or engine and AIs too)
   $ASSIST_NAME -V, --version      show the version
   $ASSIST_NAME -h                 this help
 
@@ -921,7 +995,11 @@ check_ai() {
     avail=$(awk '/MemAvailable/ {print int($2/1024)}' /proc/meminfo)
     need=$(ram_needed_mb)
     if [ -n "$avail" ] && [ "$avail" -lt "$need" ]; then
-        echo -e "${YELLOW}$(t low_ram) (${avail} MB / ~${need} MB)${NC}" >&2
+        # v2.11: no warning if the model is ALREADY loaded - the low free
+        # RAM is the model itself sitting in memory, not a problem
+        if ! curl -fsS --max-time 2 "$OLLAMA_URL/api/ps" 2>/dev/null | grep -q "\"$mname\""; then
+            echo -e "${YELLOW}$(t low_ram) (${avail} MB / ~${need} MB)${NC}" >&2
+        fi
     fi
 }
 
@@ -1017,10 +1095,20 @@ model_resolve() {
 
 set_model() {
     # $1 = model name -> becomes the permanent default (per-user)
+    local old="${MODEL#ollama:}"
     mkdir -p "$HOME/.config/glia"
     printf '%s\n' "$1" > "$HOME/.config/glia/model"
     echo -e "${GREEN}$(t model_set) $1${NC}"
     show_equiv "echo '$1' > ~/.config/glia/model"
+    # v2.11: unload the OLD model from RAM right away - otherwise it sits
+    # there for ~5 more minutes (keep_alive) and the RAM looks saturated
+    if [ "$old" != "$1" ] && curl -fsS --max-time 2 "$OLLAMA_URL/api/ps" 2>/dev/null | grep -q "\"$old\""; then
+        echo -e "$(t ms_unload) ${GREEN}ollama stop $old${NC}"
+        ollama stop "$old" >/dev/null 2>&1
+        # belt and braces: the API unload works on every ollama version
+        curl -fsS --max-time 5 "$OLLAMA_URL/api/generate" -d "{\"model\":\"$old\",\"keep_alive\":0}" >/dev/null 2>&1
+    fi
+    MODEL="ollama:$1"
 }
 
 model_menu() {
@@ -1105,6 +1193,17 @@ model_pull_menu() {
     model_pull "$sel"
 }
 
+model_stop() {
+    # $1 = number or name -> unload that model from RAM right now (v2.11)
+    local name
+    [ -z "${1:-}" ] && { echo "$(t mstop_usage)"; return 1; }
+    name=$(model_resolve "$1") || { echo -e "${RED}$(t model_badsel)${NC}" >&2; return 1; }
+    echo -e "$(t mstop_doing) ${GREEN}ollama stop $name${NC}"
+    ollama stop "$name" >/dev/null 2>&1
+    curl -fsS --max-time 5 "$OLLAMA_URL/api/generate" -d "{\"model\":\"$name\",\"keep_alive\":0}" >/dev/null 2>&1
+    ollama ps
+}
+
 model_update() {
     # $1 empty = re-pull EVERY downloaded model (ollama has no 'update':
     # a pull on an existing model fetches the new version); $1 = n|name = only that one
@@ -1168,10 +1267,90 @@ engine_update() {
     case "${answer,,}" in ""|"$YES_KEY") : ;; *) echo "$(t cancelled)"; return 0 ;; esac
     if eval "$cmd"; then
         write_log "engine update" "$cmd"
+        # the running SERVICE keeps the old version until restarted (v2.11)
+        if command -v systemctl >/dev/null 2>&1; then
+            echo -e "$(t eng_restart) ${GREEN}sudo systemctl restart ollama${NC}"
+            sudo systemctl restart ollama 2>/dev/null || true
+        fi
         ollama --version
     else
         return 1
     fi
+}
+
+# ---- kaboom (v2.11): guided uninstall ----
+kaboom() {
+    # Two levels: 1 = only the program (engine and AIs stay), 2 = everything.
+    # Teaching pillar even on the way out: every command is SHOWN before
+    # running, heavy typed confirmation, shared deps (curl, jq) never touched.
+    local self dir f choice ans c cmds=()
+    echo -e "${RED}$(t kb_title)${NC}"
+    echo
+    echo "$(t kb_what)"
+    echo "$(t kb_opt1)"
+    echo "$(t kb_opt2)"
+    echo "$(t kb_opt3)"
+    (exec 3</dev/tty) 2>/dev/null || { echo "$(t cancelled)"; return 1; }
+    read -r -p "$(t kb_choose)" choice < /dev/tty || return 1
+    case "$choice" in 1|2) : ;; *) echo "$(t cancelled)"; return 0 ;; esac
+
+    # -- build the command list (only for things that actually exist) --
+    self="$(realpath "$0" 2>/dev/null)"; dir="$(dirname "$self")"
+    # renamed commands: every symlink next to glia that points to it
+    for f in "$dir"/*; do
+        [ -L "$f" ] && [ "$(readlink "$f")" = "glia" ] && cmds+=("rm -f $f")
+    done
+    cmds+=("rm -f $dir/glia $dir/glia-hardware")
+    [ -d "$HOME/.config/glia" ]       && cmds+=("rm -rf ~/.config/glia")
+    [ -d "$LOGDIR" ]                  && cmds+=("rm -rf ${LOGDIR/#$HOME/\~}")
+    [ -f "$HOME/.local/share/bash-completion/completions/glia" ] \
+        && cmds+=("rm -f ~/.local/share/bash-completion/completions/glia")
+    [ -f "$HOME/.config/fish/completions/glia.fish" ] \
+        && cmds+=("rm -f ~/.config/fish/completions/glia.fish")
+
+    if [ "$choice" = 2 ]; then
+        [ -f "$HOME/.config/aichat/config.yaml" ] && cmds+=("rm -f ~/.config/aichat/config.yaml")
+        if [ "$PKGMGR" = pacman ]; then
+            local pkgs=""
+            pacman -Qq ollama >/dev/null 2>&1 && pkgs="$pkgs ollama"
+            pacman -Qq aichat >/dev/null 2>&1 && pkgs="$pkgs aichat"
+            [ -n "$pkgs" ] && cmds+=("sudo pacman -Rns$pkgs")
+            [ -d /var/lib/ollama ] && cmds+=("sudo rm -rf /var/lib/ollama")
+        else
+            # engine installed with Ollama's official script
+            command -v systemctl >/dev/null 2>&1 && [ -f /etc/systemd/system/ollama.service ] && {
+                cmds+=("sudo systemctl disable --now ollama")
+                cmds+=("sudo rm /etc/systemd/system/ollama.service")
+            }
+            command -v ollama >/dev/null 2>&1 && cmds+=("sudo rm $(command -v ollama)")
+            [ -d /usr/share/ollama ] && cmds+=("sudo rm -rf /usr/share/ollama")
+            id ollama >/dev/null 2>&1 && cmds+=("sudo userdel ollama")
+            [ -f "$dir/aichat" ] && cmds+=("rm -f $dir/aichat")
+        fi
+        [ -d "$HOME/.ollama" ] && cmds+=("rm -rf ~/.ollama")
+    fi
+
+    # -- show everything first, then one heavy confirmation --
+    echo
+    echo "$(t kb_cmds)"
+    for c in "${cmds[@]}"; do
+        echo -e "  ${GREEN}$c${NC}"
+    done
+    echo
+    echo -e "${YELLOW}$(t kb_deps)${NC}"
+    grep -qsF "# added by GLIA install-assistant" \
+        "$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.config/fish/config.fish" 2>/dev/null \
+        && echo -e "${YELLOW}$(t kb_path_note)${NC}"
+    echo
+    read -r -p "$(t kb_confirm)" ans < /dev/tty || return 1
+    [ "$ans" != "$CONFIRM_WORD" ] && { echo "$(t cancelled)"; return 0; }
+
+    write_log "KABOOM" "level $choice"
+    for c in "${cmds[@]}"; do
+        echo -e "$(t kb_run) $c"
+        eval "$c" || true          # eval re-parses the line, so ~ expands
+    done
+    echo -e "${GREEN}$(t kb_done)${NC}"
 }
 
 # ---- persistent memory (v1.6) ----
@@ -1606,6 +1785,12 @@ Comandi:
 
 Stessi nomi di Ollama (list, pull, rm): quello che impari qui vale anche là.
 
+RAM (i modelli si caricano al primo uso e si scaricano da soli dopo ~5 min):
+  $ASSIST_NAME -m ps               chi è caricato in RAM ora, e per quanto ancora
+  $ASSIST_NAME -m stop <n|nome>    scaricane uno SUBITO, senza aspettare
+  · sono gli stessi comandi di Ollama:  ollama ps  ·  ollama stop <nome>
+  · al cambio di predefinita, $ASSIST_NAME spegne da sola la vecchia IA
+
 Esempi:
   $ASSIST_NAME -m pull qwen3:8b
   $ASSIST_NAME -m 2 riscrivi questo script in modo più chiaro
@@ -1634,6 +1819,12 @@ Befehle:
 
 Gleiche Namen wie Ollama (list, pull, rm): was du hier lernst, gilt auch dort.
 
+RAM (Modelle laden beim ersten Gebrauch, entladen sich nach ~5 Min. selbst):
+  $ASSIST_NAME -m ps               wer gerade im RAM ist, und wie lange noch
+  $ASSIST_NAME -m stop <n|Name>    eines SOFORT entladen, ohne zu warten
+  · dieselben Befehle wie bei Ollama:  ollama ps  ·  ollama stop <Name>
+  · beim Wechsel des Standards stoppt $ASSIST_NAME die alte KI selbst
+
 Beispiele:
   $ASSIST_NAME -m pull qwen3:8b
   $ASSIST_NAME -m 2 schreibe dieses Skript klarer
@@ -1661,6 +1852,12 @@ Commands:
   $ASSIST_NAME -m help             this help
 
 Same names as Ollama (list, pull, rm): what you learn here works there too.
+
+RAM (models load on first use and unload by themselves after ~5 min):
+  $ASSIST_NAME -m ps               who is loaded in RAM now, and for how much longer
+  $ASSIST_NAME -m stop <n|name>    unload one RIGHT NOW, without waiting
+  · the very same Ollama commands:  ollama ps  ·  ollama stop <name>
+  · when you switch the default, $ASSIST_NAME stops the old AI by itself
 
 Examples:
   $ASSIST_NAME -m pull qwen3:8b
@@ -1696,6 +1893,8 @@ Puoi farlo tu, dal terminale:
   ollama list                                      elenca i modelli
   ollama pull <nome>                               scarica o aggiorna un modello
   ollama rm <nome>                                 rimuove un modello
+  ollama ps                                        chi è caricato in RAM ora
+  ollama stop <nome>                               scarica subito una IA dalla RAM
   sudo pacman -Syu ollama                          aggiorna il motore (Arch/CachyOS)
   curl -fsSL https://ollama.com/install.sh | sh    aggiorna il motore (altre distro)
 
@@ -1728,6 +1927,8 @@ Du kannst es selbst tun, im Terminal:
   ollama list                                      Modelle auflisten
   ollama pull <Name>                               ein Modell laden oder aktualisieren
   ollama rm <Name>                                 ein Modell entfernen
+  ollama ps                                        wer gerade im RAM ist
+  ollama stop <Name>                               eine KI sofort aus dem RAM entladen
   sudo pacman -Syu ollama                          Engine aktualisieren (Arch/CachyOS)
   curl -fsSL https://ollama.com/install.sh | sh    Engine aktualisieren (andere Distros)
 
@@ -1760,6 +1961,8 @@ You can do it yourself, at the terminal:
   ollama list                                      list the models
   ollama pull <name>                               download or update a model
   ollama rm <name>                                 remove a model
+  ollama ps                                        who is loaded in RAM right now
+  ollama stop <name>                               unload an AI from RAM right away
   sudo pacman -Syu ollama                          update the engine (Arch/CachyOS)
   curl -fsSL https://ollama.com/install.sh | sh    update the engine (other distros)
 
@@ -2077,8 +2280,8 @@ explain_danger() {
     # one plain-language sentence about what a dangerous command will do
     local cmd="$1" out
     out=$(aichat --model "$MODEL" \
-        "Explain in ONE short sentence, in ${PLAN_LANG}, in plain language for a non-expert, what this bash command will do and what it could delete or change permanently. No markdown, no code, only the sentence. Command: $cmd" \
-        < /dev/null 2>/dev/null | grep -v '^\s*$' | head -n 2 | paste -sd ' ' -)
+        "Explain in ONE short sentence, in ${PLAN_LANG}, in plain language for a non-expert, what this bash command will do and what it could delete or change permanently. No markdown, no code, only the sentence. Command: $cmd$(nothink)" \
+        < /dev/null 2>/dev/null | strip_think | grep -v '^\s*$' | head -n 2 | paste -sd ' ' -)
     [ -n "$out" ] && printf '%s\n' "$out"
     return 0
 }
@@ -2165,13 +2368,27 @@ generate_command() {
     local errfile out ctx
     ctx="$CONTEXT $(memory_context)$(session_context)$(piped_context)Current directory: $PWD. It contains: $(ls -1 2>/dev/null | head -n 15 | paste -sd ', ' -)."
     errfile=$(mktemp)
-    out=$(aichat --model "$MODEL" "$ctx Request: $*" < /dev/null 2>"$errfile" \
+    out=$(aichat --model "$MODEL" "$ctx Request: $*$(nothink)" < /dev/null 2>"$errfile" \
+        | strip_think \
         | sed 's/^```[a-z]*//; s/```$//' \
         | grep -v '^\s*$' \
         | head -n 1)
     AI_ERR=$(tail -n 3 "$errfile" 2>/dev/null)
     rm -f "$errfile"
     echo "$out"
+}
+
+strip_think() {
+    # reasoning models (qwen3, deepseek-r1, ...) may emit their reasoning
+    # inside <think>...</think> BEFORE the real answer: drop the whole
+    # block, keep only what comes after (v2.11)
+    awk '/<think>/{skip=1} /<\/think>/{skip=0; next} !skip'
+}
+
+nothink() {
+    # qwen3 honors the /no_think switch: skip the reasoning phase entirely.
+    # A shell command needs the answer, not the thoughts (faster, no tags).
+    case "${MODEL#ollama:}" in qwen3*) printf ' /no_think' ;; esac
 }
 
 CMD_ERR=""
@@ -2193,7 +2410,13 @@ edit_command() {
     # empty result = keep the original (caller treats it as "no change").
     local edited
     echo -e "${BLUE}$(t edit_cmd)${NC}" >&2
-    IFS= read -r -e -i "$1" edited < /dev/tty || edited="$1"
+    # v2.11: redirect from /dev/tty ONLY when stdin is not a terminal -
+    # readline + /dev/tty redirect stops the job under fish
+    if [ -t 0 ]; then
+        IFS= read -r -e -i "$1" edited || edited="$1"
+    else
+        IFS= read -r -e -i "$1" edited < /dev/tty || edited="$1"
+    fi
     printf '%s' "${edited:-$1}"
 }
 
@@ -2263,7 +2486,13 @@ propose_and_run() {
                          expl=$(explain_danger "$cmd")
                          [ -n "$expl" ] && echo -e "${BLUE}➜ $expl${NC}"
                          continue ;;
-                    *)   write_log "CANCELLED" "$cmd"; echo "$(t cancelled)"; return ;;
+                    ?)   write_log "CANCELLED" "$cmd"; echo "$(t cancelled)"; return ;;
+                    *)   # longer text = a hint (v2.11): refine the proposal with
+                         # it, same accumulating mechanism as the fix loop
+                         hints="${hints:+$hints; }$answer"
+                         request="Original request: $original. You proposed '$cmd' but the user added context: $hints. Using it, propose a better single-line bash command for the original request."
+                         use_cache=0
+                         continue 2 ;;
                 esac
             fi
         done
@@ -2308,7 +2537,7 @@ chat() {
     body="{\"model\":\"${MODEL#ollama:}\",\"messages\":$MSGS,\"stream\":false"
     [ "$1" = "json" ] && body="$body,\"format\":\"json\""
     body="$body}"
-    reply=$(curl -fsS --max-time 600 "$OLLAMA_URL/api/chat" -d "$body" 2>/dev/null | jq -r '.message.content // empty')
+    reply=$(curl -fsS --max-time 600 "$OLLAMA_URL/api/chat" -d "$body" 2>/dev/null | jq -r '.message.content // empty' | strip_think)
     [ -z "$reply" ] && return 1
     add_msg assistant "$reply"
     printf '%s' "$reply"
@@ -2488,6 +2717,9 @@ case "$1" in
             *)              engine_update ;;
         esac
         ;;
+    --kaboom)
+        kaboom
+        ;;
     -p|--project)
         shift
         case "${1:-}" in
@@ -2509,6 +2741,8 @@ case "$1" in
             help|-h|--help) page model_help ;;
             "")             model_menu ;;          # guided: list + pick default
             list|ls)        model_menu ;;          # ollama-style aliases (v2.10)
+            ps)             ollama ps ;;           # who is in RAM now (v2.11)
+            stop)           shift; model_stop "${1:-}" ;;
             pull)           shift
                             if [ -n "${1:-}" ]; then model_pull "$1"; else model_pull_menu; fi ;;
             update)         shift; model_update "${1:-}" ;;
@@ -2574,9 +2808,9 @@ case "$1" in
         MEMCTX="$(memory_context)$(session_context)$(piped_context)"
         session_add "$*" "(answered in words via -d)"
         case "$UILANG" in
-            it) exec aichat --model "$MODEL" "${MEMCTX}Rispondi in italiano. $*" ;;
-            de) exec aichat --model "$MODEL" "${MEMCTX}Antworte auf Deutsch. $*" ;;
-            *)  exec aichat --model "$MODEL" "${MEMCTX}$*" ;;
+            it) exec aichat --model "$MODEL" "${MEMCTX}Rispondi in italiano. $*$(nothink)" ;;
+            de) exec aichat --model "$MODEL" "${MEMCTX}Antworte auf Deutsch. $*$(nothink)" ;;
+            *)  exec aichat --model "$MODEL" "${MEMCTX}$*$(nothink)" ;;
         esac
         ;;
     -l|--log)

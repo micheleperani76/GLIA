@@ -91,33 +91,36 @@ L() {
         it:pm_found)  echo "Distribuzione rilevata, package manager:" ;;
         de:pm_found)  echo "Distribution erkannt, Paketmanager:" ;;
         *:pm_found)   echo "Detected distro, package manager:" ;;
-        it:s_deps)    echo "1/7  Dipendenze di base (curl, jq)" ;;
-        de:s_deps)    echo "1/7  Basis-Abhaengigkeiten (curl, jq)" ;;
-        *:s_deps)     echo "1/7  Base dependencies (curl, jq)" ;;
-        it:s_ollama)  echo "2/7  Ollama (il motore che fa girare l'IA in locale)" ;;
-        de:s_ollama)  echo "2/7  Ollama (die lokale KI-Engine)" ;;
-        *:s_ollama)   echo "2/7  Ollama (the engine that runs the AI locally)" ;;
-        it:s_aichat)  echo "3/7  aichat (il ponte tra glia e ollama)" ;;
-        de:s_aichat)  echo "3/7  aichat (die Bruecke zwischen glia und ollama)" ;;
-        *:s_aichat)   echo "3/7  aichat (the bridge between glia and ollama)" ;;
-        it:s_files)   echo "4/7  Comando glia e glia-hardware in $INSTALL_DIR" ;;
-        de:s_files)   echo "4/7  Befehl glia und glia-hardware nach $INSTALL_DIR" ;;
-        *:s_files)    echo "4/7  glia and glia-hardware into $INSTALL_DIR" ;;
-        it:s_conf)    echo "5/7  Configurazione di aichat" ;;
-        de:s_conf)    echo "5/7  aichat-Konfiguration" ;;
-        *:s_conf)     echo "5/7  aichat configuration" ;;
-        it:s_comp)    echo "6/7  Completamento TAB per la tua shell" ;;
-        de:s_comp)    echo "6/7  TAB-Vervollstaendigung fuer deine Shell" ;;
-        *:s_comp)     echo "6/7  TAB completion for your shell" ;;
+        it:s_deps)    echo "1/8  Dipendenze di base (curl, jq)" ;;
+        de:s_deps)    echo "1/8  Basis-Abhaengigkeiten (curl, jq)" ;;
+        *:s_deps)     echo "1/8  Base dependencies (curl, jq)" ;;
+        it:s_ollama)  echo "2/8  Ollama (il motore che fa girare l'IA in locale)" ;;
+        de:s_ollama)  echo "2/8  Ollama (die lokale KI-Engine)" ;;
+        *:s_ollama)   echo "2/8  Ollama (the engine that runs the AI locally)" ;;
+        it:s_aichat)  echo "3/8  aichat (il ponte tra glia e ollama)" ;;
+        de:s_aichat)  echo "3/8  aichat (die Bruecke zwischen glia und ollama)" ;;
+        *:s_aichat)   echo "3/8  aichat (the bridge between glia and ollama)" ;;
+        it:s_files)   echo "4/8  Comando glia e glia-hardware in $INSTALL_DIR" ;;
+        de:s_files)   echo "4/8  Befehl glia und glia-hardware nach $INSTALL_DIR" ;;
+        *:s_files)    echo "4/8  glia and glia-hardware into $INSTALL_DIR" ;;
+        it:s_conf)    echo "5/8  Configurazione di aichat" ;;
+        de:s_conf)    echo "5/8  aichat-Konfiguration" ;;
+        *:s_conf)     echo "5/8  aichat configuration" ;;
+        it:s_comp)    echo "6/8  Completamento TAB per la tua shell" ;;
+        de:s_comp)    echo "6/8  TAB-Vervollstaendigung fuer deine Shell" ;;
+        *:s_comp)     echo "6/8  TAB completion for your shell" ;;
         it:comp_zsh)  echo "zsh: nessun completamento nativo per ora. Puoi usare quello bash con: autoload bashcompinit && bashcompinit && source completions/glia.bash" ;;
         de:comp_zsh)  echo "zsh: noch keine native Vervollstaendigung. Die bash-Variante geht mit: autoload bashcompinit && bashcompinit && source completions/glia.bash" ;;
         *:comp_zsh)   echo "zsh: no native completion yet. You can use the bash one with: autoload bashcompinit && bashcompinit && source completions/glia.bash" ;;
         it:comp_skip) echo "shell non riconosciuta: completamento saltato (vedi la cartella completions/ del repo)." ;;
         de:comp_skip) echo "Shell nicht erkannt: Vervollstaendigung uebersprungen (siehe completions/ im Repo)." ;;
         *:comp_skip)  echo "shell not recognized: completion skipped (see the repo's completions/ folder)." ;;
-        it:s_model)   echo "7/7  Modello IA" ;;
-        de:s_model)   echo "7/7  KI-Modell" ;;
-        *:s_model)    echo "7/7  AI model" ;;
+        it:s_model)   echo "7/8  Modello IA" ;;
+        de:s_model)   echo "7/8  KI-Modell" ;;
+        *:s_model)    echo "7/8  AI model" ;;
+        it:s_check)   echo "8/8  Controllo finale (glia --doctor)" ;;
+        de:s_check)   echo "8/8  Abschlusscheck (glia --doctor)" ;;
+        *:s_check)    echo "8/8  Final check (glia --doctor)" ;;
         it:have)      echo "gia' presente, salto." ;;
         de:have)      echo "bereits vorhanden, uebersprungen." ;;
         *:have)       echo "already present, skipping." ;;
@@ -371,6 +374,17 @@ step_model() {
     fi
 }
 
+step_check() {
+    # final health check with glia's own doctor: the new user sees at once
+    # whether everything is green (engine, model, RAM, PATH, folders)
+    echo -e "${BLUE}$(L s_check)${NC}"
+    if [ "$DRY_RUN" -eq 1 ]; then
+        printf '   %s[dry-run]%s %s --doctor\n' "$DIM" "$NC" "$ASSIST_NAME"
+        return
+    fi
+    "$INSTALL_DIR/$ASSIST_NAME" --doctor || true
+}
+
 # --------------------- MAIN ------------------------
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 
@@ -416,6 +430,7 @@ step_config
 step_completions
 step_path
 step_model
+step_check
 
 echo
 echo -e "${GREEN}$(L done)${NC}"
