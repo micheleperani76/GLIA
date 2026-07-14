@@ -43,23 +43,29 @@ result into a saved shortcut.
 ## How GLIA is different
 
 Plenty of tools now translate plain language into a shell command — it's a
-crowded idea, and a good one. GLIA's difference isn't the translation itself;
-it's the intent and the shape around it:
+crowded, useful idea. GLIA's difference isn't the translation itself. A plain
+translator runs one way: words in, a command out that runs. **GLIA closes the
+loop** — every command it produces is handed back to you, to read and to learn,
+so what you send as a request returns to you as knowledge. Three things follow
+from that:
 
-- **It teaches instead of replacing.** Every proposal also shows the real
-  command, so you *learn* the terminal rather than outsource it. Most assistants
-  aim to do the work for you; GLIA aims to make you able to do it yourself — then
-  step aside the moment you know how.
-- **It runs entirely offline.** Local Ollama on your own machine: no cloud, no
-  API keys, nothing leaves your computer. Repeated work becomes an alias or a
-  cached answer, so the model isn't called twice for the same thing.
-- **It's a whole distribution, not just a command.** GLIA ships as a minimal
-  Linux distro (live ISO + Calamares installer) that boots straight to the
-  terminal with the assistant already onboard — and the same `glia` also installs
-  onto the Arch, Debian or Fedora you already run.
+- **It teaches instead of replacing.** Every proposal shows the real command
+  before it runs, so you *learn* the terminal rather than outsource it. Most
+  assistants aim to do the work for you; GLIA aims to make you able to do it
+  yourself — then steps aside the moment you know how.
+- **Green by design, and offline.** It runs on local Ollama — no cloud, no API
+  keys, nothing leaves your machine. And it's built to spend less: turn any
+  repeated request into a **shortcut that runs with no AI call at all**, while a
+  local cache answers repeated questions — so the model isn't burned twice for
+  the same thing. Fewer calls, less energy, a faster terminal.
+- **A whole distribution, not just a command.** GLIA ships as a minimal Linux
+  distro (live ISO + Calamares installer) that boots straight to the terminal
+  with the assistant already onboard — and the same `glia` also installs onto
+  the Arch, Debian or Fedora you already run.
 
-The translator is the easy part. The teaching-first, offline, whole-system
-approach is what makes GLIA GLIA.
+The translation is the easy part — and GLIA gets it right. What makes it GLIA is
+everything built on a tool that actually works: it teaches while it runs, it's
+green by design, and it's a whole system, not a lone command.
 
 ## Project status
 
