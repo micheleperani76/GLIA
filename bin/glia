@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ============================================================
 #  glia - AI terminal assistant (Ollama + aichat)
-#  Version: 2.15.3 - 2026-07-15
+#  Version: 2.15.4 - 2026-07-15
 #  Author: Michele (with Claude)
 #  Project: GLIA (GNU Linux IA)
 #
@@ -9,6 +9,9 @@
 #  what you learn here you can reuse in other programs (and vice versa).
 #
 #  What's new in v2.15 ("a model per job"):
+#   - v2.15.4: the swap now announces WHICH AI it is loading for the task
+#     ("Loading the AI for this task: ollama run <model>"), so the stop/load
+#     step names the incoming model, not just the one being stopped.
 #   - v2.15.3: web search now sends "think":false to Ollama. Reasoning models
 #     (e.g. gemma, which returns its reasoning in a separate 'thinking' field)
 #     were spending ALL num_predict tokens reasoning and leaving 'content'
@@ -277,7 +280,7 @@
 # ============================================================
 
 # ----------------- CONFIGURATION -----------------
-VERSION="2.15.3"
+VERSION="2.15.4"
 DEFAULT_MODEL="qwen2.5-coder:7b"
 if [ -r "$HOME/.config/glia/model" ]; then
     MODEL="ollama:$(head -n1 "$HOME/.config/glia/model")"
@@ -942,6 +945,9 @@ t() {
         it:ms_reload)       echo "Ricarico la tua IA di default:" ;;
         de:ms_reload)       echo "Lade deine Standard-KI wieder:" ;;
         *:ms_reload)        echo "Reloading your default AI:" ;;
+        it:ms_load)         echo "Carico l'IA per questo compito:" ;;
+        de:ms_load)         echo "Ich lade die KI für diese Aufgabe:" ;;
+        *:ms_load)          echo "Loading the AI for this task:" ;;
         it:ms_keep)         echo "C'è RAM per entrambe: non scarico nulla." ;;
         de:ms_keep)         echo "Genug RAM für beide: nichts wird entladen." ;;
         *:ms_keep)          echo "Enough RAM for both: nothing is unloaded." ;;
@@ -3152,6 +3158,8 @@ swap_in() {
         mem_unload "$def"
         SWAP_STOPPED="$def"
     fi
+    # v2.15.4: say WHICH AI we are loading for this task (it loads on first use).
+    echo -e "$(t ms_load) ${GREEN}ollama run $target${NC}" >&2
 }
 # swap_out <target> <default>: free the guest, make sure the default is warm again.
 swap_out() {
