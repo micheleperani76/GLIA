@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ============================================================
 #  glia - AI terminal assistant (Ollama + aichat)
-#  Version: 2.14.1 - 2026-07-15
+#  Version: 2.14.2 - 2026-07-15
 #  Author: Michele (with Claude)
 #  Project: GLIA (GNU Linux IA)
 #
@@ -24,6 +24,9 @@
 #   - v2.14.1: `-V` runs a SILENT update check and warns only if a newer
 #     version is available online (says nothing when offline or up to date).
 #     The check (net_update_status) is shared with --doctor.
+#   - v2.14.2: `-w` checks the connection FIRST — if you are offline it says
+#     so clearly and skips the whole browser+model procedure. The probe is
+#     the shared, fast `net_online` (~1s; caching it would risk stale state).
 #
 #  What's new in v2.13 ("web"):
 #   - `-w <question>`: search the web and answer with sources. Uses the
@@ -249,7 +252,7 @@
 # ============================================================
 
 # ----------------- CONFIGURATION -----------------
-VERSION="2.14.1"
+VERSION="2.14.2"
 DEFAULT_MODEL="qwen2.5-coder:7b"
 if [ -r "$HOME/.config/glia/model" ]; then
     MODEL="ollama:$(head -n1 "$HOME/.config/glia/model")"
@@ -873,6 +876,9 @@ t() {
         it:web_noresult)    echo "Nessun risultato dal web (controlla la rete)." ;;
         de:web_noresult)    echo "Keine Web-Ergebnisse (Netzwerk prüfen)." ;;
         *:web_noresult)     echo "No web results (check your network)." ;;
+        it:web_noweb)       echo "Nessuna connessione a internet: la ricerca web (-w) ha bisogno della rete per funzionare. Controlla la connessione e riprova." ;;
+        de:web_noweb)       echo "Keine Internetverbindung: Die Websuche (-w) braucht das Netz. Prüfe die Verbindung und versuche es erneut." ;;
+        *:web_noweb)        echo "No internet connection: web search (-w) needs the network to work. Check your connection and try again." ;;
         it:web_nomodel)     echo "Il modello non ha risposto." ;;
         de:web_nomodel)     echo "Das Modell hat nicht geantwortet." ;;
         *:web_nomodel)      echo "The model did not answer." ;;
@@ -2458,10 +2464,14 @@ EOF
 # net_update_status (v2.14.1): ONE silent check, shared by -V and --doctor.
 # Sets NEWVER. Returns: 0 = online & up to date · 1 = online, newer available
 # (NEWVER set) · 2 = offline / unreachable.
+# net_online (v2.14.2): fast, reliable connectivity probe (~1s; fails fast
+# when offline). Shared by -w (protection), -V and --doctor.
+net_online() { curl -fsS --max-time 3 -o /dev/null -I "https://github.com" 2>/dev/null; }
+
 NEWVER=""
 net_update_status() {
     NEWVER=""
-    curl -fsS --max-time 3 -o /dev/null -I "https://github.com" 2>/dev/null || return 2
+    net_online || return 2
     local nv
     nv=$(curl -fsSL --max-time 5 "https://raw.githubusercontent.com/micheleperani76/GLIA/main/bin/glia" 2>/dev/null \
          | grep -m1 -oE 'VERSION="[0-9.]+"' | grep -oE '[0-9.]+')
@@ -3114,6 +3124,7 @@ web_model_cmd() {
 web_answer() {
     local q="$1" deep="${2:-0}" pages ctx sys prompt body target def keep
     web_deps_ok || exit 1
+    net_online || { echo -e "${RED}$(t web_noweb)${NC}" >&2; exit 1; }   # v2.14.2: no net, no point
     check_ai
     def="${MODEL#ollama:}"; target="$(web_target)"
     pages="$WEB_PAGES"; [ "$deep" = 1 ] && pages="$WEB_PAGES_DEEP"
