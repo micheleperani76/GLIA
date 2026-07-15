@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ============================================================
 #  glia - AI terminal assistant (Ollama + aichat)
-#  Version: 2.15.1 - 2026-07-15
+#  Version: 2.15.2 - 2026-07-15
 #  Author: Michele (with Claude)
 #  Project: GLIA (GNU Linux IA)
 #
@@ -9,6 +9,10 @@
 #  what you learn here you can reuse in other programs (and vice versa).
 #
 #  What's new in v2.15 ("a model per job"):
+#   - v2.15.2: RAM handling centralized in two primitives — mem_unload (stop
+#     + free) and mem_warm (preload + keep warm). set_model, model_stop,
+#     swap_in and swap_out now all go through them, so the ollama/curl
+#     incantations live in ONE place (no behaviour change, just DRY).
 #   - v2.15.1: single-model RAM policy. The swap ALWAYS unloads the default
 #     before loading a guest AI (web/project/one-off), even when there is
 #     room for both: exactly ONE model stays in RAM at any time. The default
@@ -268,7 +272,7 @@
 # ============================================================
 
 # ----------------- CONFIGURATION -----------------
-VERSION="2.15.1"
+VERSION="2.15.2"
 DEFAULT_MODEL="qwen2.5-coder:7b"
 if [ -r "$HOME/.config/glia/model" ]; then
     MODEL="ollama:$(head -n1 "$HOME/.config/glia/model")"
@@ -1302,6 +1306,21 @@ model_resolve() {
     return 1
 }
 
+# ---- RAM primitives (v2.15.2): the ONE place that unloads / warms a model.
+# Every function that touches the RAM (set_model, model_stop, swap_in,
+# swap_out) goes through these, so the exact ollama/curl incantations live
+# in a single spot instead of being copy-pasted around.
+mem_unload() {
+    # $1 = model -> stop it and free its RAM now. Belt and braces: `ollama
+    # stop` for the CLI, plus the keep_alive:0 API that works on every version.
+    ollama stop "$1" >/dev/null 2>&1
+    curl -fsS --max-time 5 "$OLLAMA_URL/api/generate" -d "{\"model\":\"$1\",\"keep_alive\":0}" >/dev/null 2>&1
+}
+mem_warm() {
+    # $1 = model -> preload it and keep it warm in RAM for the keep_alive window.
+    curl -fsS --max-time 120 "$OLLAMA_URL/api/generate" -d "{\"model\":\"$1\",\"keep_alive\":\"30m\",\"prompt\":\"ok\",\"options\":{\"num_predict\":1}}" >/dev/null 2>&1
+}
+
 set_model() {
     # $1 = model name -> becomes the permanent default (per-user)
     local old="${MODEL#ollama:}"
@@ -1311,11 +1330,9 @@ set_model() {
     show_equiv "echo '$1' > ~/.config/glia/model"
     # v2.11: unload the OLD model from RAM right away - otherwise it sits
     # there for ~5 more minutes (keep_alive) and the RAM looks saturated
-    if [ "$old" != "$1" ] && curl -fsS --max-time 2 "$OLLAMA_URL/api/ps" 2>/dev/null | grep -q "\"$old\""; then
+    if [ "$old" != "$1" ] && model_loaded "$old"; then
         echo -e "$(t ms_unload) ${GREEN}ollama stop $old${NC}"
-        ollama stop "$old" >/dev/null 2>&1
-        # belt and braces: the API unload works on every ollama version
-        curl -fsS --max-time 5 "$OLLAMA_URL/api/generate" -d "{\"model\":\"$old\",\"keep_alive\":0}" >/dev/null 2>&1
+        mem_unload "$old"
     fi
     MODEL="ollama:$1"
 }
@@ -1415,8 +1432,7 @@ model_stop() {
     [ -z "${1:-}" ] && { echo "$(t mstop_usage)"; return 1; }
     name=$(model_resolve "$1") || { echo -e "${RED}$(t model_badsel)${NC}" >&2; return 1; }
     echo -e "$(t mstop_doing) ${GREEN}ollama stop $name${NC}"
-    ollama stop "$name" >/dev/null 2>&1
-    curl -fsS --max-time 5 "$OLLAMA_URL/api/generate" -d "{\"model\":\"$name\",\"keep_alive\":0}" >/dev/null 2>&1
+    mem_unload "$name"
     ollama ps
 }
 
@@ -3128,8 +3144,7 @@ swap_in() {
     # The default is reloaded/kept warm afterwards by swap_out.
     if model_loaded "$def"; then
         echo -e "$(t ms_unload) ${GREEN}ollama stop $def${NC}" >&2
-        ollama stop "$def" >/dev/null 2>&1
-        curl -fsS --max-time 5 "$OLLAMA_URL/api/generate" -d "{\"model\":\"$def\",\"keep_alive\":0}" >/dev/null 2>&1
+        mem_unload "$def"
         SWAP_STOPPED="$def"
     fi
 }
@@ -3137,10 +3152,9 @@ swap_in() {
 swap_out() {
     local target="$1" def="$2"
     [ "$target" = "$def" ] && return 0
-    ollama stop "$target" >/dev/null 2>&1
-    curl -fsS --max-time 5 "$OLLAMA_URL/api/generate" -d "{\"model\":\"$target\",\"keep_alive\":0}" >/dev/null 2>&1
+    mem_unload "$target"
     echo -e "$(t ms_reload) ${GREEN}ollama run $def${NC}" >&2
-    curl -fsS --max-time 120 "$OLLAMA_URL/api/generate" -d "{\"model\":\"$def\",\"keep_alive\":\"30m\",\"prompt\":\"ok\",\"options\":{\"num_predict\":1}}" >/dev/null 2>&1
+    mem_warm "$def"
     SWAP_STOPPED=""
 }
 
