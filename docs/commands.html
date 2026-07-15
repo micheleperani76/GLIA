@@ -194,7 +194,7 @@ footer .fbrand{font-weight:800;color:var(--white);font-size:1.05rem;margin-botto
     <div class="grp-h"><span class="n">05</span><h2>Models / AI</h2></div>
     <p class="why"><b>What it is:</b> the models are downloaded and kept by Ollama; GLIA uses one at a time. <b>Why it exists:</b> different machines and tasks want different models — pick the right one, or override it just for a single command.</p>
     <table class="cmds">
-      <tr><td class="c">glia -m</td><td class="d">List downloaded models (numbered) and choose the default (guided). <code>glia -m list</code> and <code>glia -m ls</code> do the same.</td></tr>
+      <tr><td class="c">glia -m</td><td class="d">List downloaded models (numbered) and choose the default (guided). <code>glia -m list</code> and <code>glia -m ls</code> do the same. Each model shows the roles pinned onto it — <b>default · web · project</b> — so you see at a glance which AI serves which command.</td></tr>
       <tr><td class="c">glia -m &lt;n|name&gt;</td><td class="d">Set the default model.</td></tr>
       <tr><td class="c">glia -m &lt;n|name&gt; &lt;task&gt;</td><td class="d">Use that model just for this command — default unchanged.</td></tr>
       <tr><td class="c">glia -m pull</td><td class="d">Guided download: checks RAM, GPU and disk, then offers up to 10 models that actually FIT this machine — pick one by number. Ends by showing the manual command, so you can do it yourself.</td></tr>
@@ -206,7 +206,7 @@ footer .fbrand{font-weight:800;color:var(--white);font-size:1.05rem;margin-botto
       <tr><td class="c">glia --update</td><td class="d">Update the Ollama <b>engine</b> itself, using this machine's package manager. <code>glia --update help</code> is the full guide to downloading and updating.</td></tr>
       <tr><td class="c">glia --update glia</td><td class="d">Update <b>GLIA itself</b> (the program): downloads the latest version from GitHub, syntax-checks it, and asks before replacing — installs over the running command in place.</td></tr>
     </table>
-    <div class="note">Same words as Ollama, on purpose: <code>ollama list</code> · <code>ollama pull &lt;name&gt;</code> · <code>ollama rm &lt;name&gt;</code> · <code>ollama ps</code> · <code>ollama stop</code> — what you learn here works there too.<br><br>Switching the default model <b>unloads the previous one from RAM automatically</b>, so you never keep two models resident at once.<br><br>Default saved in <code>~/.config/glia/model</code> · the feasible-model list comes from <code>glia-hardware -l</code> (curated catalog + this machine's hardware).</div>
+    <div class="note">Same words as Ollama, on purpose: <code>ollama list</code> · <code>ollama pull &lt;name&gt;</code> · <code>ollama rm &lt;name&gt;</code> · <code>ollama ps</code> · <code>ollama stop</code> — what you learn here works there too.<br><br>Switching the default model <b>unloads the previous one from RAM automatically</b>, so you never keep two models resident at once. When a command needs a different AI (<code>-w</code>, <code>-p</code>, or a one-off <code>-m</code>), the default is swapped out first and brought back afterwards — but if <b>you</b> stopped the default yourself (<code>ollama stop</code>), GLIA respects that and leaves it off.<br><br>Default saved in <code>~/.config/glia/model</code> · the feasible-model list comes from <code>glia-hardware -l</code> (curated catalog + this machine's hardware).</div>
   </section>
 
   <section class="grp" id="project">
@@ -214,6 +214,7 @@ footer .fbrand{font-weight:800;color:var(--white);font-size:1.05rem;margin-botto
     <p class="why"><b>What it is:</b> plan a small project and write its files, with your confirmation at every step. <b>Why it exists:</b> for multi-file tasks that go beyond a single command — still transparent, still one approval at a time.</p>
     <table class="cmds">
       <tr><td class="c">glia -p &lt;idea&gt;</td><td class="d">Plan the steps and write the files (you confirm each one).</td></tr>
+      <tr><td class="c">glia --project-model &lt;name&gt;</td><td class="d">Pin a dedicated AI for project mode (the twin of <code style="font-family:var(--mono);color:var(--teal)">--web-model</code>). <code style="font-family:var(--mono);color:var(--teal)">--project-model default</code> (or <code style="font-family:var(--mono);color:var(--teal)">-d</code>) follows your default; <code style="font-family:var(--mono);color:var(--teal)">--project-model</code> alone shows it and offers a guided menu.</td></tr>
       <tr><td class="c">(at the plan prompt)</td><td class="d">Enter = proceed, <b>n</b> = cancel, or <b>type a hint</b> — the plan is revised with it, without losing what the original request asked for. Hints accumulate.</td></tr>
       <tr><td class="c">(at each file)</td><td class="d">Enter = save, <b>v</b> = view all, <b>r</b> = regenerate, <b>type a hint</b> = regenerate following it, <b>s</b> = skip.</td></tr>
     </table>
