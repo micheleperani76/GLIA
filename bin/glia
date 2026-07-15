@@ -1,12 +1,20 @@
 #!/usr/bin/env bash
 # ============================================================
 #  glia - AI terminal assistant (Ollama + aichat)
-#  Version: 2.15.5 - 2026-07-15
+#  Version: 2.16.0 - 2026-07-15
 #  Author: Michele (with Claude)
 #  Project: GLIA (GNU Linux IA)
 #
 #  Design pillar: commands follow standard terminal conventions, so
 #  what you learn here you can reuse in other programs (and vice versa).
+#
+#  What's new in v2.16 ("show the load"):
+#   - a rotating spinner appears while a model is loaded into RAM (the guest AI
+#     for -w/-p/-m, and the default being restored), so a silent ~10-15s cold
+#     load no longer looks like a hang. Shared helper spin_run; it steps aside
+#     automatically when stderr isn't a terminal (logs/pipes stay clean).
+#   - the guest AI is now preloaded during the swap (with that spinner), so the
+#     answer starts streaming as soon as it's ready.
 #
 #  What's new in v2.15 ("a model per job"):
 #   - v2.15.5: swap_out brings the default back ONLY if GLIA was the one that
@@ -284,7 +292,7 @@
 # ============================================================
 
 # ----------------- CONFIGURATION -----------------
-VERSION="2.15.5"
+VERSION="2.16.0"
 DEFAULT_MODEL="qwen2.5-coder:7b"
 if [ -r "$HOME/.config/glia/model" ]; then
     MODEL="ollama:$(head -n1 "$HOME/.config/glia/model")"
@@ -952,6 +960,9 @@ t() {
         it:ms_load)         echo "Carico l'IA per questo compito:" ;;
         de:ms_load)         echo "Ich lade die KI für diese Aufgabe:" ;;
         *:ms_load)          echo "Loading the AI for this task:" ;;
+        it:ms_loading)      echo "Carico in memoria" ;;
+        de:ms_loading)      echo "Lade in den RAM" ;;
+        *:ms_loading)       echo "Loading into RAM" ;;
         it:ms_keep)         echo "C'è RAM per entrambe: non scarico nulla." ;;
         de:ms_keep)         echo "Genug RAM für beide: nichts wird entladen." ;;
         *:ms_keep)          echo "Enough RAM for both: nothing is unloaded." ;;
@@ -1334,6 +1345,25 @@ mem_unload() {
 mem_warm() {
     # $1 = model -> preload it and keep it warm in RAM for the keep_alive window.
     curl -fsS --max-time 120 "$OLLAMA_URL/api/generate" -d "{\"model\":\"$1\",\"keep_alive\":\"30m\",\"prompt\":\"ok\",\"options\":{\"num_predict\":1}}" >/dev/null 2>&1
+}
+
+# spin_run <message> <cmd...> (v2.16): run cmd while showing a rotating spinner
+# on stderr, so a silent model load looks like it is working. Falls back to a
+# plain run (no spinner) when stderr is not a terminal — logs and pipes stay
+# clean. The worker runs in the same process group, so Ctrl-C stops both.
+spin_run() {
+    local msg="$1"; shift
+    if [ ! -t 2 ]; then "$@"; return $?; fi
+    "$@" &
+    local work=$! i=0 rc
+    local frames=(⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏)
+    while kill -0 "$work" 2>/dev/null; do
+        printf '\r%s %s ' "${frames[i++%10]}" "$msg" >&2
+        sleep 0.1
+    done
+    wait "$work"; rc=$?
+    printf '\r\033[K' >&2      # erase the spinner line
+    return $rc
 }
 
 set_model() {
@@ -3162,8 +3192,10 @@ swap_in() {
         mem_unload "$def"
         SWAP_STOPPED="$def"
     fi
-    # v2.15.4: say WHICH AI we are loading for this task (it loads on first use).
+    # v2.15.4: say WHICH AI we are loading for this task; v2.16: preload it now
+    # with a visible spinner, so the silent cold load doesn't look like a hang.
     echo -e "$(t ms_load) ${GREEN}ollama run $target${NC}" >&2
+    spin_run "$(t ms_loading) $target" mem_warm "$target"
 }
 # swap_out <target> <default>: free the guest; bring the default back ONLY if
 # WE were the ones who unloaded it (SWAP_STOPPED). If you had stopped the
@@ -3174,7 +3206,7 @@ swap_out() {
     mem_unload "$target"                 # free the guest either way
     if [ "$SWAP_STOPPED" = "$def" ]; then
         echo -e "$(t ms_reload) ${GREEN}ollama run $def${NC}" >&2
-        mem_warm "$def"
+        spin_run "$(t ms_loading) $def" mem_warm "$def"
     fi
     SWAP_STOPPED=""
 }

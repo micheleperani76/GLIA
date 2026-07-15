@@ -123,8 +123,16 @@ green by design, and it's a whole system, not a lone command.
   `~/.local/share/glia/glia.log`.
   Aliases (`glia -a add <name> <cmd>`) save commands you use often so you
   don't ask the AI every time (e.g. `glia -a bangkok`); manage them with
-  `-a list` / `-a rm` / `-a edit`. Standard flags throughout:
-  `-h/--help`, `-V/--version`, `-d/--ask`, `-l/--log`.
+  `-a list` / `-a rm` / `-a edit`.
+  Web search with sources: `glia -w <question>` queries DuckDuckGo through
+  the w3m text browser (no API key) and the local model summarizes with a
+  **Sources** list. Pick the AI per job: `glia -m` sets the default and shows
+  role tags (default / web / project) next to each model, while
+  `glia --web-model` and `glia --project-model` pin a dedicated AI for web
+  search and for project mode (`glia -p`). Only one model stays resident in
+  RAM: GLIA swaps it out and back for a one-off task — showing which AI it
+  loads — and if you stop the default yourself it is left off. Standard flags
+  throughout: `-h/--help`, `-V/--version`, `-d/--ask`, `-l/--log`.
 - **`bin/glia-hardware`** — detects RAM/GPU/VRAM and recommends the right
   AI model tier. JSON output (`-j`) designed for the installer.
 - **`config/aichat-config.yaml`** — aichat configuration for local Ollama
