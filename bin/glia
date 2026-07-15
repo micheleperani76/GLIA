@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ============================================================
 #  glia - AI terminal assistant (Ollama + aichat)
-#  Version: 2.15.4 - 2026-07-15
+#  Version: 2.15.5 - 2026-07-15
 #  Author: Michele (with Claude)
 #  Project: GLIA (GNU Linux IA)
 #
@@ -9,6 +9,10 @@
 #  what you learn here you can reuse in other programs (and vice versa).
 #
 #  What's new in v2.15 ("a model per job"):
+#   - v2.15.5: swap_out brings the default back ONLY if GLIA was the one that
+#     unloaded it (SWAP_STOPPED). If you stopped the default yourself
+#     (`ollama stop`), a later -w/-p/-m guest call no longer force-reloads it:
+#     your choice is respected and the default stays off.
 #   - v2.15.4: the swap now announces WHICH AI it is loading for the task
 #     ("Loading the AI for this task: ollama run <model>"), so the stop/load
 #     step names the incoming model, not just the one being stopped.
@@ -280,7 +284,7 @@
 # ============================================================
 
 # ----------------- CONFIGURATION -----------------
-VERSION="2.15.4"
+VERSION="2.15.5"
 DEFAULT_MODEL="qwen2.5-coder:7b"
 if [ -r "$HOME/.config/glia/model" ]; then
     MODEL="ollama:$(head -n1 "$HOME/.config/glia/model")"
@@ -3161,13 +3165,17 @@ swap_in() {
     # v2.15.4: say WHICH AI we are loading for this task (it loads on first use).
     echo -e "$(t ms_load) ${GREEN}ollama run $target${NC}" >&2
 }
-# swap_out <target> <default>: free the guest, make sure the default is warm again.
+# swap_out <target> <default>: free the guest; bring the default back ONLY if
+# WE were the ones who unloaded it (SWAP_STOPPED). If you had stopped the
+# default yourself, we respect that and leave it off (v2.15.5).
 swap_out() {
     local target="$1" def="$2"
     [ "$target" = "$def" ] && return 0
-    mem_unload "$target"
-    echo -e "$(t ms_reload) ${GREEN}ollama run $def${NC}" >&2
-    mem_warm "$def"
+    mem_unload "$target"                 # free the guest either way
+    if [ "$SWAP_STOPPED" = "$def" ]; then
+        echo -e "$(t ms_reload) ${GREEN}ollama run $def${NC}" >&2
+        mem_warm "$def"
+    fi
     SWAP_STOPPED=""
 }
 
