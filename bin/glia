@@ -1,12 +1,26 @@
 #!/usr/bin/env bash
 # ============================================================
 #  glia - AI terminal assistant (Ollama + aichat)
-#  Version: 2.13.1 - 2026-07-15
+#  Version: 2.14.0 - 2026-07-15
 #  Author: Michele (with Claude)
 #  Project: GLIA (GNU Linux IA)
 #
 #  Design pillar: commands follow standard terminal conventions, so
 #  what you learn here you can reuse in other programs (and vice versa).
+#
+#  What's new in v2.14 ("swap the AI, safely"):
+#   - ONE shared RAM-swap mechanism (swap_in/swap_out), reused by BOTH the
+#     one-off `-m <name> <task>` AND web search. "Swap only if needed":
+#     the active AI is unloaded ONLY when free RAM can't hold both; then
+#     the DEFAULT is always reloaded/kept warm afterwards. Every
+#     `ollama stop`/`ollama run` is shown (teaching pillar).
+#   - `-m <name> -w <question>` (and `-w+`): run a web search on a chosen
+#     AI just for this call, with the same RAM swap + restore.
+#   - `--web-model <name>`: pin a dedicated AI for web search;
+#     `--web-model default` (or `-d`) follows the default; `--web-model`
+#     alone shows it and a guided menu. Precedence: inline -m > pin > default.
+#   - `--ask` is the documented long form for a plain answer; the old `-d`
+#     short still works as a silent legacy alias.
 #
 #  What's new in v2.13 ("web"):
 #   - `-w <question>`: search the web and answer with sources. Uses the
@@ -232,7 +246,7 @@
 # ============================================================
 
 # ----------------- CONFIGURATION -----------------
-VERSION="2.13.1"
+VERSION="2.14.0"
 DEFAULT_MODEL="qwen2.5-coder:7b"
 if [ -r "$HOME/.config/glia/model" ]; then
     MODEL="ollama:$(head -n1 "$HOME/.config/glia/model")"
@@ -285,6 +299,7 @@ WEB_MAXCHARS=2000         # max text kept per page read
 WEB_COLS=400              # w3m render width: wide so result URLs are never wrapped
 WEB_KEEPALIVE="30m"       # keep the model warm in RAM between -w calls (faster)
 WEB_NUMPREDICT=600        # max tokens generated for the web answer
+WEBMODELFILE="$HOME/.config/glia/web_model"   # optional AI dedicated to -w (empty = follow default)
 
 # Aliases (v2.0): user shortcuts, one per line
 #   name<TAB>type<TAB>request<TAB>command   (type = run | ask)
@@ -876,6 +891,37 @@ t() {
         it:web_cmd_expl)    echo "Interrogo DuckDuckGo con il browser testuale w3m (senza chiavi), leggo i risultati e li faccio riassumere al modello:" ;;
         de:web_cmd_expl)    echo "Ich frage DuckDuckGo mit dem Textbrowser w3m ab (ohne Schlüssel), lese die Ergebnisse und lasse sie vom Modell zusammenfassen:" ;;
         *:web_cmd_expl)     echo "I query DuckDuckGo with the w3m text browser (no keys), read the results and have the model summarize them:" ;;
+        # ---- model swap (v2.14) ----
+        it:ms_reload)       echo "Ricarico la tua IA di default:" ;;
+        de:ms_reload)       echo "Lade deine Standard-KI wieder:" ;;
+        *:ms_reload)        echo "Reloading your default AI:" ;;
+        it:ms_keep)         echo "C'è RAM per entrambe: non scarico nulla." ;;
+        de:ms_keep)         echo "Genug RAM für beide: nichts wird entladen." ;;
+        *:ms_keep)          echo "Enough RAM for both: nothing is unloaded." ;;
+        it:web_using)       echo "Per questa ricerca uso:" ;;
+        de:web_using)       echo "Für diese Suche nutze ich:" ;;
+        *:web_using)        echo "For this search I use:" ;;
+        it:wm_pick)         echo "Scegli l'IA per la ricerca web:" ;;
+        de:wm_pick)         echo "Wähle die KI für die Websuche:" ;;
+        *:wm_pick)          echo "Pick the AI for web search:" ;;
+        it:wm_followopt)    echo "segui sempre il default" ;;
+        de:wm_followopt)    echo "immer dem Standard folgen" ;;
+        *:wm_followopt)     echo "always follow the default" ;;
+        it:wm_choose)       echo "Scelta [numero, 0=default, Invio=lascia]: " ;;
+        de:wm_choose)       echo "Auswahl [Nummer, 0=Standard, Enter=lassen]: " ;;
+        *:wm_choose)        echo "Choice [number, 0=default, Enter=keep]: " ;;
+        it:wm_default)      echo "Ricerca web: uso sempre il modello di default." ;;
+        de:wm_default)      echo "Websuche: immer das Standardmodell." ;;
+        *:wm_default)       echo "Web search: always uses the default model." ;;
+        it:wm_set)          echo "IA per la ricerca web impostata:" ;;
+        de:wm_set)          echo "KI für die Websuche gesetzt:" ;;
+        *:wm_set)           echo "Web-search AI set to:" ;;
+        it:wm_current)      echo "IA fissa per la ricerca web:" ;;
+        de:wm_current)      echo "Feste KI für die Websuche:" ;;
+        *:wm_current)       echo "Pinned web-search AI:" ;;
+        it:wm_follow)       echo "Ricerca web: attualmente segue il modello di default." ;;
+        de:wm_follow)       echo "Websuche: folgt derzeit dem Standardmodell." ;;
+        *:wm_follow)        echo "Web search: currently follows the default model." ;;
     esac
 }
 
@@ -888,7 +934,7 @@ Assistente: $ASSIST_NAME  ·  comando di emergenza sempre attivo: glia
 Uso comune:
   $ASSIST_NAME                 (da solo) apre il prompt: scrivi la richiesta con QUALSIASI simbolo (' " \$ | ; & *)
   $ASSIST_NAME <richiesta>     propone ed esegue un comando (Invio = esegui, n = annulla, r = riprova)
-  $ASSIST_NAME -d|--ask <dom>  risponde a parole, senza eseguire nulla
+  $ASSIST_NAME --ask <dom>     risponde a parole, senza eseguire nulla
   $ASSIST_NAME -w|--web <dom>  cerca sul web e risponde con le fonti (-w+ legge anche le pagine)
   $ASSIST_NAME -a <nome>       esegue una scorciatoia salvata
   $ASSIST_NAME -l|--log        mostra il log dei comandi
@@ -920,7 +966,7 @@ Impostazioni:
 
 Esempi:
   $ASSIST_NAME trova i file più grandi in /home
-  $ASSIST_NAME -d cosa fa il comando rsync
+  $ASSIST_NAME --ask cosa fa il comando rsync
   $ASSIST_NAME -a add bangkok "TZ=Asia/Bangkok date"
   $ASSIST_NAME -m 2 riscrivi questo script in modo più chiaro   (usa l'IA #2 solo qui)
 
@@ -937,7 +983,7 @@ Assistent: $ASSIST_NAME  ·  Notfallbefehl immer aktiv: glia
 Häufige Nutzung:
   $ASSIST_NAME                (allein) öffnet den Prompt: Anfrage mit BELIEBIGEN Zeichen (' " \$ | ; & *)
   $ASSIST_NAME <Anfrage>      schlägt einen Befehl vor und führt ihn aus (Enter = ausführen, n = abbrechen, r = wiederholen)
-  $ASSIST_NAME -d|--ask <Fr>  antwortet in Worten, führt nichts aus
+  $ASSIST_NAME --ask <Fr>     antwortet in Worten, führt nichts aus
   $ASSIST_NAME -w|--web <Fr>  sucht im Web und antwortet mit Quellen (-w+ liest die Seiten)
   $ASSIST_NAME -a <Name>      führt einen gespeicherten Shortcut aus
   $ASSIST_NAME -l|--log       zeigt das Befehlsprotokoll
@@ -969,7 +1015,7 @@ Einstellungen:
 
 Beispiele:
   $ASSIST_NAME finde die größten Dateien in /home
-  $ASSIST_NAME -d was macht der Befehl rsync
+  $ASSIST_NAME --ask was macht der Befehl rsync
   $ASSIST_NAME -a add bangkok "TZ=Asia/Bangkok date"
   $ASSIST_NAME -m 2 schreibe dieses Skript klarer   (nutzt KI #2 nur hier)
 
@@ -986,7 +1032,7 @@ Assistant: $ASSIST_NAME  ·  emergency command always on: glia
 Common use:
   $ASSIST_NAME                 (alone) opens the prompt: type your request with ANY symbol (' " \$ | ; & *)
   $ASSIST_NAME <request>       propose and run a command (Enter = run, n = cancel, r = retry)
-  $ASSIST_NAME -d|--ask <q>    answer in words, run nothing
+  $ASSIST_NAME --ask <q>       answer in words, run nothing
   $ASSIST_NAME -w|--web <q>    search the web and answer with sources (-w+ reads pages)
   $ASSIST_NAME -a <name>       run a saved shortcut
   $ASSIST_NAME -l|--log        show the command log
@@ -1018,7 +1064,7 @@ Settings:
 
 Examples:
   $ASSIST_NAME find the largest files in /home
-  $ASSIST_NAME -d what does the rsync command do
+  $ASSIST_NAME --ask what does the rsync command do
   $ASSIST_NAME -a add bangkok "TZ=Asia/Bangkok date"
   $ASSIST_NAME -m 2 rewrite this script more clearly   (uses AI #2 for this only)
 
@@ -2424,6 +2470,7 @@ doctor() {
     mkdir -p "$LOGDIR" "$HOME/.config/glia" 2>/dev/null \
         && [ -w "$LOGDIR" ] && [ -w "$HOME/.config/glia" ]
     doc_line $? "$(t doc_dirs)" "ls -ld $LOGDIR ~/.config/glia"
+    [ -s "$WEBMODELFILE" ] && echo -e "  ${BLUE}i${NC} $(t wm_current) ${GREEN}$(head -n1 "$WEBMODELFILE")${NC}"
     echo
     if [ "$fails" -eq 0 ]; then
         echo -e "${GREEN}$(t doc_all_ok)${NC}"
@@ -2931,26 +2978,122 @@ for line in sys.stdin:
 sys.stdout.write("\n")
 '
 
+# ============================================================
+#  Model RAM swap (v2.14): ONE mechanism reused by the -m one-off
+#  AND by -w. "Swap only if needed": unload the active AI only when the
+#  free RAM is not enough for both; always restore the default afterwards.
+# ============================================================
+ram_free_mb() { awk '/MemAvailable/ {print int($2/1024)}' /proc/meminfo; }
+model_loaded() { curl -fsS --max-time 2 "$OLLAMA_URL/api/ps" 2>/dev/null | grep -q "\"$1\""; }
+
+# model_size_mb <name> -> approx RAM need in MB, read from `ollama list` SIZE
+# (weights on disk ~= RAM), with a small overhead; falls back to the heuristic.
+model_size_mb() {
+    local n="$1" row val unit
+    row=$(ollama list 2>/dev/null | awk -v m="$n" '$1==m {print $3" "$4; exit}')
+    if [ -n "$row" ]; then
+        val=${row% *}; unit=${row#* }
+        case "$unit" in
+            GB|gb) awk -v s="$val" 'BEGIN{printf "%d", s*1024 + 1200}' ;;
+            MB|mb) awk -v s="$val" 'BEGIN{printf "%d", s + 1200}' ;;
+            *)     ram_needed_mb "$n" ;;
+        esac
+    else
+        ram_needed_mb "$n"
+    fi
+}
+
+SWAP_STOPPED=""
+# swap_in <target> <default>: make room for target if the RAM is tight.
+swap_in() {
+    local target="$1" def="$2" free need
+    SWAP_STOPPED=""
+    [ "$target" = "$def" ] && return 0
+    model_loaded "$target" && return 0
+    free=$(ram_free_mb); need=$(model_size_mb "$target")
+    if [ -n "$free" ] && [ "$free" -lt "$need" ] && model_loaded "$def"; then
+        echo -e "$(t ms_unload) ${GREEN}ollama stop $def${NC}" >&2
+        ollama stop "$def" >/dev/null 2>&1
+        curl -fsS --max-time 5 "$OLLAMA_URL/api/generate" -d "{\"model\":\"$def\",\"keep_alive\":0}" >/dev/null 2>&1
+        SWAP_STOPPED="$def"
+    else
+        echo -e "$(t ms_keep)" >&2
+    fi
+}
+# swap_out <target> <default>: free the guest, make sure the default is warm again.
+swap_out() {
+    local target="$1" def="$2"
+    [ "$target" = "$def" ] && return 0
+    ollama stop "$target" >/dev/null 2>&1
+    curl -fsS --max-time 5 "$OLLAMA_URL/api/generate" -d "{\"model\":\"$target\",\"keep_alive\":0}" >/dev/null 2>&1
+    echo -e "$(t ms_reload) ${GREEN}ollama run $def${NC}" >&2
+    curl -fsS --max-time 120 "$OLLAMA_URL/api/generate" -d "{\"model\":\"$def\",\"keep_alive\":\"30m\",\"prompt\":\"ok\",\"options\":{\"num_predict\":1}}" >/dev/null 2>&1
+    SWAP_STOPPED=""
+}
+
+# which AI answers -w:  inline -m override  >  pinned web model  >  default
+web_target() {
+    if [ -n "${WEB_OVERRIDE:-}" ]; then printf '%s' "$WEB_OVERRIDE"; return; fi
+    local pin; pin="$(head -n1 "$WEBMODELFILE" 2>/dev/null)"
+    [ -n "$pin" ] && { printf '%s' "$pin"; return; }
+    printf '%s' "${MODEL#ollama:}"
+}
+
+web_model_menu() {
+    local list n i=0 choice sel
+    list="$(model_names)"; [ -z "$list" ] && return 0
+    echo "$(t wm_pick)"
+    while IFS= read -r n; do i=$((i+1)); printf "  %d) %s\n" "$i" "$n"; done <<< "$list"
+    printf "  0) %s\n" "$(t wm_followopt)"
+    read -r -p "$(t wm_choose) " choice < /dev/tty || return 0
+    [ -z "$choice" ] && return 0
+    if [ "$choice" = "0" ]; then rm -f "$WEBMODELFILE"; echo -e "${GREEN}$(t wm_default)${NC}"; return 0; fi
+    sel=$(model_resolve "$choice") || { echo -e "${RED}$(t model_badsel)${NC}" >&2; return 1; }
+    mkdir -p "$(dirname "$WEBMODELFILE")"; printf '%s\n' "$sel" > "$WEBMODELFILE"
+    echo -e "${GREEN}$(t wm_set) $sel${NC}"; show_equiv "echo '$sel' > ${WEBMODELFILE/#$HOME/\~}"
+}
+web_model_cmd() {
+    local cur sel
+    case "${1:-}" in
+        help|-h|--help) page web_help ;;
+        ""|show|list)
+            cur="$(head -n1 "$WEBMODELFILE" 2>/dev/null)"
+            if [ -n "$cur" ]; then echo -e "$(t wm_current) ${GREEN}$cur${NC}"; else echo -e "$(t wm_follow)"; fi
+            web_model_menu ;;
+        default|-d|none|off|clear|reset)
+            rm -f "$WEBMODELFILE"; echo -e "${GREEN}$(t wm_default)${NC}"; show_equiv "rm ${WEBMODELFILE/#$HOME/\~}" ;;
+        *)
+            sel=$(model_resolve "$1") || { echo -e "${RED}$(t model_badsel)${NC}" >&2; exit 1; }
+            mkdir -p "$(dirname "$WEBMODELFILE")"; printf '%s\n' "$sel" > "$WEBMODELFILE"
+            echo -e "${GREEN}$(t wm_set) $sel${NC}"; show_equiv "echo '$sel' > ${WEBMODELFILE/#$HOME/\~}" ;;
+    esac
+}
+
 # web_answer <query> <deep 0|1>
 web_answer() {
-    local q="$1" deep="${2:-0}" pages ctx sys prompt body
+    local q="$1" deep="${2:-0}" pages ctx sys prompt body target def keep
     web_deps_ok || exit 1
     check_ai
+    def="${MODEL#ollama:}"; target="$(web_target)"
     pages="$WEB_PAGES"; [ "$deep" = 1 ] && pages="$WEB_PAGES_DEEP"
     echo -e "${BLUE}$(t web_searching)${NC} ${GREEN}$q${NC}" >&2
+    [ "$target" != "$def" ] && echo -e "$(t web_using) ${GREEN}$target${NC}" >&2
     echo -e "$(t web_cmd_expl)" >&2
     show_equiv "w3m -dump -cols $WEB_COLS '${WEB_URL}$(web_urlenc "$q")&kl=${WEB_REGION}'" >&2
     ctx="$(build_web_context "$q" "$pages")"
     if [ -z "$ctx" ]; then echo -e "${RED}$(t web_noresult)${NC}" >&2; exit 1; fi
+    swap_in "$target" "$def"      # v2.14: free RAM only if the web model differs and won't fit
+    if [ "$target" = "$def" ]; then keep="$WEB_KEEPALIVE"; else keep="5m"; fi
     sys="$(t web_sys)"
     prompt="$(t web_today) $(date +%F)."$'\n\n'"$(t web_question): $q"$'\n\n'"$(t web_sources_h):"$'\n'"$ctx"$'\n\n'"$(t web_remind)"
     # stream:true -> the answer appears while it is written; keep_alive keeps
     # the model warm so the NEXT -w skips the cold load (biggest time saver)
-    body="$(jq -n --arg m "${MODEL#ollama:}" --arg s "$sys" --arg p "$prompt" \
-        --arg k "$WEB_KEEPALIVE" --argjson np "$WEB_NUMPREDICT" \
+    body="$(jq -n --arg m "$target" --arg s "$sys" --arg p "$prompt" \
+        --arg k "$keep" --argjson np "$WEB_NUMPREDICT" \
         '{model:$m,stream:true,keep_alive:$k,options:{num_predict:$np},messages:[{role:"system",content:$s},{role:"user",content:$p}]}')"
     curl -sS --no-buffer --max-time 300 "$OLLAMA_URL/api/chat" -d "$body" 2>/dev/null \
         | python3 -c "$WEB_STREAM_PY"
+    swap_out "$target" "$def"     # v2.14: unload the guest, make sure the default is warm again
     write_log "WEB" "$q"
 }
 
@@ -2969,6 +3112,11 @@ Come funziona:
 
 Impostazioni (in cima al file glia):
   WEB_REGION=$WEB_REGION   regione   ·   WEB_RESULTS=$WEB_RESULTS risultati   ·   WEB_PAGES_DEEP=$WEB_PAGES_DEEP pagine con -w+
+
+Modello per la ricerca:
+  $ASSIST_NAME -m <nome> -w <domanda>   usa quel modello SOLO per questa ricerca
+  $ASSIST_NAME --web-model <nome>       IA fissa per il web (--web-model -d = segue il default)
+  La RAM viene scambiata solo se serve e il modello di default viene ripristinato dopo.
 
 Serve w3m:  $(pkg_install_cmd w3m)
 
@@ -2991,6 +3139,11 @@ So funktioniert es:
 Einstellungen (oben in der Datei glia):
   WEB_REGION=$WEB_REGION   Region   ·   WEB_RESULTS=$WEB_RESULTS Treffer   ·   WEB_PAGES_DEEP=$WEB_PAGES_DEEP Seiten mit -w+
 
+Modell für die Suche:
+  $ASSIST_NAME -m <Name> -w <Frage>    nutzt dieses Modell NUR für diese Suche
+  $ASSIST_NAME --web-model <Name>      feste KI fürs Web (--web-model -d = folgt dem Standard)
+  Der RAM wird nur bei Bedarf getauscht, das Standardmodell danach wiederhergestellt.
+
 Benötigt w3m:  $(pkg_install_cmd w3m)
 
 Beispiele:
@@ -3011,6 +3164,11 @@ How it works:
 
 Settings (top of the glia file):
   WEB_REGION=$WEB_REGION   region   ·   WEB_RESULTS=$WEB_RESULTS results   ·   WEB_PAGES_DEEP=$WEB_PAGES_DEEP pages with -w+
+
+Model for the search:
+  $ASSIST_NAME -m <name> -w <question>   use that AI ONLY for this search
+  $ASSIST_NAME --web-model <name>        pin an AI for the web (--web-model -d = follow default)
+  RAM is swapped only if needed and the default model is restored afterwards.
 
 Needs w3m:  $(pkg_install_cmd w3m)
 
@@ -3077,10 +3235,19 @@ case "$1" in
                 sel=$(model_resolve "$1") || { echo -e "${RED}$(t model_badsel)${NC}" >&2; exit 1; }
                 shift
                 if [ -n "$*" ]; then
-                    MODEL="ollama:$sel"            # one-off: only for this request
                     echo -e "${BLUE}$(t model_oneoff) ${GREEN}$sel${NC}"
                     check_ai
-                    propose_and_run "$@"
+                    case "$1" in
+                        -w|--web)        shift; WEB_OVERRIDE="$sel"; web_answer "$*" 0 ;;
+                        -w+|--web-deep)  shift; WEB_OVERRIDE="$sel"; web_answer "$*" 1 ;;
+                        *)
+                            m_def="${MODEL#ollama:}"
+                            swap_in "$sel" "$m_def"     # one-off: free RAM only if needed
+                            MODEL="ollama:$sel"          # this request only
+                            propose_and_run "$@"
+                            swap_out "$sel" "$m_def"     # restore the default afterwards
+                            ;;
+                    esac
                 else
                     set_model "$sel"               # permanent default
                 fi ;;
@@ -3154,6 +3321,10 @@ case "$1" in
             "")             echo -e "${YELLOW}$(t web_usage)${NC}" >&2; exit 1 ;;
             *)              web_answer "$*" 1 ;;
         esac
+        ;;
+    --web-model|--webmodel)
+        shift
+        web_model_cmd "$@"
         ;;
     -l|--log)
         if [ -f "$LOGFILE" ]; then
