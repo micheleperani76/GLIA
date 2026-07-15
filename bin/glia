@@ -845,6 +845,18 @@ t() {
         it:doc_dirs)        echo "cartelle di config e log scrivibili" ;;
         de:doc_dirs)        echo "Config- und Log-Ordner beschreibbar" ;;
         *:doc_dirs)         echo "config and log folders writable" ;;
+        it:doc_net)         echo "connessione internet attiva" ;;
+        de:doc_net)         echo "Internetverbindung aktiv" ;;
+        *:doc_net)          echo "internet connection active" ;;
+        it:doc_offline)     echo "offline: ricerca web (-w) e aggiornamenti non disponibili" ;;
+        de:doc_offline)     echo "offline: Websuche (-w) und Updates nicht verfügbar" ;;
+        *:doc_offline)      echo "offline: web search (-w) and updates are unavailable" ;;
+        it:doc_update_yes)  echo "nuova versione di GLIA disponibile:" ;;
+        de:doc_update_yes)  echo "neue GLIA-Version verfügbar:" ;;
+        *:doc_update_yes)   echo "a new GLIA version is available:" ;;
+        it:doc_update_no)   echo "GLIA è aggiornato all'ultima versione" ;;
+        de:doc_update_no)   echo "GLIA ist auf dem neuesten Stand" ;;
+        *:doc_update_no)    echo "GLIA is up to date" ;;
         it:doc_all_ok)      echo "Tutto a posto." ;;
         de:doc_all_ok)      echo "Alles in Ordnung." ;;
         *:doc_all_ok)       echo "All good." ;;
@@ -2471,6 +2483,21 @@ doctor() {
         && [ -w "$LOGDIR" ] && [ -w "$HOME/.config/glia" ]
     doc_line $? "$(t doc_dirs)" "ls -ld $LOGDIR ~/.config/glia"
     [ -s "$WEBMODELFILE" ] && echo -e "  ${BLUE}i${NC} $(t wm_current) ${GREEN}$(head -n1 "$WEBMODELFILE")${NC}"
+    # v2.14: connectivity + update availability (informational, never counted as failures)
+    if curl -fsS --max-time 4 -o /dev/null -I "https://github.com" 2>/dev/null; then
+        echo -e "  ${GREEN}✓${NC} $(t doc_net)"
+        local newver
+        newver=$(curl -fsSL --max-time 6 "https://raw.githubusercontent.com/micheleperani76/GLIA/main/bin/glia" 2>/dev/null \
+                 | grep -m1 -oE 'VERSION="[0-9.]+"' | grep -oE '[0-9.]+')
+        if [ -n "$newver" ] && [ "$newver" != "$VERSION" ] \
+           && [ "$(printf '%s\n%s\n' "$VERSION" "$newver" | sort -V | tail -n1)" = "$newver" ]; then
+            echo -e "  ${YELLOW}↑${NC} $(t doc_update_yes) ${GREEN}$newver${NC}   ->   ${GREEN}$ASSIST_NAME --update glia${NC}"
+        else
+            echo -e "  ${GREEN}✓${NC} $(t doc_update_no)"
+        fi
+    else
+        echo -e "  ${YELLOW}i${NC} $(t doc_offline)"
+    fi
     echo
     if [ "$fails" -eq 0 ]; then
         echo -e "${GREEN}$(t doc_all_ok)${NC}"
