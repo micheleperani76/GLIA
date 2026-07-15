@@ -1,12 +1,23 @@
 #!/usr/bin/env bash
 # ============================================================
 #  glia - AI terminal assistant (Ollama + aichat)
-#  Version: 2.14.2 - 2026-07-15
+#  Version: 2.15.0 - 2026-07-15
 #  Author: Michele (with Claude)
 #  Project: GLIA (GNU Linux IA)
 #
 #  Design pillar: commands follow standard terminal conventions, so
 #  what you learn here you can reuse in other programs (and vice versa).
+#
+#  What's new in v2.15 ("a model per job"):
+#   - `--project-model <name>`: pin a dedicated AI for `-p` (projects/coding),
+#     exactly like `--web-model` does for web search. `--project-model default`
+#     (or `-d`) follows the default; `--project-model` alone shows it and a
+#     guided menu. Precedence: pin > default.
+#   - `-p` (project mode) now runs on that coding AI, with the SAME shared
+#     RAM swap + restore as the one-off `-m` and web search (swap_in/swap_out).
+#   - `-m` list: the old "in use now" marker becomes a role tag area. Each AI
+#     shows the roles pinned onto it: `default`, `web`, `project` (only
+#     explicit pins; web/project appear on their own row only when set apart).
 #
 #  What's new in v2.14 ("swap the AI, safely"):
 #   - ONE shared RAM-swap mechanism (swap_in/swap_out), reused by BOTH the
@@ -252,7 +263,7 @@
 # ============================================================
 
 # ----------------- CONFIGURATION -----------------
-VERSION="2.14.2"
+VERSION="2.15.0"
 DEFAULT_MODEL="qwen2.5-coder:7b"
 if [ -r "$HOME/.config/glia/model" ]; then
     MODEL="ollama:$(head -n1 "$HOME/.config/glia/model")"
@@ -306,6 +317,7 @@ WEB_COLS=400              # w3m render width: wide so result URLs are never wrap
 WEB_KEEPALIVE="30m"       # keep the model warm in RAM between -w calls (faster)
 WEB_NUMPREDICT=600        # max tokens generated for the web answer
 WEBMODELFILE="$HOME/.config/glia/web_model"   # optional AI dedicated to -w (empty = follow default)
+CODEMODELFILE="$HOME/.config/glia/code_model" # optional AI dedicated to -p projects/coding (empty = follow default)
 
 # Aliases (v2.0): user shortcuts, one per line
 #   name<TAB>type<TAB>request<TAB>command   (type = run | ask)
@@ -943,6 +955,25 @@ t() {
         it:wm_follow)       echo "Ricerca web: attualmente segue il modello di default." ;;
         de:wm_follow)       echo "Websuche: folgt derzeit dem Standardmodell." ;;
         *:wm_follow)        echo "Web search: currently follows the default model." ;;
+        # ---- project/coding model (v2.15) ----
+        it:pm_pick)         echo "Scegli l'IA per i progetti (comando -p):" ;;
+        de:pm_pick)         echo "Wähle die KI für Projekte (Befehl -p):" ;;
+        *:pm_pick)          echo "Pick the AI for projects (command -p):" ;;
+        it:pm_default)      echo "Progetti (-p): uso sempre il modello di default." ;;
+        de:pm_default)      echo "Projekte (-p): immer das Standardmodell." ;;
+        *:pm_default)       echo "Projects (-p): always uses the default model." ;;
+        it:pm_set)          echo "IA per i progetti impostata:" ;;
+        de:pm_set)          echo "KI für Projekte gesetzt:" ;;
+        *:pm_set)           echo "Project AI set to:" ;;
+        it:pm_current)      echo "IA fissa per i progetti:" ;;
+        de:pm_current)      echo "Feste KI für Projekte:" ;;
+        *:pm_current)       echo "Pinned project AI:" ;;
+        it:pm_follow)       echo "Progetti (-p): attualmente segue il modello di default." ;;
+        de:pm_follow)       echo "Projekte (-p): folgt derzeit dem Standardmodell." ;;
+        *:pm_follow)        echo "Projects (-p): currently follows the default model." ;;
+        it:pm_using)        echo "Per questo progetto uso:" ;;
+        de:pm_using)        echo "Für dieses Projekt nutze ich:" ;;
+        *:pm_using)         echo "For this project I use:" ;;
     esac
 }
 
@@ -1287,14 +1318,21 @@ set_model() {
 model_menu() {
     # list the downloaded AIs numbered, mark the active one, and (with a real
     # terminal) let you pick one as the permanent default.
-    local list active name i=1 choice sel
+    local list active webpin codepin name i=1 choice sel tags
     list=$(model_names)
     [ -z "$list" ] && { echo "$(t model_none)"; return; }
     active="${MODEL#ollama:}"
+    webpin="$(head -n1 "$WEBMODELFILE" 2>/dev/null)"    # explicit web pin (empty = follows default)
+    codepin="$(head -n1 "$CODEMODELFILE" 2>/dev/null)"  # explicit project pin (empty = follows default)
     echo "$(t model_avail)"
     while IFS= read -r name; do
-        if [ "$name" = "$active" ]; then
-            printf '  %d) %s   %s\n' "$i" "$name" "$(t model_inuse)"
+        # role tags: default / web / project, only for EXPLICIT pins (v2.15)
+        tags=""
+        [ "$name" = "$active" ]  && tags="default"
+        [ "$name" = "$webpin" ]  && tags="${tags:+$tags · }web"
+        [ "$name" = "$codepin" ] && tags="${tags:+$tags · }project"
+        if [ -n "$tags" ]; then
+            printf '  %d) %s   ← %s\n' "$i" "$name" "$tags"
         else
             printf '  %d) %s\n' "$i" "$name"
         fi
@@ -2279,6 +2317,8 @@ Pianifica un piccolo progetto e ne scrive i file, con la tua conferma a ogni pas
 
 Comandi:
   $ASSIST_NAME -p <idea>   pianifica i passi e scrivi i file (conferma per ognuno)
+  $ASSIST_NAME --project-model [nome]   fissa l'IA usata da -p (da solo: menù guidato;
+                            "default"/-d = torna a seguire il modello di default)
   $ASSIST_NAME -p help     questo aiuto
 
 Consigli:
@@ -2303,6 +2343,8 @@ Plant ein kleines Projekt und schreibt seine Dateien, mit deiner Bestätigung be
 
 Befehle:
   $ASSIST_NAME -p <Idee>   Schritte planen und Dateien schreiben (Bestätigung je Datei)
+  $ASSIST_NAME --project-model [Name]   KI für -p festlegen (allein: geführtes Menü;
+                            "default"/-d = wieder dem Standardmodell folgen)
   $ASSIST_NAME -p help     diese Hilfe
 
 Tipps:
@@ -2328,6 +2370,8 @@ Plans a small project and writes its files, with your confirmation at each step.
 
 Commands:
   $ASSIST_NAME -p <idea>   plan the steps and write the files (confirm each one)
+  $ASSIST_NAME --project-model [name]   pin the AI used by -p (alone: guided menu;
+                            "default"/-d = go back to following the default model)
   $ASSIST_NAME -p help     this help
 
 Tips:
@@ -2828,6 +2872,19 @@ project_mode() {
     command -v jq >/dev/null || { echo "$(t need_jq)" >&2; exit 1; }
     check_ai
 
+    # v2.15: run projects on the dedicated coding AI (if pinned), with the
+    # SAME shared RAM swap as -w / one-off -m. PROJ_* are GLOBAL on purpose:
+    # the EXIT trap must still see them if any 'exit' fires inside this
+    # function, AND when the script ends normally after project_mode returns.
+    PROJ_DEF="${MODEL#ollama:}"
+    PROJ_TARGET="$(project_target)"
+    if [ "$PROJ_TARGET" != "$PROJ_DEF" ]; then
+        echo -e "${BLUE}$(t pm_using) ${GREEN}$PROJ_TARGET${NC}"
+        swap_in "$PROJ_TARGET" "$PROJ_DEF"
+        MODEL="ollama:$PROJ_TARGET"           # this run only; default file untouched
+        trap 'swap_out "$PROJ_TARGET" "$PROJ_DEF"' EXIT
+    fi
+
     # ---- plan phase: same guided-hint procedure as the fix loop (v2.4).
     # Enter = proceed, n = cancel, any other text = a hint for the AI: the
     # plan is redone with it. Hints accumulate across attempts (v2.8).
@@ -3120,6 +3177,43 @@ web_model_cmd() {
     esac
 }
 
+# which AI runs -p (projects/coding):  pinned project model  >  default
+project_target() {
+    local pin; pin="$(head -n1 "$CODEMODELFILE" 2>/dev/null)"
+    [ -n "$pin" ] && { printf '%s' "$pin"; return; }
+    printf '%s' "${MODEL#ollama:}"
+}
+
+project_model_menu() {
+    local list n i=0 choice sel
+    list="$(model_names)"; [ -z "$list" ] && return 0
+    echo "$(t pm_pick)"
+    while IFS= read -r n; do i=$((i+1)); printf "  %d) %s\n" "$i" "$n"; done <<< "$list"
+    printf "  0) %s\n" "$(t wm_followopt)"
+    read -r -p "$(t wm_choose) " choice < /dev/tty || return 0
+    [ -z "$choice" ] && return 0
+    if [ "$choice" = "0" ]; then rm -f "$CODEMODELFILE"; echo -e "${GREEN}$(t pm_default)${NC}"; return 0; fi
+    sel=$(model_resolve "$choice") || { echo -e "${RED}$(t model_badsel)${NC}" >&2; return 1; }
+    mkdir -p "$(dirname "$CODEMODELFILE")"; printf '%s\n' "$sel" > "$CODEMODELFILE"
+    echo -e "${GREEN}$(t pm_set) $sel${NC}"; show_equiv "echo '$sel' > ${CODEMODELFILE/#$HOME/\~}"
+}
+project_model_cmd() {
+    local cur sel
+    case "${1:-}" in
+        help|-h|--help) page project_help ;;
+        ""|show|list)
+            cur="$(head -n1 "$CODEMODELFILE" 2>/dev/null)"
+            if [ -n "$cur" ]; then echo -e "$(t pm_current) ${GREEN}$cur${NC}"; else echo -e "$(t pm_follow)"; fi
+            project_model_menu ;;
+        default|-d|none|off|clear|reset)
+            rm -f "$CODEMODELFILE"; echo -e "${GREEN}$(t pm_default)${NC}"; show_equiv "rm ${CODEMODELFILE/#$HOME/\~}" ;;
+        *)
+            sel=$(model_resolve "$1") || { echo -e "${RED}$(t model_badsel)${NC}" >&2; exit 1; }
+            mkdir -p "$(dirname "$CODEMODELFILE")"; printf '%s\n' "$sel" > "$CODEMODELFILE"
+            echo -e "${GREEN}$(t pm_set) $sel${NC}"; show_equiv "echo '$sel' > ${CODEMODELFILE/#$HOME/\~}" ;;
+    esac
+}
+
 # web_answer <query> <deep 0|1>
 web_answer() {
     local q="$1" deep="${2:-0}" pages ctx sys prompt body target def keep
@@ -3389,6 +3483,10 @@ case "$1" in
     --web-model|--webmodel)
         shift
         web_model_cmd "$@"
+        ;;
+    --project-model|--projectmodel|--code-model|--codemodel)
+        shift
+        project_model_cmd "$@"
         ;;
     -l|--log)
         if [ -f "$LOGFILE" ]; then

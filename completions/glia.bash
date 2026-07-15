@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ============================================================
 #  glia.bash - Bash completion for the glia AI assistant
-#  Version: 1.2 - 2026-07-14 (adds --update glia self-update)
+#  Version: 1.3 - 2026-07-15 (adds -w/--web + --web-model + --project-model)
 #  Author: Michele (with Claude)
 #  Project: GLIA (GNU Linux IA)
 #
@@ -35,11 +35,16 @@ _glia() {
     prev="${COMP_WORDS[COMP_CWORD-1]}"
     flags="-h --help -V --version -i --interactive -d --ask -l --log
            -a --alias -m --model -p --project --remember --memory --forget
+           -w --web -w+ --web-deep --web-model --project-model
            --clear-cache --doctor --update --rename --lang"
 
     case "$prev" in
         -a|--alias)
             COMPREPLY=( $(compgen -W "add list rm edit save help $(_glia_alias_names)" -- "$cur") )
+            return ;;
+        --web-model|--project-model)
+            # pin a dedicated AI: a downloaded model, or "default" to follow the default
+            COMPREPLY=( $(compgen -W "default show help $(_glia_model_names)" -- "$cur") )
             return ;;
         -m|--model)
             COMPREPLY=( $(compgen -W "help list ls ps stop pull update rm $(_glia_model_names)" -- "$cur") )

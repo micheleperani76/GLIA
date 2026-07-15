@@ -1,6 +1,6 @@
 # ============================================================
 #  glia.fish - Fish completion for the glia AI assistant
-#  Version: 1.1 - 2026-07-14 (adds --update glia self-update)
+#  Version: 1.2 - 2026-07-15 (adds -w/--web + --web-model + --project-model)
 #  Author: Michele (with Claude)
 #  Project: GLIA (GNU Linux IA)
 #
@@ -52,6 +52,9 @@ complete -c glia -n __glia_first -a '-l'          -d 'command log'
 complete -c glia -n __glia_first -a '-a'          -d 'aliases (shortcuts)'
 complete -c glia -n __glia_first -a '-m'          -d 'models / AI'
 complete -c glia -n __glia_first -a '-p'          -d 'project mode'
+complete -c glia -n __glia_first -a '-w'          -d 'web search with sources'
+complete -c glia -n __glia_first -a '--web-model' -d 'pin the AI used by -w'
+complete -c glia -n __glia_first -a '--project-model' -d 'pin the AI used by -p'
 complete -c glia -n __glia_first -a '--remember'  -d 'store a fact'
 complete -c glia -n __glia_first -a '--memory'    -d 'list stored facts'
 complete -c glia -n __glia_first -a '--forget'    -d 'delete fact number n'
@@ -79,6 +82,10 @@ complete -c glia -n 'contains -- (__glia_prev2) -a --alias; and test (__glia_pre
 
 # --lang <code>
 complete -c glia -n 'contains -- (__glia_prev) --lang' -a 'it en de'
+
+# --web-model / --project-model <n|name|default>: pin a dedicated AI
+complete -c glia -n 'contains -- (__glia_prev) --web-model --project-model' -a 'default show help'
+complete -c glia -n 'contains -- (__glia_prev) --web-model --project-model' -a '(__glia_models)'
 
 # groups that take "help"
 complete -c glia -n 'contains -- (__glia_prev) --update --memory -p --project -i --interactive' -a 'help'
