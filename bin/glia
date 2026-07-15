@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ============================================================
 #  glia - AI terminal assistant (Ollama + aichat)
-#  Version: 2.15.2 - 2026-07-15
+#  Version: 2.15.3 - 2026-07-15
 #  Author: Michele (with Claude)
 #  Project: GLIA (GNU Linux IA)
 #
@@ -9,6 +9,11 @@
 #  what you learn here you can reuse in other programs (and vice versa).
 #
 #  What's new in v2.15 ("a model per job"):
+#   - v2.15.3: web search now sends "think":false to Ollama. Reasoning models
+#     (e.g. gemma, which returns its reasoning in a separate 'thinking' field)
+#     were spending ALL num_predict tokens reasoning and leaving 'content'
+#     empty -> the -w answer came out blank when a reasoning model was the web
+#     model. Harmless on non-reasoning models. (Not a swap/RAM bug.)
 #   - v2.15.2: RAM handling centralized in two primitives — mem_unload (stop
 #     + free) and mem_warm (preload + keep warm). set_model, model_stop,
 #     swap_in and swap_out now all go through them, so the ollama/curl
@@ -272,7 +277,7 @@
 # ============================================================
 
 # ----------------- CONFIGURATION -----------------
-VERSION="2.15.2"
+VERSION="2.15.3"
 DEFAULT_MODEL="qwen2.5-coder:7b"
 if [ -r "$HOME/.config/glia/model" ]; then
     MODEL="ollama:$(head -n1 "$HOME/.config/glia/model")"
@@ -3253,9 +3258,12 @@ web_answer() {
     prompt="$(t web_today) $(date +%F)."$'\n\n'"$(t web_question): $q"$'\n\n'"$(t web_sources_h):"$'\n'"$ctx"$'\n\n'"$(t web_remind)"
     # stream:true -> the answer appears while it is written; keep_alive keeps
     # the model warm so the NEXT -w skips the cold load (biggest time saver)
+    # think:false -> reasoning models (e.g. gemma with a 'thinking' field) must
+    # put the ANSWER in 'content', not burn all num_predict tokens reasoning and
+    # leave content empty. Harmless on non-reasoning models (v2.15.3).
     body="$(jq -n --arg m "$target" --arg s "$sys" --arg p "$prompt" \
         --arg k "$keep" --argjson np "$WEB_NUMPREDICT" \
-        '{model:$m,stream:true,keep_alive:$k,options:{num_predict:$np},messages:[{role:"system",content:$s},{role:"user",content:$p}]}')"
+        '{model:$m,stream:true,think:false,keep_alive:$k,options:{num_predict:$np},messages:[{role:"system",content:$s},{role:"user",content:$p}]}')"
     curl -sS --no-buffer --max-time 300 "$OLLAMA_URL/api/chat" -d "$body" 2>/dev/null \
         | python3 -c "$WEB_STREAM_PY"
     swap_out "$target" "$def"     # v2.14: unload the guest, make sure the default is warm again
