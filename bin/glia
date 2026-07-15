@@ -3120,6 +3120,9 @@ Modello per la ricerca:
 
 Serve w3m:  $(pkg_install_cmd w3m)
 
+Navigare il web a mano (w3m è anche un browser testuale):
+  w3m example.com   —  Invio segui il link · B indietro · U apri URL · q esci
+
 Esempi:
   $ASSIST_NAME -w quando esce la prossima LTS di Ubuntu
   $ASSIST_NAME -w+ novità del kernel linux 6.16
@@ -3146,6 +3149,9 @@ Modell für die Suche:
 
 Benötigt w3m:  $(pkg_install_cmd w3m)
 
+Manuell surfen (w3m ist auch ein Textbrowser):
+  w3m example.com   —  Enter Link folgen · B zurück · U URL öffnen · q beenden
+
 Beispiele:
   $ASSIST_NAME -w wann erscheint die nächste Ubuntu LTS
   $ASSIST_NAME -w+ Neuerungen im Linux-Kernel 6.16
@@ -3171,6 +3177,9 @@ Model for the search:
   RAM is swapped only if needed and the default model is restored afterwards.
 
 Needs w3m:  $(pkg_install_cmd w3m)
+
+Browse the web by hand (w3m is also a text browser):
+  w3m example.com   —  Enter follow link · B back · U open URL · q quit
 
 Examples:
   $ASSIST_NAME -w when is the next Ubuntu LTS due
