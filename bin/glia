@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ============================================================
 #  glia - AI terminal assistant (Ollama + aichat)
-#  Version: 2.14.0 - 2026-07-15
+#  Version: 2.14.1 - 2026-07-15
 #  Author: Michele (with Claude)
 #  Project: GLIA (GNU Linux IA)
 #
@@ -21,6 +21,9 @@
 #     alone shows it and a guided menu. Precedence: inline -m > pin > default.
 #   - `--ask` is the documented long form for a plain answer; the old `-d`
 #     short still works as a silent legacy alias.
+#   - v2.14.1: `-V` runs a SILENT update check and warns only if a newer
+#     version is available online (says nothing when offline or up to date).
+#     The check (net_update_status) is shared with --doctor.
 #
 #  What's new in v2.13 ("web"):
 #   - `-w <question>`: search the web and answer with sources. Uses the
@@ -246,7 +249,7 @@
 # ============================================================
 
 # ----------------- CONFIGURATION -----------------
-VERSION="2.14.0"
+VERSION="2.14.1"
 DEFAULT_MODEL="qwen2.5-coder:7b"
 if [ -r "$HOME/.config/glia/model" ]; then
     MODEL="ollama:$(head -n1 "$HOME/.config/glia/model")"
@@ -2452,6 +2455,23 @@ EOF
 }
 
 # ---- doctor (v2.7): one-shot health check ----
+# net_update_status (v2.14.1): ONE silent check, shared by -V and --doctor.
+# Sets NEWVER. Returns: 0 = online & up to date · 1 = online, newer available
+# (NEWVER set) · 2 = offline / unreachable.
+NEWVER=""
+net_update_status() {
+    NEWVER=""
+    curl -fsS --max-time 3 -o /dev/null -I "https://github.com" 2>/dev/null || return 2
+    local nv
+    nv=$(curl -fsSL --max-time 5 "https://raw.githubusercontent.com/micheleperani76/GLIA/main/bin/glia" 2>/dev/null \
+         | grep -m1 -oE 'VERSION="[0-9.]+"' | grep -oE '[0-9.]+')
+    [ -n "$nv" ] || return 2
+    if [ "$nv" != "$VERSION" ] && [ "$(printf '%s\n%s\n' "$VERSION" "$nv" | sort -V | tail -n1)" = "$nv" ]; then
+        NEWVER="$nv"; return 1
+    fi
+    return 0
+}
+
 doctor() {
     local fails=0 mname avail need
     doc_line() {   # $1 = 0 ok / 1 fail, $2 = label, $3 = hint on failure
@@ -2484,20 +2504,14 @@ doctor() {
     doc_line $? "$(t doc_dirs)" "ls -ld $LOGDIR ~/.config/glia"
     [ -s "$WEBMODELFILE" ] && echo -e "  ${BLUE}i${NC} $(t wm_current) ${GREEN}$(head -n1 "$WEBMODELFILE")${NC}"
     # v2.14: connectivity + update availability (informational, never counted as failures)
-    if curl -fsS --max-time 4 -o /dev/null -I "https://github.com" 2>/dev/null; then
-        echo -e "  ${GREEN}✓${NC} $(t doc_net)"
-        local newver
-        newver=$(curl -fsSL --max-time 6 "https://raw.githubusercontent.com/micheleperani76/GLIA/main/bin/glia" 2>/dev/null \
-                 | grep -m1 -oE 'VERSION="[0-9.]+"' | grep -oE '[0-9.]+')
-        if [ -n "$newver" ] && [ "$newver" != "$VERSION" ] \
-           && [ "$(printf '%s\n%s\n' "$VERSION" "$newver" | sort -V | tail -n1)" = "$newver" ]; then
-            echo -e "  ${YELLOW}↑${NC} $(t doc_update_yes) ${GREEN}$newver${NC}   ->   ${GREEN}$ASSIST_NAME --update glia${NC}"
-        else
-            echo -e "  ${GREEN}✓${NC} $(t doc_update_no)"
-        fi
-    else
-        echo -e "  ${YELLOW}i${NC} $(t doc_offline)"
-    fi
+    net_update_status
+    case $? in
+        0) echo -e "  ${GREEN}✓${NC} $(t doc_net)"
+           echo -e "  ${GREEN}✓${NC} $(t doc_update_no)" ;;
+        1) echo -e "  ${GREEN}✓${NC} $(t doc_net)"
+           echo -e "  ${YELLOW}↑${NC} $(t doc_update_yes) ${GREEN}$NEWVER${NC}   ->   ${GREEN}$ASSIST_NAME --update glia${NC}" ;;
+        *) echo -e "  ${YELLOW}i${NC} $(t doc_offline)" ;;
+    esac
     echo
     if [ "$fails" -eq 0 ]; then
         echo -e "${GREEN}$(t doc_all_ok)${NC}"
@@ -3225,6 +3239,9 @@ case "$1" in
         ;;
     -V|--version)
         echo "$ASSIST_NAME $VERSION (GLIA)"
+        # v2.14.1: silent update check; speak ONLY if online AND newer exists
+        net_update_status || { [ -n "$NEWVER" ] && \
+            echo -e "${YELLOW}↑${NC} $(t doc_update_yes) ${GREEN}$NEWVER${NC}   ->   ${GREEN}$ASSIST_NAME --update glia${NC}"; }
         ;;
     --doctor)
         doctor
