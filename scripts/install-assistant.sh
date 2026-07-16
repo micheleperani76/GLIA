@@ -1,7 +1,14 @@
 #!/usr/bin/env bash
 # ============================================================
 #  install-assistant.sh - GLIA assistant installer (any distro)
-#  Version: 1.5 - 2026-07-16
+#  Version: 1.6 - 2026-07-16
+#
+#  What's new in v1.6:
+#   - step 7/8 no longer reassigns a default model you already chose. With
+#     --yes (or no tty) nothing is asked, so nothing is invented: an existing
+#     ~/.config/glia/model is KEPT and left untouched. Only an empty one gets
+#     filled - and then it says which model it picked and how to change it
+#     (glia -m). Interactive runs are unchanged.
 #
 #  What's new in v1.5:
 #   - records the installed tag in ~/.config/glia/installed-tag, like
@@ -176,6 +183,15 @@ L() {
         it:model_set)  echo "Modello predefinito impostato:" ;;
         de:model_set)  echo "Standardmodell gesetzt:" ;;
         *:model_set)   echo "Default model set:" ;;
+        it:model_keep) echo "Tengo la tua predefinita attuale:" ;;
+        de:model_keep) echo "Behalte deinen aktuellen Standard:" ;;
+        *:model_keep)  echo "keeping your current default:" ;;
+        it:model_auto) echo "Nessuna predefinita impostata — scelgo:" ;;
+        de:model_auto) echo "Kein Standard gesetzt — waehle:" ;;
+        *:model_auto)  echo "no default set — selecting:" ;;
+        it:model_hint) echo "Puoi cambiarla quando vuoi con:  glia -m" ;;
+        de:model_hint) echo "Jederzeit aenderbar mit:  glia -m" ;;
+        *:model_hint)  echo "Change it any time with:  glia -m" ;;
         it:model_ask) echo "Scarico ora il modello consigliato per questa macchina, $REC_MODEL? [s/N]: " ;;
         de:model_ask) echo "Das fuer diesen Rechner empfohlene Modell $REC_MODEL jetzt laden? [j/N]: " ;;
         *:model_ask)  echo "Download $REC_MODEL, the model recommended for this machine, now? [y/N]: " ;;
@@ -464,6 +480,15 @@ step_model() {
     local models
     models=$(ollama list 2>/dev/null | awk 'NR>1 && $1!="" {print $1}' | sort)
 
+    # v1.6: --yes (and a missing tty) mean "do not ask me questions", they do
+    # NOT mean "reassign my model". No question asked => no answer invented:
+    # a default already on record is KEPT, only an empty one gets filled, and
+    # either way we say out loud what we did.
+    local noask=0 current_default=""
+    if [ "$ASSUME_YES" -eq 1 ] || ! tty_ok; then noask=1; fi
+    [ -s "$GLIA_CONFIG_DIR/model" ] && \
+        current_default=$(head -n1 "$GLIA_CONFIG_DIR/model" | tr -d '[:space:]')
+
     if [ "$DRY_RUN" -eq 1 ]; then
         # a dry run never asks questions: it only SHOWS what the real run will do
         if [ -n "$models" ]; then
@@ -486,10 +511,16 @@ step_model() {
             i=$((i+1))
         done <<< "$models"
         printf '     n) %s %s\n' "$(L model_new)" "$REC_MODEL"
-        if tty_ok && [ "$ASSUME_YES" -eq 0 ]; then
+        if [ "$noask" -eq 0 ]; then
             read -r -p "   $(L model_pick_q)" choice < /dev/tty || choice=""
+        elif [ -n "$current_default" ]; then
+            # v1.6: you already chose. Nobody asked you anything, so nobody
+            # gets to change it: we keep it and write nothing.
+            echo -e "   ${GREEN}$(L model_keep) $current_default${NC}"
+            log "MODEL default kept (no question asked): $current_default"
+            return
         else
-            choice=""
+            choice=""   # no default on record yet: filling it is legitimate
         fi
         sel=""
         case "$choice" in
@@ -500,8 +531,16 @@ step_model() {
         esac
         mkdir -p "$GLIA_CONFIG_DIR"
         printf '%s\n' "$sel" > "$GLIA_CONFIG_DIR/model"
-        echo -e "   ${GREEN}$(L model_set) $sel${NC}   ${DIM}(echo '$sel' > ~/.config/glia/model)${NC}"
-        log "MODEL default: $sel"
+        if [ "$noask" -eq 1 ]; then
+            # v1.6: chosen for you because there was nothing to keep - say so,
+            # and show the command that takes the choice back.
+            echo -e "   ${YELLOW}$(L model_auto) $sel${NC}"
+            echo -e "   ${DIM}$(L model_hint)${NC}"
+            log "MODEL default auto-selected (none was set): $sel"
+        else
+            echo -e "   ${GREEN}$(L model_set) $sel${NC}   ${DIM}(echo '$sel' > ~/.config/glia/model)${NC}"
+            log "MODEL default: $sel"
+        fi
         return
     fi
 
@@ -509,8 +548,19 @@ step_model() {
     "$REPO/bin/glia-hardware" 2>/dev/null || true
     if ask_yn "$(L model_ask)" n; then
         run_sh "ollama pull $REC_MODEL"
+        # v1.6: ask_yn says yes on its own when --yes is given, so the same
+        # rule holds here: an existing default is not reassigned in silence.
+        if [ "$noask" -eq 1 ] && [ -n "$current_default" ]; then
+            echo -e "   ${GREEN}$(L model_keep) $current_default${NC}"
+            log "MODEL default kept (no question asked): $current_default"
+            return
+        fi
         mkdir -p "$GLIA_CONFIG_DIR"
         printf '%s\n' "$REC_MODEL" > "$GLIA_CONFIG_DIR/model"
+        if [ "$noask" -eq 1 ]; then
+            echo -e "   ${YELLOW}$(L model_auto) $REC_MODEL${NC}"
+            echo -e "   ${DIM}$(L model_hint)${NC}"
+        fi
         log "MODEL default: $REC_MODEL"
     else
         echo -e "   ${DIM}$(L model_skip)${NC}"
