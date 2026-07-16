@@ -56,6 +56,7 @@ complete -c glia -n __glia_first -a '--new'       -d 'new project from scratch (
 complete -c glia -n __glia_first -a '-n'          -d 'new project from scratch (short for --new)'
 complete -c glia -n __glia_first -a '-w'          -d 'web search with sources'
 complete -c glia -n __glia_first -a '--web-model' -d 'pin the AI used by -w'
+complete -c glia -n __glia_first -a '--web-engine' -d 'show/switch the -w search engine (ddg|bing|searx)'
 complete -c glia -n __glia_first -a '--project-model' -d 'pin the AI used by -p and --new'
 complete -c glia -n __glia_first -a '--remember'  -d 'store a fact'
 complete -c glia -n __glia_first -a '--memory'    -d 'list stored facts'
@@ -87,6 +88,9 @@ complete -c glia -n 'contains -- (__glia_prev2) -a --alias; and test (__glia_pre
 
 # --lang <code>
 complete -c glia -n 'contains -- (__glia_prev) --lang' -a 'it en de'
+
+# --web-engine <preset>: -w search engine (searx also takes an instance URL)
+complete -c glia -n 'contains -- (__glia_prev) --web-engine' -a 'ddg bing searx'
 
 # --web-model / --project-model <n|name|default>: pin a dedicated AI
 complete -c glia -n 'contains -- (__glia_prev) --web-model --project-model' -a 'default show help'

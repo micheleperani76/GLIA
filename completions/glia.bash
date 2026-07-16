@@ -35,13 +35,17 @@ _glia() {
     prev="${COMP_WORDS[COMP_CWORD-1]}"
     flags="-h --help -V --version -i --interactive -d --ask -l --log
            -a --alias -m --model -p --project -n --new --remember --memory --forget
-           -w --web -w+ --web-deep --web-model --project-model
+           -w --web -w+ --web-deep --web-model --web-engine --project-model
            --clear-cache --doctor -U --update --update-engine --channel --rollback
            --rename --lang"
 
     case "$prev" in
         -a|--alias)
             COMPREPLY=( $(compgen -W "add list rm edit save help $(_glia_alias_names)" -- "$cur") )
+            return ;;
+        --web-engine)
+            # -w search engine: preset name (searx also takes an instance URL)
+            COMPREPLY=( $(compgen -W "ddg bing searx" -- "$cur") )
             return ;;
         --web-model|--project-model)
             # pin a dedicated AI: a downloaded model, or "default" to follow the default
