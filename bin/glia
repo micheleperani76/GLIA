@@ -1474,6 +1474,7 @@ Aiuto per area — ogni help elenca TUTTI i suoi sotto-comandi:
   -p help        modifica file: più file insieme · -p --undo · --project-model
   --new help     progetto nuovo da zero: pianifica e scrive i file
   -w help        ricerca web: -w veloce · -w+ approfondita · -ws senza IA · --web-engine · --web-model
+  -T help        traduci un file: file nuovo accanto · lingua · --translate-model
   -i help        modalità interattiva (frasi con simboli speciali)
   --memory help  memoria: --remember salva · --forget scorda · --memory elenca
   --update help  aggiorna: -U · --check · --channel · --rollback · engine
@@ -1506,6 +1507,7 @@ Hilfe pro Bereich — jede Hilfe listet ALLE ihre Unterbefehle:
   -p help        Dateien ändern: mehrere Dateien · -p --undo · --project-model
   --new help     neues Projekt von Null: plant und schreibt die Dateien
   -w help        Websuche: -w schnell · -w+ gründlich · -ws ohne KI · --web-engine · --web-model
+  -T help        Datei übersetzen: neue Datei daneben · Sprache · --translate-model
   -i help        interaktiver Modus (Sätze mit Sonderzeichen)
   --memory help  Gedächtnis: --remember merken · --forget vergessen · --memory
   --update help  aktualisieren: -U · --check · --channel · --rollback · Engine
@@ -1538,6 +1540,7 @@ Help per area — each help lists ALL of its subcommands:
   -p help        edit files: several files at once · -p --undo · --project-model
   --new help     new project from scratch: plans and writes the files
   -w help        web search: -w fast · -w+ deep · -ws no AI · --web-engine · --web-model
+  -T help        translate a file: new file next to it · language · --translate-model
   -i help        interactive mode (requests with special characters)
   --memory help  memory: --remember saves · --forget drops · --memory lists
   --update help  updating: -U · --check · --channel · --rollback · engine
@@ -1852,19 +1855,22 @@ set_model() {
 model_menu() {
     # list the downloaded AIs numbered, mark the active one, and (with a real
     # terminal) let you pick one as the permanent default.
-    local list active webpin codepin name i=1 choice sel tags
+    local list active webpin codepin trpin name i=1 choice sel tags
     list=$(model_names)
     [ -z "$list" ] && { echo "$(t model_none)"; return; }
     active="${MODEL#ollama:}"
     webpin="$(head -n1 "$WEBMODELFILE" 2>/dev/null)"    # explicit web pin (empty = follows default)
     codepin="$(head -n1 "$CODEMODELFILE" 2>/dev/null)"  # explicit project pin (empty = follows default)
+    trpin="$(head -n1 "$TRANSMODELFILE" 2>/dev/null)"   # explicit translate pin (v2.18)
     echo "$(t model_avail)"
     while IFS= read -r name; do
-        # role tags: default / web / project, only for EXPLICIT pins (v2.15)
+        # role tags: default / web / project / translate, only for EXPLICIT pins.
+        # Every role that can pin an AI must show up here, or the sheet lies.
         tags=""
         [ "$name" = "$active" ]  && tags="default"
         [ "$name" = "$webpin" ]  && tags="${tags:+$tags · }web"
         [ "$name" = "$codepin" ] && tags="${tags:+$tags · }project"
+        [ "$name" = "$trpin" ]   && tags="${tags:+$tags · }translate"
         if [ -n "$tags" ]; then
             printf '  %d) %s   ← %s\n' "$i" "$name" "$tags"
         else
@@ -4238,6 +4244,111 @@ chat_stream() {
     printf '%s' "$out"
 }
 
+translate_help() {
+    case "$UILANG" in
+    it) cat <<EOF
+$ASSIST_NAME -T — traduci un file
+
+  $ASSIST_NAME -T <file>              traduce nella lingua dell'interfaccia ($UILANG)
+  $ASSIST_NAME -T <file> <lingua>     traduce in quella lingua (it, en, de, ... o il nome esteso)
+  $ASSIST_NAME -T help                questo aiuto
+
+L'originale non si tocca MAI:
+  la traduzione va in un file NUOVO accanto — README.md -> README.$UILANG.md — e il nome
+  viene mostrato prima di scrivere. Se esiste già, ne sceglie uno libero (.$UILANG-2, ...).
+
+Mentre traduce:
+  il testo appare man mano che l'IA lo scrive (nessuna percentuale finta: si vede il lavoro).
+  Alla fine: Invio = salva · r = rifai · scrivi un indizio = rifà seguendolo · s = scarta.
+
+Controlli automatici (gli stessi di --new):
+  un .md tradotto deve restare Markdown, un .sh deve passare bash -n. Se il controllo
+  fallisce riprova spiegando l'errore ($PMODE_MAX_RETRIES volte), poi salva AVVISANDOTI.
+  Nei file di codice traduce solo commenti e messaggi: mai codice, comandi, variabili, URL.
+  File binari e file troppo grandi per il contesto vengono rifiutati, non troncati.
+
+IA per le traduzioni:
+  $ASSIST_NAME --translate-model            mostra quella attuale e apre il menu guidato
+  $ASSIST_NAME --translate-model <nome>     fissa un'IA dedicata alle traduzioni
+  $ASSIST_NAME --translate-model -d         torna a seguire l'IA di default
+  $ASSIST_NAME -m <nome> -T <file>          usa quel modello SOLO per questa traduzione
+  Senza nulla di fissato usa l'IA di default: nessun cambio di modello, nessuna attesa.
+
+Esempi:
+  $ASSIST_NAME -T README.md            (README.$UILANG.md nella lingua dell'interfaccia)
+  $ASSIST_NAME -T README.md en         (README.en.md in inglese)
+  $ASSIST_NAME -T backup.sh de         (commenti e messaggi in tedesco, codice intatto)
+EOF
+        ;;
+    de) cat <<EOF
+$ASSIST_NAME -T — eine Datei übersetzen
+
+  $ASSIST_NAME -T <Datei>             übersetzt in die Sprache der Oberfläche ($UILANG)
+  $ASSIST_NAME -T <Datei> <Sprache>   übersetzt in diese Sprache (it, en, de, ...)
+  $ASSIST_NAME -T help                diese Hilfe
+
+Das Original wird NIE angefasst:
+  die Übersetzung landet in einer NEUEN Datei daneben — README.md -> README.$UILANG.md — der
+  Name wird vor dem Schreiben gezeigt. Existiert sie schon, wird ein freier Name genommen.
+
+Während der Übersetzung:
+  der Text erscheint, während die KI ihn schreibt (keine erfundene Prozentanzeige).
+  Am Ende: Enter = speichern · r = neu · Hinweis schreiben = neu damit · s = verwerfen.
+
+Automatische Prüfungen (wie bei --new):
+  ein übersetztes .md muss Markdown bleiben, ein .sh muss bash -n bestehen. Schlägt die
+  Prüfung fehl, wird mit erklärtem Fehler wiederholt ($PMODE_MAX_RETRIES mal), dann MIT WARNUNG
+  gespeichert. In Code werden nur Kommentare und Meldungen übersetzt, nie der Code selbst.
+  Binärdateien und zu große Dateien werden abgelehnt, nicht gekürzt.
+
+KI für Übersetzungen:
+  $ASSIST_NAME --translate-model            zeigt die aktuelle und öffnet das Menü
+  $ASSIST_NAME --translate-model <Name>     setzt eine eigene KI für Übersetzungen
+  $ASSIST_NAME --translate-model -d         folgt wieder der Standard-KI
+  $ASSIST_NAME -m <Name> -T <Datei>         nutzt dieses Modell NUR für diese Übersetzung
+  Ohne Festlegung wird die Standard-KI genutzt: kein Modellwechsel, keine Wartezeit.
+
+Beispiele:
+  $ASSIST_NAME -T README.md            ·   $ASSIST_NAME -T README.md en
+  $ASSIST_NAME -T backup.sh de         (Kommentare und Meldungen, Code bleibt)
+EOF
+        ;;
+    *) cat <<EOF
+$ASSIST_NAME -T — translate a file
+
+  $ASSIST_NAME -T <file>              translates into the interface language ($UILANG)
+  $ASSIST_NAME -T <file> <lang>       translates into that language (it, en, de, ...)
+  $ASSIST_NAME -T help                this help
+
+The original is NEVER touched:
+  the translation goes into a NEW file next to it — README.md -> README.$UILANG.md — and the
+  name is shown before anything is written. If it exists, a free one is picked (.$UILANG-2, ...).
+
+While translating:
+  the text appears as the AI writes it (no invented percentage: you watch the work).
+  At the end: Enter = save · r = redo · type a hint = redo following it · s = discard.
+
+Automatic checks (the same as --new):
+  a translated .md must still be Markdown, a .sh must pass bash -n. If a check fails it
+  retries with the error explained ($PMODE_MAX_RETRIES times), then saves WITH A WARNING.
+  In code, only comments and messages are translated: never code, commands, variables, URLs.
+  Binary files and files too big for the context are refused, not truncated.
+
+AI for translations:
+  $ASSIST_NAME --translate-model            show the current one and open the guided menu
+  $ASSIST_NAME --translate-model <name>     pin a dedicated AI for translations
+  $ASSIST_NAME --translate-model -d         follow the default AI again
+  $ASSIST_NAME -m <name> -T <file>          use that model ONLY for this translation
+  With nothing pinned it uses the default AI: no model swap, no waiting.
+
+Examples:
+  $ASSIST_NAME -T README.md            ·   $ASSIST_NAME -T README.md en
+  $ASSIST_NAME -T backup.sh de         (comments and messages only, code untouched)
+EOF
+        ;;
+    esac
+}
+
 translate_lang_name() {
     case "$1" in
         it) printf 'Italian' ;;
@@ -4659,7 +4770,7 @@ translate_model_menu() {
 translate_model_cmd() {
     local cur sel
     case "${1:-}" in
-        help|-h|--help) echo -e "$(t tr_usage)" ;;
+        help|-h|--help) page translate_help ;;
         ""|show|list)
             cur="$(head -n1 "$TRANSMODELFILE" 2>/dev/null)"
             if [ -n "$cur" ]; then echo -e "$(t tm_current) ${GREEN}$cur${NC}"; else echo -e "$(t tm_follow)"; fi
@@ -5623,7 +5734,7 @@ case "$1" in
     -T|--translate)
         shift
         case "${1:-}" in
-            help|-h|--help) echo -e "$(t tr_usage)" ;;
+            help|-h|--help) page translate_help ;;
             "")             echo -e "${YELLOW}$(t tr_usage)${NC}" >&2; exit 1 ;;
             *)              translate_file "$1" "${2:-}" ;;
         esac
