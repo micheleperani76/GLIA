@@ -1820,16 +1820,21 @@ rc_prune() {
 
 glia_self_update() {
     # Update the GLIA PROGRAM. $1 = "--check" -> query only, do not install.
-    local self dir chan tag cmp check_only=0 repodir sudo=""
+    local self dir chan tag cmp cur check_only=0 repodir sudo=""
     [ "${1:-}" = "--check" ] && check_only=1
     self="$(realpath "$0" 2>/dev/null)"; dir="$(dirname "$self")"
-    chan="$(chan_get)"
-    echo -e "${BLUE}$(t su_current)${NC} $VERSION   ($(t rc_channel): $chan)"
-    if ! net_online; then echo -e "${YELLOW}$(t doc_offline)${NC}"; return 2; fi
-    tag="$(rc_latest_tag "$chan")"
-    [ -n "$tag" ] || { echo -e "${YELLOW}$(t rc_notags)${NC}"; return 2; }
-    rc_check >/dev/null 2>&1                       # refresh cache for -V / --doctor
-    cmp="$(ver_cmp "$tag" "$VERSION")"
+    chan="$(chan_get)"; cur="$(glia_effective_tag)"
+    echo -e "${BLUE}$(t su_current)${NC} $VERSION   [$cur]   ($(t rc_channel): $chan)"
+    # ONE remote query (E6.1): rc_check sets NEWTAG/NEWVER, compares against the
+    # effective tag and refreshes the cache. Asking ls-remote twice for the same
+    # fact was duplicated logic (DRY) and a second round-trip for nothing.
+    rc_check; cmp=$?
+    if [ "$cmp" = 2 ]; then                        # tell no-tags apart from offline
+        if net_online; then echo -e "${YELLOW}$(t rc_notags)${NC}"
+        else echo -e "${YELLOW}$(t doc_offline)${NC}"; fi
+        return 2
+    fi
+    tag="$NEWTAG"
     if [ "$cmp" != 1 ]; then
         echo -e "${GREEN}$(t su_uptodate)${NC}   ($tag)"; return 0
     fi
@@ -1846,7 +1851,8 @@ glia_self_update() {
          || ! $sudo mv -f "$dir/glia.new" "$dir/glia"; then
         rm -rf "$repodir"; echo -e "${RED}$(t su_dlfail)${NC}" >&2; return 1
     fi
-    core_log "self update" "$VERSION -> ${tag#v} ($chan)"
+    tag_set "$tag"      # the record must follow the script on disk, immediately
+    core_log "self update" "$cur -> $tag ($chan)"
     # companions from the SAME tag, best effort, only where they already exist
     _rc_put() { { [ -e "$2" ] && [ -f "$1" ]; } || return 0
         local s=""; [ -w "$(dirname "$2")" ] || s="sudo"; $s install -m"$3" "$1" "$2"; }
@@ -3025,7 +3031,10 @@ rc_check() {
     tag="$(rc_latest_tag "$chan")"
     [ -n "$tag" ] || return 2
     NEWTAG="$tag"
-    cmp="$(ver_cmp "$tag" "$VERSION")"
+    # Compare TAG against TAG (E6.1). Comparing against bare $VERSION made
+    # ver_cmp v2.17.0-beta.2 vs 2.17.0 = -1 ("older"), so a newer beta was
+    # never offered: the beta channel could not iterate.
+    cmp="$(ver_cmp "$tag" "$(glia_effective_tag)")"
     printf '%s\n%s\n%s\n' "$chan" "$tag" "$cmp" | core_cache_put "$RC_CHECK_KEY"
     if [ "$cmp" = 1 ]; then NEWVER="${tag#v}"; return 1; fi
     return 0
