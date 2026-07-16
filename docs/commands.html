@@ -32,6 +32,8 @@ nav{position:sticky;top:0;z-index:50;backdrop-filter:blur(12px);background:rgba(
 .nav-links a.active{color:var(--teal)}
 .nav-links .ghbtn{border:1px solid var(--border);padding:7px 15px;border-radius:8px;color:var(--text);font-weight:600}
 .nav-links .ghbtn:hover{border-color:var(--green);color:var(--green)}
+.nav-links .ghbtn.coffee{border-color:rgba(45,212,191,.45);color:var(--teal)}
+.nav-links .ghbtn.coffee:hover{border-color:var(--teal);color:var(--white);background:rgba(45,212,191,.08)}
 @media(max-width:760px){.nav-links a:not(.ghbtn):not(.active){display:none}}
 .head{padding:64px 0 8px}
 .eyebrow{font-family:var(--mono);font-size:.78rem;letter-spacing:.18em;text-transform:uppercase;color:var(--teal);margin-bottom:14px}
@@ -80,10 +82,13 @@ footer .fbrand{font-weight:800;color:var(--white);font-size:1.05rem;margin-botto
   <div class="wrap nav-in">
     <a class="brand" href="index.html"><img src="logo.svg" width="26" height="26" alt="" style="display:block">GLIA</a>
     <div class="nav-links">
+      <a href="index.html#different">Why GLIA</a>
       <a href="index.html#what">Philosophy</a>
+      <a href="index.html#status">Status</a>
       <a href="index.html#install">Install</a>
-      <a class="active" href="commands.html">Commands</a>
       <a href="index.html#roadmap">Roadmap</a>
+      <a class="active" href="commands.html">Commands</a>
+      <a class="ghbtn coffee" href="https://checkout.revolut.com/pay/9b1a8a04-2740-4141-b351-bebb0f3e5b70" target="_blank" rel="noopener">☕ Coffee</a>
       <a class="ghbtn" href="https://github.com/micheleperani76/GLIA" target="_blank" rel="noopener">GitHub ↗</a>
     </div>
   </div>
