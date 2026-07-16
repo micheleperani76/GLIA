@@ -1195,6 +1195,12 @@ t() {
         it:tr_doing)        echo "Traduco:" ;;
         de:tr_doing)        echo "Übersetze:" ;;
         *:tr_doing)         echo "Translating:" ;;
+        it:tr_working)      echo "L'IA sta traducendo (il testo appare mentre viene scritto):" ;;
+        de:tr_working)      echo "Die KI übersetzt (der Text erscheint, während er geschrieben wird):" ;;
+        *:tr_working)       echo "The AI is translating (the text appears as it is written):" ;;
+        it:tr_save)         echo "Invio = salva | r = rifai | scrivi un indizio | s = scarta: " ;;
+        de:tr_save)         echo "Enter = speichern | r = neu | schreibe einen Hinweis | s = verwerfen: " ;;
+        *:tr_save)          echo "Enter = save | r = redo | type a hint | s = discard: " ;;
         it:tr_fail)         echo "Il modello non ha risposto." ;;
         de:tr_fail)         echo "Das Modell hat nicht geantwortet." ;;
         *:tr_fail)          echo "The model did not reply." ;;
@@ -4214,6 +4220,24 @@ $CONTENT
 #  Markdown, a translated .sh must still pass bash -n (comments
 #  and messages get translated, never the code).
 # ============================================================
+# chat_stream: like chat(), but the reply is PRINTED WHILE IT ARRIVES and
+# also returned on stdout (v2.18). The text appearing IS the progress: a
+# local model can think for a minute, and a silent terminal looks hung. No
+# percentage is shown anywhere - we cannot know how much is left, and an
+# invented gauge is worse than none.
+# Reuses -w's streaming filter (WEB_STREAM_PY, drops <think> blocks); tee
+# writes to the tty so the caller still captures the text via $(...).
+chat_stream() {
+    local body out tty_out="/dev/null"
+    [ -t 2 ] && tty_out="/dev/tty"
+    body="$(jq -n --arg m "${MODEL#ollama:}" --argjson msgs "$MSGS" \
+        '{model:$m,stream:true,think:false,messages:$msgs}')"
+    out="$(curl -sS --no-buffer --max-time 600 "$OLLAMA_URL/api/chat" -d "$body" 2>/dev/null \
+        | python3 -c "$WEB_STREAM_PY" | tee "$tty_out")"
+    [ -z "${out//[$'\n\t ']/}" ] && return 1
+    printf '%s' "$out"
+}
+
 translate_lang_name() {
     case "$1" in
         it) printf 'Italian' ;;
@@ -4285,7 +4309,10 @@ File: $(basename "$f")
 $txt
 --- file content end ---
 Reply ONLY with the COMPLETE translated file content."
-        CONTENT=$(chat) || { echo -e "${RED}$(t tr_fail)${NC}" >&2; exit 1; }
+        echo -e "${BLUE}$(t tr_working)${NC}"
+        echo
+        CONTENT=$(chat_stream) || { echo -e "${RED}$(t tr_fail)${NC}" >&2; exit 1; }
+        echo
         CONTENT=$(strip_fences <<< "$CONTENT")
         # same objective checks and retry ladder as --new: the OUTPUT file
         # has the same extension, so the same facts must hold
@@ -4301,16 +4328,12 @@ Reply ONLY with the COMPLETE translated file content."
         else
             warn="" fb=""
         fi
-        echo -e "${BLUE}$(t preview)${NC}"
-        head -n 20 <<< "$CONTENT"
+        # no preview: you just watched the whole text stream by. Straight to
+        # the decision.
         LINES=$(wc -l <<< "$CONTENT")
         echo -e "${BLUE}--- ($LINES lines) ---${NC}"
         [ -n "$warn" ] && echo -e "${RED}$(t new_check_warn) $warn${NC}"
-        read -r -p "$(t save)" A < /dev/tty || A="s"
-        if [ "$A" = "v" ] || [ "$A" = "V" ]; then
-            echo "$CONTENT" | less
-            read -r -p "$(t save)" A < /dev/tty || A="s"
-        fi
+        read -r -p "$(t tr_save)" A < /dev/tty || A="s"
         case "$A" in
             "")
                 printf '%s\n' "$CONTENT" > "$out"
