@@ -1327,162 +1327,81 @@ t() {
 show_help() {
     case "$UILANG" in
     it) cat <<EOF
-$ASSIST_NAME v$VERSION - assistente IA da terminale (modello in uso: ${MODEL#ollama:})
-Assistente: $ASSIST_NAME  ·  comando di emergenza sempre attivo: glia
+$ASSIST_NAME v$VERSION - assistente IA da terminale (IA in uso: ${MODEL#ollama:})
 
-Uso comune:
-  $ASSIST_NAME                 (da solo) apre il prompt: scrivi la richiesta con QUALSIASI simbolo (' " \$ | ; & *)
-  $ASSIST_NAME <richiesta>     propone ed esegue un comando (Invio = esegui, n = annulla, r = riprova)
-  $ASSIST_NAME --ask <dom>     risponde a parole, senza eseguire nulla
-  $ASSIST_NAME -w|--web <dom>  cerca sul web e risponde con le fonti (-w+ legge anche le pagine)
-  $ASSIST_NAME -a <nome>       esegue una scorciatoia salvata
-  $ASSIST_NAME -l|--log        mostra il log dei comandi
+L'essenziale:
+  $ASSIST_NAME <richiesta>         propone un comando: Invio = esegui, n = annulla
+  $ASSIST_NAME                     da solo: prompt libero (qualsiasi simbolo)
+  $ASSIST_NAME --ask <domanda>     risponde a parole, senza eseguire nulla
+  $ASSIST_NAME -w <domanda>        cerca sul web e risponde con le fonti
+  $ASSIST_NAME -p <file> "<cosa>"  modifica un file esistente (diff, poi chiede)
+  $ASSIST_NAME -m                  scegli quale IA usare (guidato)
+  $ASSIST_NAME --doctor            controllo rapido: motore, modello, RAM
 
-Gestione (i più comuni):
-  $ASSIST_NAME -a add <nome> <cmd>  crea una scorciatoia
-  $ASSIST_NAME --remember <fatto>   ricorda un fatto (macchine, percorsi, abitudini)
-  $ASSIST_NAME -m                   scegli quale IA usare (guidato)
-  $ASSIST_NAME -m pull <nome>       scarica una nuova IA (update = aggiorna, rm = rimuovi)
+Ogni area ha il suo aiuto dedicato (comando + help):
+  -a help        scorciatoie           -m help        le IA: scegli/scarica
+  -p help        modifica file         --new help     progetto nuovo da zero
+  -w help        ricerca web           -i help        modalità interattiva
+  --memory help  memoria (fatti)       --update help  aggiornare GLIA e motore
 
-Aiuto dettagliato per gruppo:
-  $ASSIST_NAME -a help         scorciatoie (alias)
-  $ASSIST_NAME -m help         quale IA usare
-  $ASSIST_NAME --update help   scaricare e aggiornare le IA (e il motore)
-  $ASSIST_NAME --memory help   memoria (fatti ricordati)
-  $ASSIST_NAME -p help         modifica un file che esiste già (mostra il diff, poi chiede)
-  $ASSIST_NAME --new help      crea un progetto nuovo da zero (era -p fino alla v2.17)
-  $ASSIST_NAME -i help         modalità interattiva (frasi con caratteri speciali)
+Altri comandi (dettagli nei rispettivi help e nel README):
+  --channel · --rollback · --update-engine · --rename · --lang
+  --remember · -a add · -l (log) · --clear-cache · --kaboom · -V
 
-Impostazioni:
-  $ASSIST_NAME --rename <nome>     dai un nuovo nome all'assistente (glia resta sempre)
-  $ASSIST_NAME --lang <it|en|de>   cambia la lingua dell'interfaccia
-  $ASSIST_NAME --doctor            controllo rapido: motore, modello, RAM, config
-  $ASSIST_NAME --update            aggiorna GLIA stesso (il programma)   [-U]
-  $ASSIST_NAME --update --check    controlla se c'e' una versione nuova, non installa
-  $ASSIST_NAME --channel [canale]  mostra/cambia il canale (stable | beta)
-  $ASSIST_NAME --rollback          torna a una versione precedente
-  $ASSIST_NAME --update-engine     aggiorna il motore Ollama
-  $ASSIST_NAME --clear-cache       svuota la cache delle risposte
-  $ASSIST_NAME --kaboom            disinstalla (chiede: solo il programma, o anche motore e IA)
-  $ASSIST_NAME -V, --version       mostra la versione
-  $ASSIST_NAME -h                  questo aiuto
-
-Esempi:
-  $ASSIST_NAME trova i file più grandi in /home
-  $ASSIST_NAME --ask cosa fa il comando rsync
-  $ASSIST_NAME -a add bangkok "TZ=Asia/Bangkok date"
-  $ASSIST_NAME -m 2 riscrivi questo script in modo più chiaro   (usa l'IA #2 solo qui)
-
-Se l'IA non risponde:
-  systemctl start ollama          avvia il motore IA
-  ollama pull ${MODEL#ollama:}    scarica il modello
-  glia-hardware                   modello consigliato per questa macchina
+Esempio:   $ASSIST_NAME trova i file più grandi in /home
+Se l'IA non risponde:   systemctl start ollama   ·   glia-hardware
 EOF
         ;;
     de) cat <<EOF
-$ASSIST_NAME v$VERSION - KI-Terminal-Assistent (aktives Modell: ${MODEL#ollama:})
-Assistent: $ASSIST_NAME  ·  Notfallbefehl immer aktiv: glia
+$ASSIST_NAME v$VERSION - KI-Terminal-Assistent (aktive KI: ${MODEL#ollama:})
 
-Häufige Nutzung:
-  $ASSIST_NAME                (allein) öffnet den Prompt: Anfrage mit BELIEBIGEN Zeichen (' " \$ | ; & *)
-  $ASSIST_NAME <Anfrage>      schlägt einen Befehl vor und führt ihn aus (Enter = ausführen, n = abbrechen, r = wiederholen)
-  $ASSIST_NAME --ask <Fr>     antwortet in Worten, führt nichts aus
-  $ASSIST_NAME -w|--web <Fr>  sucht im Web und antwortet mit Quellen (-w+ liest die Seiten)
-  $ASSIST_NAME -a <Name>      führt einen gespeicherten Shortcut aus
-  $ASSIST_NAME -l|--log       zeigt das Befehlsprotokoll
+Das Wesentliche:
+  $ASSIST_NAME <Anfrage>          schlägt einen Befehl vor: Enter = ausführen, n = nein
+  $ASSIST_NAME                    allein: freier Prompt (beliebige Zeichen)
+  $ASSIST_NAME --ask <Frage>      antwortet in Worten, führt nichts aus
+  $ASSIST_NAME -w <Frage>         sucht im Web und antwortet mit Quellen
+  $ASSIST_NAME -p <Datei> "<was>" ändert eine vorhandene Datei (Diff, dann Frage)
+  $ASSIST_NAME -m                 KI wählen (geführt)
+  $ASSIST_NAME --doctor           Schnellcheck: Engine, Modell, RAM
 
-Verwaltung (die häufigsten):
-  $ASSIST_NAME -a add <Name> <cmd>  einen Shortcut anlegen
-  $ASSIST_NAME --remember <Fakt>    einen Fakt merken (Rechner, Pfade, Gewohnheiten)
-  $ASSIST_NAME -m                   KI wählen (geführt)
-  $ASSIST_NAME -m pull <Name>       neue KI laden (update = aktualisieren, rm = entfernen)
+Jeder Bereich hat seine eigene Hilfe (Befehl + help):
+  -a help        Shortcuts            -m help        KIs: wählen/laden
+  -p help        Dateien ändern       --new help     Projekt von Null
+  -w help        Websuche             -i help        interaktiver Modus
+  --memory help  Gedächtnis           --update help  GLIA und Engine aktualisieren
 
-Ausführliche Hilfe pro Gruppe:
-  $ASSIST_NAME -a help         Shortcuts (Aliase)
-  $ASSIST_NAME -m help         welche KI
-  $ASSIST_NAME --update help   KIs laden und aktualisieren (und die Engine)
-  $ASSIST_NAME --memory help   Gedächtnis (gemerkte Fakten)
-  $ASSIST_NAME -p help         eine vorhandene Datei ändern (zeigt den Diff, dann fragt es)
-  $ASSIST_NAME --new help      ein neues Projekt von Null (war -p bis v2.17)
-  $ASSIST_NAME -i help         interaktiver Modus (Anfragen mit Sonderzeichen)
+Weitere Befehle (Details in den jeweiligen Hilfen und im README):
+  --channel · --rollback · --update-engine · --rename · --lang
+  --remember · -a add · -l (Log) · --clear-cache · --kaboom · -V
 
-Einstellungen:
-  $ASSIST_NAME --rename <Name>    dem Assistenten einen neuen Namen geben (glia bleibt immer)
-  $ASSIST_NAME --lang <it|en|de>  Sprache der Oberfläche ändern
-  $ASSIST_NAME --doctor           Schnellcheck: Engine, Modell, RAM, Config
-  $ASSIST_NAME --update           GLIA selbst aktualisieren (das Programm)   [-U]
-  $ASSIST_NAME --update --check   nur pruefen, ob es eine neue Version gibt
-  $ASSIST_NAME --channel [Kanal]  Kanal zeigen/wechseln (stable | beta)
-  $ASSIST_NAME --rollback         zu einer frueheren Version zurueck
-  $ASSIST_NAME --update-engine    Ollama-Engine aktualisieren
-  $ASSIST_NAME --clear-cache      Antwort-Cache leeren
-  $ASSIST_NAME --kaboom           deinstallieren (fragt: nur Programm, oder auch Engine und KIs)
-  $ASSIST_NAME -V, --version      Version anzeigen
-  $ASSIST_NAME -h                 diese Hilfe
-
-Beispiele:
-  $ASSIST_NAME finde die größten Dateien in /home
-  $ASSIST_NAME --ask was macht der Befehl rsync
-  $ASSIST_NAME -a add bangkok "TZ=Asia/Bangkok date"
-  $ASSIST_NAME -m 2 schreibe dieses Skript klarer   (nutzt KI #2 nur hier)
-
-Wenn die KI nicht antwortet:
-  systemctl start ollama          KI-Engine starten
-  ollama pull ${MODEL#ollama:}    Modell herunterladen
-  glia-hardware                   empfohlenes Modell für diesen Rechner
+Beispiel:   $ASSIST_NAME finde die größten Dateien in /home
+Wenn die KI nicht antwortet:   systemctl start ollama   ·   glia-hardware
 EOF
         ;;
     *) cat <<EOF
-$ASSIST_NAME v$VERSION - AI terminal assistant (model in use: ${MODEL#ollama:})
-Assistant: $ASSIST_NAME  ·  emergency command always on: glia
+$ASSIST_NAME v$VERSION - AI terminal assistant (AI in use: ${MODEL#ollama:})
 
-Common use:
-  $ASSIST_NAME                 (alone) opens the prompt: type your request with ANY symbol (' " \$ | ; & *)
-  $ASSIST_NAME <request>       propose and run a command (Enter = run, n = cancel, r = retry)
-  $ASSIST_NAME --ask <q>       answer in words, run nothing
-  $ASSIST_NAME -w|--web <q>    search the web and answer with sources (-w+ reads pages)
-  $ASSIST_NAME -a <name>       run a saved shortcut
-  $ASSIST_NAME -l|--log        show the command log
+The essentials:
+  $ASSIST_NAME <request>          proposes a command: Enter = run, n = cancel
+  $ASSIST_NAME                    alone: free prompt (any symbol)
+  $ASSIST_NAME --ask <question>   answers in words, runs nothing
+  $ASSIST_NAME -w <question>      searches the web, answers with sources
+  $ASSIST_NAME -p <file> "<what>" edits an existing file (diff, then asks)
+  $ASSIST_NAME -m                 choose which AI to use (guided)
+  $ASSIST_NAME --doctor           quick check: engine, model, RAM
 
-Manage (most common):
-  $ASSIST_NAME -a add <name> <cmd>  create a shortcut
-  $ASSIST_NAME --remember <fact>    remember a fact (machines, paths, habits)
-  $ASSIST_NAME -m                   choose which AI to use (guided)
-  $ASSIST_NAME -m pull <name>       download a new AI (update = refresh, rm = remove)
+Every area has its own dedicated help (command + help):
+  -a help        shortcuts            -m help        the AIs: choose/download
+  -p help        edit files           --new help     new project from scratch
+  -w help        web search           -i help        interactive mode
+  --memory help  memory (facts)       --update help  update GLIA and the engine
 
-Detailed help per group:
-  $ASSIST_NAME -a help         shortcuts (aliases)
-  $ASSIST_NAME -m help         which AI to use
-  $ASSIST_NAME --update help   download and update the AIs (and the engine)
-  $ASSIST_NAME --memory help   memory (remembered facts)
-  $ASSIST_NAME -p help         edit a file that already exists (shows the diff, then asks)
-  $ASSIST_NAME --new help      create a new project from scratch (was -p up to v2.17)
-  $ASSIST_NAME -i help         interactive mode (requests with special characters)
+Other commands (details in their help pages and the README):
+  --channel · --rollback · --update-engine · --rename · --lang
+  --remember · -a add · -l (log) · --clear-cache · --kaboom · -V
 
-Settings:
-  $ASSIST_NAME --rename <name>    give the assistant a new name (glia always stays)
-  $ASSIST_NAME --lang <it|en|de>  change the interface language
-  $ASSIST_NAME --doctor           quick check: engine, model, RAM, config
-  $ASSIST_NAME --update           update GLIA itself (the program)   [-U]
-  $ASSIST_NAME --update --check   check for a new version, install nothing
-  $ASSIST_NAME --channel [ch]     show/switch the release channel (stable | beta)
-  $ASSIST_NAME --rollback         go back to a previous version
-  $ASSIST_NAME --update-engine    update the Ollama engine
-  $ASSIST_NAME --clear-cache      empty the answer cache
-  $ASSIST_NAME --kaboom           uninstall (asks: program only, or engine and AIs too)
-  $ASSIST_NAME -V, --version      show the version
-  $ASSIST_NAME -h                 this help
-
-Examples:
-  $ASSIST_NAME find the largest files in /home
-  $ASSIST_NAME --ask what does the rsync command do
-  $ASSIST_NAME -a add bangkok "TZ=Asia/Bangkok date"
-  $ASSIST_NAME -m 2 rewrite this script more clearly   (uses AI #2 for this only)
-
-If the AI does not answer:
-  systemctl start ollama          start the AI engine
-  ollama pull ${MODEL#ollama:}    download the model
-  glia-hardware                   see which model fits this machine
+Example:   $ASSIST_NAME find the largest files in /home
+If the AI does not answer:   systemctl start ollama   ·   glia-hardware
 EOF
         ;;
     esac
