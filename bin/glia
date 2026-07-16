@@ -734,6 +734,15 @@ t() {
         it:skipped)         echo "Saltato." ;;
         de:skipped)         echo "Übersprungen." ;;
         *:skipped)          echo "Skipped." ;;
+        it:new_check_retry) echo "Controllo automatico fallito, rigenero. Tentativo" ;;
+        de:new_check_retry) echo "Automatische Prüfung fehlgeschlagen, erzeuge neu. Versuch" ;;
+        *:new_check_retry)  echo "Automatic check failed, regenerating. Attempt" ;;
+        it:new_check_warn)  echo "ATTENZIONE: il controllo automatico fallisce anche dopo i tentativi:" ;;
+        de:new_check_warn)  echo "ACHTUNG: die automatische Prüfung schlägt auch nach den Versuchen fehl:" ;;
+        *:new_check_warn)   echo "WARNING: the automatic check still fails after the retries:" ;;
+        it:new_check_saved) echo "Salvato CON AVVISO: controlla il file prima di usarlo (vedi log)." ;;
+        de:new_check_saved) echo "MIT WARNUNG gespeichert: Datei vor Gebrauch prüfen (siehe Log)." ;;
+        *:new_check_saved)  echo "Saved WITH WARNING: check the file before using it (see log)." ;;
         it:proj_dir)        echo "Cartella del progetto:" ;;
         de:proj_dir)        echo "Projektordner:" ;;
         *:proj_dir)         echo "Project folder:" ;;
@@ -3903,6 +3912,37 @@ strip_fences() {
     sed 's/^```[a-zA-Z]*$//; s/^```$//' | sed '/./,$!d'
 }
 
+# newmode_check_content <relpath> <content>: objective checks on generated
+# content (v2.18). GLIA knows facts the model ignores: a Markdown file must
+# not start with a shebang. Only facts get checked, never opinions; any
+# extension without a real check passes (better nothing than a fake check).
+# Sets NEW_CHECK_ERR (English: it is fed back to the model) on failure.
+NEW_CHECK_ERR=""
+newmode_check_content() {
+    local path="$1" content="$2" first err
+    NEW_CHECK_ERR=""
+    first=$(head -n1 <<< "$content")
+    case "$path" in
+        *.md|*.txt|*.rst)
+            if [ "${first#\#!}" != "$first" ]; then
+                NEW_CHECK_ERR="the file starts with a shebang ('$first') but '$path' must be plain documentation, not a script"
+                return 1
+            fi
+            if [ "${path%.md}" != "$path" ] && ! grep -qE '^#{1,6} ' <<< "$content"; then
+                NEW_CHECK_ERR="the file contains no Markdown heading (a line starting with '# '): it does not look like Markdown"
+                return 1
+            fi
+            ;;
+        *.sh)
+            if ! err=$(bash -n <<< "$content" 2>&1); then
+                NEW_CHECK_ERR="bash -n rejects it: $(head -n2 <<< "$err" | tr '\n' ' ')"
+                return 1
+            fi
+            ;;
+    esac
+    return 0
+}
+
 strip_leaked_plan() {
     # safety net: if the model echoed the JSON plan before the real
     # content, drop everything up to (and including) the closing brace
@@ -4013,12 +4053,13 @@ project_mode() {
     # per-file loop: at the save prompt, typed text = a hint for the AI and
     # the file is regenerated following it (same procedure as the fix loop);
     # hints accumulate per file and reset on the next file (v2.8)
-    local i=0 FPATH FDESC CONTENT LINES FILE_HINTS
+    local i=0 FPATH FDESC CONTENT LINES FILE_HINTS CHECK_TRIES CHECK_FB CHECK_WARN
     while [ "$i" -lt "$NFILES" ]; do
         FPATH=$(jq -r ".files[$i].path" <<< "$PLAN")
         FPATH="${FPATH#./}"
         FDESC=$(jq -r ".files[$i].description" <<< "$PLAN")
         FILE_HINTS=""
+        CHECK_TRIES=0 CHECK_FB="" CHECK_WARN=""
         i=$((i+1))
         if ! safe_relpath "$FPATH"; then
             echo -e "${RED}$(t badpath) $FPATH${NC}"
@@ -4030,13 +4071,28 @@ project_mode() {
             echo -e "${YELLOW}$(t writing) [$i/$NFILES]: ${NC}${GREEN}$FPATH${NC}"
             MSGS='[]'
             add_msg system "You are the GLIA project agent. You write complete, working files for a small project. Reply ONLY with raw file content: no explanations, no markdown fences, no JSON. Target machine: ${OS_NAME:-Linux}${PKGMGR:+, package manager: $PKGMGR (use it in any install command, never one from other distros)}."
-            add_msg user "Project: $NAME. Request: $REQUEST.${PLAN_HINTS:+ Extra context from the user (follow it closely): $PLAN_HINTS.} Files of the project: $FILELIST.${WRITTEN:+ The following files are ALREADY WRITTEN. They are reference material only: do not write them again.$WRITTEN} Now write the COMPLETE content of the file '$FPATH' ($FDESC).${FILE_HINTS:+ The user adds this guidance (follow it closely): $FILE_HINTS.} Reply ONLY with the raw content of '$FPATH'. No explanations, no markdown fences."
+            add_msg user "Project: $NAME. Request: $REQUEST.${PLAN_HINTS:+ Extra context from the user (follow it closely): $PLAN_HINTS.} Files of the project: $FILELIST.${WRITTEN:+ The following files are ALREADY WRITTEN. They are reference material only: do not write them again.$WRITTEN} Now write the COMPLETE content of the file '$FPATH' ($FDESC).${FILE_HINTS:+ The user adds this guidance (follow it closely): $FILE_HINTS.}${CHECK_FB:+ Your previous attempt was rejected by an automatic check: $CHECK_FB. Write the file again and fix exactly this.} Reply ONLY with the raw content of '$FPATH'. No explanations, no markdown fences."
             CONTENT=$(chat) || { echo -e "${RED}$(t plan_fail)${NC}"; break; }
             CONTENT=$(strip_fences <<< "$CONTENT" | strip_leaked_plan)
+            # v2.18: verify instead of hoping. Same retry ladder as -p:
+            # retry with the error explained, then be honest about it.
+            if ! newmode_check_content "$FPATH" "$CONTENT"; then
+                CHECK_TRIES=$((CHECK_TRIES+1))
+                if [ "$CHECK_TRIES" -le "$PMODE_MAX_RETRIES" ]; then
+                    echo -e "${YELLOW}$(t new_check_retry) $CHECK_TRIES/$PMODE_MAX_RETRIES: $NEW_CHECK_ERR${NC}"
+                    write_log "CHECK RETRY $CHECK_TRIES" "$NAME/$FPATH | $NEW_CHECK_ERR"
+                    CHECK_FB="$NEW_CHECK_ERR"
+                    continue
+                fi
+                CHECK_WARN="$NEW_CHECK_ERR"
+            else
+                CHECK_WARN="" CHECK_FB=""
+            fi
             echo -e "${BLUE}$(t preview)${NC}"
             head -n 20 <<< "$CONTENT"
             LINES=$(wc -l <<< "$CONTENT")
             echo -e "${BLUE}--- ($LINES lines) ---${NC}"
+            [ -n "$CHECK_WARN" ] && echo -e "${RED}$(t new_check_warn) $CHECK_WARN${NC}"
             read -r -p "$(t save)" A < /dev/tty || A="s"
             if [ "$A" = "v" ] || [ "$A" = "V" ]; then
                 echo "$CONTENT" | less
@@ -4047,7 +4103,12 @@ project_mode() {
                     mkdir -p "$PROJDIR/$(dirname "$FPATH")"
                     printf '%s\n' "$CONTENT" > "$PROJDIR/$FPATH"
                     echo -e "${GREEN}$(t saved) $PROJDIR/$FPATH${NC}"
-                    write_log "SAVED" "$NAME/$FPATH ($LINES lines)"
+                    if [ -n "$CHECK_WARN" ]; then
+                        echo -e "${RED}$(t new_check_saved)${NC}"
+                        write_log "SAVED WITH WARNING" "$NAME/$FPATH ($LINES lines) | $CHECK_WARN"
+                    else
+                        write_log "SAVED" "$NAME/$FPATH ($LINES lines)"
+                    fi
                     # saved file becomes reference material for the next ones
                     WRITTEN="$WRITTEN
 --- $FPATH (already written) ---
