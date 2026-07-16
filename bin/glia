@@ -1330,6 +1330,7 @@ show_help() {
 $ASSIST_NAME v$VERSION - assistente IA da terminale (IA in uso: ${MODEL#ollama:})
 
 L'essenziale:
+  $ASSIST_NAME --rename <nome>     dai IL TUO nome all'assistente (glia resta sempre)
   $ASSIST_NAME <richiesta>         propone un comando: Invio = esegui, n = annulla
   $ASSIST_NAME                     da solo: prompt libero (qualsiasi simbolo)
   $ASSIST_NAME --ask <domanda>     risponde a parole, senza eseguire nulla
@@ -1345,8 +1346,8 @@ Ogni area ha il suo aiuto dedicato (comando + help):
   --memory help  memoria (fatti)       --update help  aggiornare GLIA e motore
 
 Altri comandi (dettagli nei rispettivi help e nel README):
-  --channel · --rollback · --update-engine · --rename · --lang
-  --remember · -a add · -l (log) · --clear-cache · --kaboom · -V
+  --channel · --rollback · --update-engine · --lang · --remember
+  -a add · -l (log) · --clear-cache · --kaboom · -V
 
 Esempio:   $ASSIST_NAME trova i file più grandi in /home
 Se l'IA non risponde:   systemctl start ollama   ·   glia-hardware
@@ -1356,6 +1357,7 @@ EOF
 $ASSIST_NAME v$VERSION - KI-Terminal-Assistent (aktive KI: ${MODEL#ollama:})
 
 Das Wesentliche:
+  $ASSIST_NAME --rename <Name>    gib dem Assistenten DEINEN Namen (glia bleibt immer)
   $ASSIST_NAME <Anfrage>          schlägt einen Befehl vor: Enter = ausführen, n = nein
   $ASSIST_NAME                    allein: freier Prompt (beliebige Zeichen)
   $ASSIST_NAME --ask <Frage>      antwortet in Worten, führt nichts aus
@@ -1371,8 +1373,8 @@ Jeder Bereich hat seine eigene Hilfe (Befehl + help):
   --memory help  Gedächtnis           --update help  GLIA und Engine aktualisieren
 
 Weitere Befehle (Details in den jeweiligen Hilfen und im README):
-  --channel · --rollback · --update-engine · --rename · --lang
-  --remember · -a add · -l (Log) · --clear-cache · --kaboom · -V
+  --channel · --rollback · --update-engine · --lang · --remember
+  -a add · -l (Log) · --clear-cache · --kaboom · -V
 
 Beispiel:   $ASSIST_NAME finde die größten Dateien in /home
 Wenn die KI nicht antwortet:   systemctl start ollama   ·   glia-hardware
@@ -1382,6 +1384,7 @@ EOF
 $ASSIST_NAME v$VERSION - AI terminal assistant (AI in use: ${MODEL#ollama:})
 
 The essentials:
+  $ASSIST_NAME --rename <name>    give the assistant YOUR name (glia always stays)
   $ASSIST_NAME <request>          proposes a command: Enter = run, n = cancel
   $ASSIST_NAME                    alone: free prompt (any symbol)
   $ASSIST_NAME --ask <question>   answers in words, runs nothing
@@ -1397,8 +1400,8 @@ Every area has its own dedicated help (command + help):
   --memory help  memory (facts)       --update help  update GLIA and the engine
 
 Other commands (details in their help pages and the README):
-  --channel · --rollback · --update-engine · --rename · --lang
-  --remember · -a add · -l (log) · --clear-cache · --kaboom · -V
+  --channel · --rollback · --update-engine · --lang · --remember
+  -a add · -l (log) · --clear-cache · --kaboom · -V
 
 Example:   $ASSIST_NAME find the largest files in /home
 If the AI does not answer:   systemctl start ollama   ·   glia-hardware
