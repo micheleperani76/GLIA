@@ -36,7 +36,7 @@ _glia() {
     flags="-h --help -V --version -i --interactive -d --ask -l --log
            -a --alias -m --model -p --project -n --new --remember --memory --forget
            -w --web -w+ --web-deep -ws --web-search --web-model --web-engine --project-model
-           -T --translate
+           -T --translate --translate-model
            --clear-cache --doctor -U --update --update-engine --channel --rollback
            --rename --lang"
 
@@ -48,7 +48,7 @@ _glia() {
             # -w search engine: preset name (searx also takes an instance URL)
             COMPREPLY=( $(compgen -W "ddg bing searx" -- "$cur") )
             return ;;
-        --web-model|--project-model)
+        --web-model|--project-model|--translate-model)
             # pin a dedicated AI: a downloaded model, or "default" to follow the default
             COMPREPLY=( $(compgen -W "default show help $(_glia_model_names)" -- "$cur") )
             return ;;

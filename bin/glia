@@ -398,6 +398,7 @@ WEB_KEEPALIVE="30m"       # keep the model warm in RAM between -w calls (faster)
 WEB_NUMPREDICT=600        # max tokens generated for the web answer
 WEBMODELFILE="$HOME/.config/glia/web_model"   # optional AI dedicated to -w (empty = follow default)
 CODEMODELFILE="$HOME/.config/glia/code_model" # optional AI dedicated to -p / --new coding (empty = follow default)
+TRANSMODELFILE="$HOME/.config/glia/translate_model" # optional AI dedicated to -T (empty = follow default)
 
 # --- Project mode (-p): edit existing files (v2.18, Part A) ---
 # -p EDITS files that already exist; --new generates a project from scratch
@@ -1188,9 +1189,9 @@ t() {
         de:web_open_hint)   echo "Zum interaktiven Navigieren:" ;;
         *:web_open_hint)    echo "To browse it interactively:" ;;
         # ---- -T translate (v2.18) ----
-        it:tr_usage)        echo "Uso: $ASSIST_NAME -T <file> [it|en|de|...]   traduce in un file NUOVO accanto (l'originale resta intatto); lingua di default: quella dell'interfaccia" ;;
-        de:tr_usage)        echo "Verwendung: $ASSIST_NAME -T <Datei> [it|en|de|...]   übersetzt in eine NEUE Datei daneben (Original bleibt unberührt); Standardsprache: die der Oberfläche" ;;
-        *:tr_usage)         echo "Usage: $ASSIST_NAME -T <file> [it|en|de|...]   translates into a NEW file next to it (the original is untouched); default language: the interface one" ;;
+        it:tr_usage)        echo "Uso: $ASSIST_NAME -T <file> [it|en|de|...]   traduce in un file NUOVO accanto (l'originale resta intatto); lingua di default: quella dell'interfaccia · IA dedicata: $ASSIST_NAME --translate-model · una tantum: $ASSIST_NAME -m <nome> -T <file>" ;;
+        de:tr_usage)        echo "Verwendung: $ASSIST_NAME -T <Datei> [it|en|de|...]   übersetzt in eine NEUE Datei daneben (Original bleibt unberührt); Standardsprache: die der Oberfläche · eigene KI: $ASSIST_NAME --translate-model · einmalig: $ASSIST_NAME -m <Name> -T <Datei>" ;;
+        *:tr_usage)         echo "Usage: $ASSIST_NAME -T <file> [it|en|de|...]   translates into a NEW file next to it (the original is untouched); default language: the interface one · dedicated AI: $ASSIST_NAME --translate-model · one-off: $ASSIST_NAME -m <name> -T <file>" ;;
         it:tr_doing)        echo "Traduco:" ;;
         de:tr_doing)        echo "Übersetze:" ;;
         *:tr_doing)         echo "Translating:" ;;
@@ -1200,6 +1201,24 @@ t() {
         it:tr_notafile)     echo "Non è un file leggibile:" ;;
         de:tr_notafile)     echo "Keine lesbare Datei:" ;;
         *:tr_notafile)      echo "Not a readable file:" ;;
+        it:tm_using)        echo "Per questa traduzione uso:" ;;
+        de:tm_using)        echo "Für diese Übersetzung nutze ich:" ;;
+        *:tm_using)         echo "For this translation I use:" ;;
+        it:tm_current)      echo "IA fissa per le traduzioni:" ;;
+        de:tm_current)      echo "Feste KI für Übersetzungen:" ;;
+        *:tm_current)       echo "Pinned translation AI:" ;;
+        it:tm_follow)       echo "Le traduzioni seguono l'IA di default." ;;
+        de:tm_follow)       echo "Übersetzungen folgen der Standard-KI." ;;
+        *:tm_follow)        echo "Translations follow the default AI." ;;
+        it:tm_set)          echo "IA per le traduzioni impostata:" ;;
+        de:tm_set)          echo "KI für Übersetzungen gesetzt:" ;;
+        *:tm_set)           echo "Translation AI set to:" ;;
+        it:tm_default)      echo "Le traduzioni tornano a seguire il default." ;;
+        de:tm_default)      echo "Übersetzungen folgen wieder dem Standard." ;;
+        *:tm_default)       echo "Translations follow the default again." ;;
+        it:tm_pick)         echo "Scegli l'IA per le traduzioni:" ;;
+        de:tm_pick)         echo "Wähle die KI für Übersetzungen:" ;;
+        *:tm_pick)          echo "Pick the AI for translations:" ;;
         # ---- model swap (v2.14) ----
         it:ms_reload)       echo "Ricarico la tua IA di default:" ;;
         de:ms_reload)       echo "Lade deine Standard-KI wieder:" ;;
@@ -4232,6 +4251,17 @@ translate_file() {
         exit 1
     fi
     check_ai
+    # dedicated translation AI (--translate-model) or one-off -m, with the
+    # same shared RAM swap as -w / -p. TR_* are GLOBAL on purpose: the EXIT
+    # trap must still see them on any early exit.
+    TR_DEF="${MODEL#ollama:}"
+    TR_TARGET="$(translate_target)"
+    if [ "$TR_TARGET" != "$TR_DEF" ]; then
+        echo -e "${BLUE}$(t tm_using) ${GREEN}$TR_TARGET${NC}"
+        swap_in "$TR_TARGET" "$TR_DEF"
+        MODEL="ollama:$TR_TARGET"
+        trap 'swap_out "$TR_TARGET" "$TR_DEF"' EXIT
+    fi
     txt="$(cat "$f"; printf x)"; txt="${txt%x}"
     # the model must read the file AND write it back: half budget, like the
     # -p whole-file fallback. Refused, not truncated (a mutilated input
@@ -4579,6 +4609,44 @@ project_model_cmd() {
             sel=$(model_resolve "$1") || { echo -e "${RED}$(t model_badsel)${NC}" >&2; exit 1; }
             mkdir -p "$(dirname "$CODEMODELFILE")"; printf '%s\n' "$sel" > "$CODEMODELFILE"
             echo -e "${GREEN}$(t pm_set) $sel${NC}"; show_equiv "echo '$sel' > ${CODEMODELFILE/#$HOME/\~}" ;;
+    esac
+}
+
+# which AI runs -T (translations):  one-off -m  >  pinned  >  default
+translate_target() {
+    if [ -n "${TRANS_OVERRIDE:-}" ]; then printf '%s' "$TRANS_OVERRIDE"; return; fi
+    local pin; pin="$(head -n1 "$TRANSMODELFILE" 2>/dev/null)"
+    [ -n "$pin" ] && { printf '%s' "$pin"; return; }
+    printf '%s' "${MODEL#ollama:}"
+}
+
+translate_model_menu() {
+    local list n i=0 choice sel
+    list="$(model_names)"; [ -z "$list" ] && return 0
+    echo "$(t tm_pick)"
+    while IFS= read -r n; do i=$((i+1)); printf "  %d) %s\n" "$i" "$n"; done <<< "$list"
+    printf "  0) %s\n" "$(t wm_followopt)"
+    read -r -p "$(t wm_choose) " choice < /dev/tty || return 0
+    [ -z "$choice" ] && return 0
+    if [ "$choice" = "0" ]; then rm -f "$TRANSMODELFILE"; echo -e "${GREEN}$(t tm_default)${NC}"; return 0; fi
+    sel=$(model_resolve "$choice") || { echo -e "${RED}$(t model_badsel)${NC}" >&2; return 1; }
+    mkdir -p "$(dirname "$TRANSMODELFILE")"; printf '%s\n' "$sel" > "$TRANSMODELFILE"
+    echo -e "${GREEN}$(t tm_set) $sel${NC}"; show_equiv "echo '$sel' > ${TRANSMODELFILE/#$HOME/\~}"
+}
+translate_model_cmd() {
+    local cur sel
+    case "${1:-}" in
+        help|-h|--help) echo -e "$(t tr_usage)" ;;
+        ""|show|list)
+            cur="$(head -n1 "$TRANSMODELFILE" 2>/dev/null)"
+            if [ -n "$cur" ]; then echo -e "$(t tm_current) ${GREEN}$cur${NC}"; else echo -e "$(t tm_follow)"; fi
+            translate_model_menu ;;
+        default|-d|none|off|clear|reset)
+            rm -f "$TRANSMODELFILE"; echo -e "${GREEN}$(t tm_default)${NC}"; show_equiv "rm ${TRANSMODELFILE/#$HOME/\~}" ;;
+        *)
+            sel=$(model_resolve "$1") || { echo -e "${RED}$(t model_badsel)${NC}" >&2; exit 1; }
+            mkdir -p "$(dirname "$TRANSMODELFILE")"; printf '%s\n' "$sel" > "$TRANSMODELFILE"
+            echo -e "${GREEN}$(t tm_set) $sel${NC}"; show_equiv "echo '$sel' > ${TRANSMODELFILE/#$HOME/\~}" ;;
     esac
 }
 
@@ -5434,6 +5502,7 @@ case "$1" in
                     case "$1" in
                         -w|--web)        shift; WEB_OVERRIDE="$sel"; web_answer "$*" 0 ;;
                         -w+|--web-deep)  shift; WEB_OVERRIDE="$sel"; web_answer "$*" 1 ;;
+                        -T|--translate)  shift; TRANS_OVERRIDE="$sel"; translate_file "${1:-}" "${2:-}" ;;
                         *)
                             m_def="${MODEL#ollama:}"
                             swap_in "$sel" "$m_def"     # one-off: free RAM only if needed
@@ -5539,6 +5608,10 @@ case "$1" in
     --web-model|--webmodel)
         shift
         web_model_cmd "$@"
+        ;;
+    --translate-model|--translatemodel)
+        shift
+        translate_model_cmd "$@"
         ;;
     --project-model|--projectmodel|--code-model|--codemodel)
         shift
