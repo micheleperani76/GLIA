@@ -304,7 +304,8 @@
 #    glia (no args)        interactive prompt: type request with special chars
 #    glia <request>        propose a command (Enter = run)
 #    glia -i|--interactive same as no-args; `-i help` shows a guide
-#    glia -p <idea>        project mode: plan steps, write files
+#    glia -p <file> "<request>"  edit an EXISTING file: show the diff, then ask
+#    glia --new <idea>     new project: plan steps, write files (was -p up to v2.17)
 #    glia -d|--ask <q>     plain-text answer, no command
 #    glia -l|--log         show the command log
 #    glia -a <name>        run a saved alias (shortcut)
@@ -328,7 +329,7 @@
 # ============================================================
 
 # ----------------- CONFIGURATION -----------------
-VERSION="2.17.2"
+VERSION="2.18.0"
 DEFAULT_MODEL="qwen2.5-coder:7b"
 if [ -r "$HOME/.config/glia/model" ]; then
     MODEL="ollama:$(head -n1 "$HOME/.config/glia/model")"
@@ -382,7 +383,19 @@ WEB_COLS=400              # w3m render width: wide so result URLs are never wrap
 WEB_KEEPALIVE="30m"       # keep the model warm in RAM between -w calls (faster)
 WEB_NUMPREDICT=600        # max tokens generated for the web answer
 WEBMODELFILE="$HOME/.config/glia/web_model"   # optional AI dedicated to -w (empty = follow default)
-CODEMODELFILE="$HOME/.config/glia/code_model" # optional AI dedicated to -p projects/coding (empty = follow default)
+CODEMODELFILE="$HOME/.config/glia/code_model" # optional AI dedicated to -p / --new coding (empty = follow default)
+
+# --- Project mode (-p): edit existing files (v2.18, Part A) ---
+# -p EDITS files that already exist; --new generates a project from scratch
+# (that was -p up to v2.17). Both run on the SAME dedicated coding AI, resolved
+# at run time by project_target() (see --project-model): one selection path only.
+# Limits live here, not in the code: on a bigger machine with a bigger model,
+# raise PMODE_NUM_CTX and the same code handles larger files.
+PMODE_NUM_CTX=8192                            # context budget in tokens (model-dependent)
+PMODE_CTX_RESERVE=1500                        # tokens reserved for prompt scaffolding + answer
+PMODE_LOG="$HOME/.config/glia/pmode.log"      # one plain-text block per run
+PMODE_DRYRUN=true                             # true = never touch a file without an explicit confirm
+PMODE_MAX_RETRIES=2                           # search/replace retries before the whole-file fallback
 
 # --- Release channel / self-update (v2.17, Part E) ---
 # Everything here is meant to be easy to change. Discovery uses the HTTPS repo
@@ -1118,25 +1131,161 @@ t() {
         it:wm_follow)       echo "Ricerca web: attualmente segue il modello di default." ;;
         de:wm_follow)       echo "Websuche: folgt derzeit dem Standardmodell." ;;
         *:wm_follow)        echo "Web search: currently follows the default model." ;;
-        # ---- project/coding model (v2.15) ----
-        it:pm_pick)         echo "Scegli l'IA per i progetti (comando -p):" ;;
-        de:pm_pick)         echo "Wähle die KI für Projekte (Befehl -p):" ;;
-        *:pm_pick)          echo "Pick the AI for projects (command -p):" ;;
-        it:pm_default)      echo "Progetti (-p): uso sempre il modello di default." ;;
-        de:pm_default)      echo "Projekte (-p): immer das Standardmodell." ;;
-        *:pm_default)       echo "Projects (-p): always uses the default model." ;;
+        # ---- project/coding model (v2.15; serves -p and --new since v2.18) ----
+        it:pm_pick)         echo "Scegli l'IA per il codice (comandi -p e --new):" ;;
+        de:pm_pick)         echo "Wähle die KI für Code (Befehle -p und --new):" ;;
+        *:pm_pick)          echo "Pick the AI for code (commands -p and --new):" ;;
+        it:pm_default)      echo "Codice (-p, --new): uso sempre il modello di default." ;;
+        de:pm_default)      echo "Code (-p, --new): immer das Standardmodell." ;;
+        *:pm_default)       echo "Code (-p, --new): always uses the default model." ;;
         it:pm_set)          echo "IA per i progetti impostata:" ;;
         de:pm_set)          echo "KI für Projekte gesetzt:" ;;
         *:pm_set)           echo "Project AI set to:" ;;
         it:pm_current)      echo "IA fissa per i progetti:" ;;
         de:pm_current)      echo "Feste KI für Projekte:" ;;
         *:pm_current)       echo "Pinned project AI:" ;;
-        it:pm_follow)       echo "Progetti (-p): attualmente segue il modello di default." ;;
-        de:pm_follow)       echo "Projekte (-p): folgt derzeit dem Standardmodell." ;;
-        *:pm_follow)        echo "Projects (-p): currently follows the default model." ;;
+        it:pm_follow)       echo "Codice (-p, --new): attualmente segue il modello di default." ;;
+        de:pm_follow)       echo "Code (-p, --new): folgt derzeit dem Standardmodell." ;;
+        *:pm_follow)        echo "Code (-p, --new): currently follows the default model." ;;
         it:pm_using)        echo "Per questo progetto uso:" ;;
         de:pm_using)        echo "Für dieses Projekt nutze ich:" ;;
         *:pm_using)         echo "For this project I use:" ;;
+        # ---- project mode v2: edit existing files (v2.18, Part A) ----
+        it:pmv_notafile)    echo "-p modifica file che esistono già. Per creare un progetto nuovo:" ;;
+        de:pmv_notafile)    echo "-p bearbeitet vorhandene Dateien. Für ein neues Projekt:" ;;
+        *:pmv_notafile)     echo "-p edits files that already exist. To create a new project:" ;;
+        it:pmv_notafile_hint) echo "Non esiste nessun file chiamato:" ;;
+        de:pmv_notafile_hint) echo "Es gibt keine Datei mit diesem Namen:" ;;
+        *:pmv_notafile_hint)  echo "There is no file named:" ;;
+        it:pmv_idea)        echo "idea" ;;
+        de:pmv_idea)        echo "Idee" ;;
+        *:pmv_idea)         echo "idea" ;;
+        it:pmv_request)     echo "cosa cambiare" ;;
+        de:pmv_request)     echo "was zu ändern ist" ;;
+        *:pmv_request)      echo "what to change" ;;
+        it:pmv_norequest)   echo "Manca la richiesta. Uso:" ;;
+        de:pmv_norequest)   echo "Anfrage fehlt. Verwendung:" ;;
+        *:pmv_norequest)    echo "Missing the request. Usage:" ;;
+        it:pmv_notreadable) echo "File non leggibile:" ;;
+        de:pmv_notreadable) echo "Datei nicht lesbar:" ;;
+        *:pmv_notreadable)  echo "File is not readable:" ;;
+        it:pmv_notregular)  echo "Non è un file normale:" ;;
+        de:pmv_notregular)  echo "Keine reguläre Datei:" ;;
+        *:pmv_notregular)   echo "Not a regular file:" ;;
+        it:pmv_binary)      echo "Sembra un file binario: -p lavora solo su file di testo." ;;
+        de:pmv_binary)      echo "Sieht wie eine Binärdatei aus: -p arbeitet nur mit Textdateien." ;;
+        *:pmv_binary)       echo "Looks like a binary file: -p only works on text files." ;;
+        it:pmv_needgit)     echo "-p ha bisogno di git: è la tua rete di sicurezza (puoi annullare ogni modifica)." ;;
+        de:pmv_needgit)     echo "-p braucht git: das ist dein Sicherheitsnetz (du kannst jede Änderung rückgängig machen)." ;;
+        *:pmv_needgit)      echo "-p needs git: it is your safety net (you can undo any change)." ;;
+        it:pmv_notrepo)     echo "Questa cartella non è un repository git." ;;
+        de:pmv_notrepo)     echo "Dieser Ordner ist kein git-Repository." ;;
+        *:pmv_notrepo)      echo "This folder is not a git repository." ;;
+        it:pmv_initask)     echo "Inizializzo git qui? Invio o n = annulla | $YES_KEY = sì: " ;;
+        de:pmv_initask)     echo "git hier initialisieren? Enter oder n = abbrechen | $YES_KEY = ja: " ;;
+        *:pmv_initask)      echo "Initialize git here? Enter or n = cancel | $YES_KEY = yes: " ;;
+        it:pmv_initdone)    echo "Repository git creato." ;;
+        de:pmv_initdone)    echo "git-Repository erstellt." ;;
+        *:pmv_initdone)     echo "git repository created." ;;
+        it:pmv_initno)      echo "Nessun problema. Quando vuoi: git init nella cartella, poi riprova con -p." ;;
+        de:pmv_initno)      echo "Kein Problem. Wann du willst: git init im Ordner, dann -p erneut." ;;
+        *:pmv_initno)       echo "No problem. Whenever you want: git init in the folder, then try -p again." ;;
+        it:pmv_repook)      echo "Repo OK" ;;
+        de:pmv_repook)      echo "Repo OK" ;;
+        *:pmv_repook)       echo "Repo OK" ;;
+        it:pmv_branch)      echo "ramo" ;;
+        de:pmv_branch)      echo "Zweig" ;;
+        *:pmv_branch)       echo "branch" ;;
+        it:pmv_clean)       echo "pulito" ;;
+        de:pmv_clean)       echo "sauber" ;;
+        *:pmv_clean)        echo "clean" ;;
+        it:pmv_dirty)       echo "Ci sono modifiche non committate: se qualcosa va storto è più difficile tornare indietro." ;;
+        de:pmv_dirty)       echo "Es gibt nicht committete Änderungen: ein Rückgängigmachen ist dann schwieriger." ;;
+        *:pmv_dirty)        echo "There are uncommitted changes: undoing is harder if something goes wrong." ;;
+        it:pmv_dirtyask)    echo "Continuo comunque? Invio o n = annulla | $YES_KEY = sì: " ;;
+        de:pmv_dirtyask)    echo "Trotzdem fortfahren? Enter oder n = abbrechen | $YES_KEY = ja: " ;;
+        *:pmv_dirtyask)     echo "Continue anyway? Enter or n = cancel | $YES_KEY = yes: " ;;
+        it:pmv_toobig)      echo "File troppo grande per il contesto del modello attuale." ;;
+        de:pmv_toobig)      echo "Datei zu groß für den Kontext des aktuellen Modells." ;;
+        *:pmv_toobig)       echo "File too large for the current model context." ;;
+        it:pmv_toobig_hint) echo "Scegli un'IA con più contesto (--project-model) oppure alza PMODE_NUM_CTX. Non taglio il file: mutilarlo produrrebbe modifiche sbagliate." ;;
+        de:pmv_toobig_hint) echo "Wähle eine KI mit mehr Kontext (--project-model) oder erhöhe PMODE_NUM_CTX. Ich kürze die Datei nicht: das würde falsche Änderungen erzeugen." ;;
+        *:pmv_toobig_hint)  echo "Pick an AI with more context (--project-model) or raise PMODE_NUM_CTX. I will not truncate the file: mutilating it would produce wrong edits." ;;
+        it:pmv_sending)     echo "Invio" ;;
+        de:pmv_sending)     echo "Sende" ;;
+        *:pmv_sending)      echo "Sending" ;;
+        it:pmv_lines)       echo "righe" ;;
+        de:pmv_lines)       echo "Zeilen" ;;
+        *:pmv_lines)        echo "lines" ;;
+        it:pmv_tokens)      echo "token" ;;
+        de:pmv_tokens)      echo "Token" ;;
+        *:pmv_tokens)       echo "tokens" ;;
+        it:pmv_thinking)    echo "L'IA sta scrivendo la modifica..." ;;
+        de:pmv_thinking)    echo "Die KI schreibt die Änderung..." ;;
+        *:pmv_thinking)     echo "The AI is writing the edit..." ;;
+        it:pmv_noreply)     echo "L'IA non ha risposto." ;;
+        de:pmv_noreply)     echo "Die KI hat nicht geantwortet." ;;
+        *:pmv_noreply)      echo "The AI did not reply." ;;
+        it:pmv_noblocks)    echo "Nessun blocco di modifica valido nella risposta." ;;
+        de:pmv_noblocks)    echo "Keine gültigen Änderungsblöcke in der Antwort." ;;
+        *:pmv_noblocks)     echo "No valid edit blocks in the reply." ;;
+        it:pmv_nomatch)     echo "testo SEARCH non trovato nel file" ;;
+        de:pmv_nomatch)     echo "SEARCH-Text nicht in der Datei gefunden" ;;
+        *:pmv_nomatch)      echo "SEARCH text not found in the file" ;;
+        it:pmv_multimatch)  echo "testo SEARCH trovato più di una volta (deve essere unico)" ;;
+        de:pmv_multimatch)  echo "SEARCH-Text mehr als einmal gefunden (muss eindeutig sein)" ;;
+        *:pmv_multimatch)   echo "SEARCH text found more than once (it must be unique)" ;;
+        it:pmv_emptysearch) echo "SEARCH vuoto: non ammesso in questa fase" ;;
+        de:pmv_emptysearch) echo "Leeres SEARCH: in dieser Phase nicht erlaubt" ;;
+        *:pmv_emptysearch)  echo "Empty SEARCH: not allowed in this phase" ;;
+        it:pmv_retry)       echo "Riprovo con la spiegazione dell'errore (tentativo" ;;
+        de:pmv_retry)       echo "Neuer Versuch mit der Fehlererklärung (Versuch" ;;
+        *:pmv_retry)        echo "Retrying with the error explained (attempt" ;;
+        it:pmv_rewrite)     echo "I blocchi continuano a fallire: chiedo il file intero riscritto." ;;
+        de:pmv_rewrite)     echo "Die Blöcke scheitern weiter: ich fordere die ganze Datei neu an." ;;
+        *:pmv_rewrite)      echo "The blocks keep failing: asking for the whole file rewritten." ;;
+        it:pmv_giveup)      echo "Non ce l'ho fatta. Il file NON è stato toccato." ;;
+        de:pmv_giveup)      echo "Ich habe es nicht geschafft. Die Datei wurde NICHT verändert." ;;
+        *:pmv_giveup)       echo "I could not do it. The file was NOT touched." ;;
+        it:pmv_rawout)      echo "Risposta grezza dell'IA (valutala tu):" ;;
+        de:pmv_rawout)      echo "Rohantwort der KI (beurteile sie selbst):" ;;
+        *:pmv_rawout)       echo "Raw AI reply (judge it yourself):" ;;
+        it:pmv_nodiff)      echo "I blocchi non cambiano nulla: il file è già così." ;;
+        de:pmv_nodiff)      echo "Die Blöcke ändern nichts: die Datei ist bereits so." ;;
+        *:pmv_nodiff)       echo "The blocks change nothing: the file is already like that." ;;
+        it:pmv_proposed)    echo "Modifica proposta:" ;;
+        de:pmv_proposed)    echo "Vorgeschlagene Änderung:" ;;
+        *:pmv_proposed)     echo "Proposed change:" ;;
+        it:pmv_applyself)   echo "Puoi applicarla tu con:" ;;
+        de:pmv_applyself)   echo "Du kannst sie selbst anwenden mit:" ;;
+        *:pmv_applyself)    echo "You can apply it yourself with:" ;;
+        it:pmv_ask)         echo "Invio o n = annulla | $YES_KEY = applica | e = rifai la richiesta | q = esci: " ;;
+        de:pmv_ask)         echo "Enter oder n = abbrechen | $YES_KEY = anwenden | e = Anfrage ändern | q = beenden: " ;;
+        *:pmv_ask)          echo "Enter or n = cancel | $YES_KEY = apply | e = edit the request | q = quit: " ;;
+        it:pmv_newreq)      echo "Scrivi la richiesta rifinita (vuoto = annulla):" ;;
+        de:pmv_newreq)      echo "Schreibe die verfeinerte Anfrage (leer = abbrechen):" ;;
+        *:pmv_newreq)       echo "Type the refined request (empty = cancel):" ;;
+        it:pmv_checkfail)   echo "git apply --check ha rifiutato la patch: non applico nulla." ;;
+        de:pmv_checkfail)   echo "git apply --check hat den Patch abgelehnt: ich wende nichts an." ;;
+        *:pmv_checkfail)    echo "git apply --check rejected the patch: applying nothing." ;;
+        it:pmv_applied)     echo "Modifica applicata a" ;;
+        de:pmv_applied)     echo "Änderung angewendet auf" ;;
+        *:pmv_applied)      echo "Change applied to" ;;
+        it:pmv_kept)        echo "Non ho toccato nulla. La patch resta qui:" ;;
+        de:pmv_kept)        echo "Ich habe nichts verändert. Der Patch bleibt hier:" ;;
+        *:pmv_kept)         echo "I touched nothing. The patch stays here:" ;;
+        it:pmv_logged)      echo "Registrato in" ;;
+        de:pmv_logged)      echo "Protokolliert in" ;;
+        *:pmv_logged)       echo "Logged in" ;;
+        it:doc_pmode_log)   echo "log di -p scrivibile" ;;
+        de:doc_pmode_log)   echo "-p-Log beschreibbar" ;;
+        *:doc_pmode_log)    echo "-p log writable" ;;
+        it:doc_git)         echo "git installato (serve a -p)" ;;
+        de:doc_git)         echo "git installiert (für -p nötig)" ;;
+        *:doc_git)          echo "git installed (needed by -p)" ;;
+        it:doc_codemodel)   echo "IA per il codice (-p, --new)" ;;
+        de:doc_codemodel)   echo "KI für Code (-p, --new)" ;;
+        *:doc_codemodel)    echo "code AI (-p, --new)" ;;
     esac
 }
 
@@ -1165,7 +1314,8 @@ Aiuto dettagliato per gruppo:
   $ASSIST_NAME -m help         quale IA usare
   $ASSIST_NAME --update help   scaricare e aggiornare le IA (e il motore)
   $ASSIST_NAME --memory help   memoria (fatti ricordati)
-  $ASSIST_NAME -p help         modalità progetto
+  $ASSIST_NAME -p help         modifica un file che esiste già (mostra il diff, poi chiede)
+  $ASSIST_NAME --new help      crea un progetto nuovo da zero (era -p fino alla v2.17)
   $ASSIST_NAME -i help         modalità interattiva (frasi con caratteri speciali)
 
 Impostazioni:
@@ -1217,7 +1367,8 @@ Ausführliche Hilfe pro Gruppe:
   $ASSIST_NAME -m help         welche KI
   $ASSIST_NAME --update help   KIs laden und aktualisieren (und die Engine)
   $ASSIST_NAME --memory help   Gedächtnis (gemerkte Fakten)
-  $ASSIST_NAME -p help         Projektmodus
+  $ASSIST_NAME -p help         eine vorhandene Datei ändern (zeigt den Diff, dann fragt es)
+  $ASSIST_NAME --new help      ein neues Projekt von Null (war -p bis v2.17)
   $ASSIST_NAME -i help         interaktiver Modus (Anfragen mit Sonderzeichen)
 
 Einstellungen:
@@ -1269,7 +1420,8 @@ Detailed help per group:
   $ASSIST_NAME -m help         which AI to use
   $ASSIST_NAME --update help   download and update the AIs (and the engine)
   $ASSIST_NAME --memory help   memory (remembered facts)
-  $ASSIST_NAME -p help         project mode
+  $ASSIST_NAME -p help         edit a file that already exists (shows the diff, then asks)
+  $ASSIST_NAME --new help      create a new project from scratch (was -p up to v2.17)
   $ASSIST_NAME -i help         interactive mode (requests with special characters)
 
 Settings:
@@ -2771,15 +2923,16 @@ EOF
 project_help() {
     case "$UILANG" in
     it) cat <<EOF
-Modalità progetto - $ASSIST_NAME -p
+Progetto nuovo - $ASSIST_NAME --new   (fino alla v2.17 si chiamava -p)
 
 Pianifica un piccolo progetto e ne scrive i file, con la tua conferma a ogni passo.
+Crea sempre una cartella NUOVA. Per modificare file che esistono già: $ASSIST_NAME -p help
 
 Comandi:
-  $ASSIST_NAME -p <idea>   pianifica i passi e scrivi i file (conferma per ognuno)
-  $ASSIST_NAME --project-model [nome]   fissa l'IA usata da -p (da solo: menù guidato;
-                            "default"/-d = torna a seguire il modello di default)
-  $ASSIST_NAME -p help     questo aiuto
+  $ASSIST_NAME --new <idea>   pianifica i passi e scrivi i file (conferma per ognuno)  [-n]
+  $ASSIST_NAME --project-model [nome]   fissa l'IA usata da --new e da -p (da solo: menù
+                            guidato; "default"/-d = torna a seguire il modello di default)
+  $ASSIST_NAME --new help  questo aiuto
 
 Consigli:
   · elenca ESPLICITAMENTE i file che vuoi, così l'IA non li dimentica
@@ -2793,19 +2946,20 @@ Consigli:
   · richiede jq
 
 Esempio:
-  $ASSIST_NAME -p uno script di backup con rsync e un README che lo spiega
+  $ASSIST_NAME --new uno script di backup con rsync e un README che lo spiega
 EOF
         ;;
     de) cat <<EOF
-Projektmodus - $ASSIST_NAME -p
+Neues Projekt - $ASSIST_NAME --new   (bis v2.17 hieß es -p)
 
 Plant ein kleines Projekt und schreibt seine Dateien, mit deiner Bestätigung bei jedem Schritt.
+Legt immer einen NEUEN Ordner an. Vorhandene Dateien ändern: $ASSIST_NAME -p help
 
 Befehle:
-  $ASSIST_NAME -p <Idee>   Schritte planen und Dateien schreiben (Bestätigung je Datei)
-  $ASSIST_NAME --project-model [Name]   KI für -p festlegen (allein: geführtes Menü;
-                            "default"/-d = wieder dem Standardmodell folgen)
-  $ASSIST_NAME -p help     diese Hilfe
+  $ASSIST_NAME --new <Idee> Schritte planen und Dateien schreiben (Bestätigung je Datei)  [-n]
+  $ASSIST_NAME --project-model [Name]   KI für --new und -p festlegen (allein: geführtes
+                            Menü; "default"/-d = wieder dem Standardmodell folgen)
+  $ASSIST_NAME --new help  diese Hilfe
 
 Tipps:
   · liste die gewünschten Dateien EXPLIZIT auf, sonst vergisst sie die KI
@@ -2820,19 +2974,20 @@ Tipps:
   · benötigt jq
 
 Beispiel:
-  $ASSIST_NAME -p ein Backup-Skript mit rsync und eine README, die es erklärt
+  $ASSIST_NAME --new ein Backup-Skript mit rsync und eine README, die es erklärt
 EOF
         ;;
     *) cat <<EOF
-Project mode - $ASSIST_NAME -p
+New project - $ASSIST_NAME --new   (up to v2.17 this was -p)
 
 Plans a small project and writes its files, with your confirmation at each step.
+It always creates a NEW folder. To change files that already exist: $ASSIST_NAME -p help
 
 Commands:
-  $ASSIST_NAME -p <idea>   plan the steps and write the files (confirm each one)
-  $ASSIST_NAME --project-model [name]   pin the AI used by -p (alone: guided menu;
-                            "default"/-d = go back to following the default model)
-  $ASSIST_NAME -p help     this help
+  $ASSIST_NAME --new <idea>  plan the steps and write the files (confirm each one)  [-n]
+  $ASSIST_NAME --project-model [name]   pin the AI used by --new and -p (alone: guided
+                            menu; "default"/-d = go back to following the default model)
+  $ASSIST_NAME --new help  this help
 
 Tips:
   · list the files you want EXPLICITLY, so the AI doesn't forget them
@@ -2846,7 +3001,144 @@ Tips:
   · requires jq
 
 Example:
-  $ASSIST_NAME -p a backup script with rsync and a README explaining it
+  $ASSIST_NAME --new a backup script with rsync and a README explaining it
+EOF
+        ;;
+    esac
+}
+
+pmode_help() {
+    case "$UILANG" in
+    it) cat <<EOF
+Modifica file - $ASSIST_NAME -p   (nuovo nella v2.18)
+
+Cambia un file che ESISTE GIÀ. Ti mostra il diff prima di toccare qualsiasi cosa:
+decidi tu se applicarlo. Per creare un progetto nuovo da zero: $ASSIST_NAME --new help
+
+Comandi:
+  $ASSIST_NAME -p <file> "<cosa cambiare>"   proponi la modifica, mostra il diff, chiedi
+  $ASSIST_NAME -p help     questo aiuto
+
+Come funziona:
+  1. legge il file e lo manda all'IA del codice
+  2. l'IA risponde con blocchi cerca/sostituisci (non con un diff: i modelli
+     piccoli sbagliano i numeri di riga, e la patch non si applicherebbe mai)
+  3. GLIA applica i blocchi a una COPIA temporanea e calcola lui il diff vero
+  4. ti mostra il diff colorato e il comando git apply esatto
+  5. tocca il file solo se rispondi $YES_KEY
+
+Al prompt:  $YES_KEY = applica · Invio o n = annulla · e = rifai la richiesta · q = esci
+Se annulli, la patch resta in /tmp: puoi applicarla a mano quando vuoi.
+
+Serve git:
+  è la tua rete di sicurezza (git diff, git checkout per annullare). Se la cartella
+  non è un repo, GLIA ti propone git init e ti mostra il comando. Non è un repo e
+  non vuoi? Nessun problema: -p esce senza toccare niente.
+
+Se l'IA sbaglia i blocchi:
+  riprova fino a $PMODE_MAX_RETRIES volte spiegandole l'errore; poi chiede il file
+  intero riscritto; se fallisce anche quello si arrende e ti mostra la sua risposta
+  grezza. Il file NON viene mai lasciato a metà.
+
+Impostazioni (in cima al file glia):
+  PMODE_NUM_CTX=$PMODE_NUM_CTX   contesto in token · PMODE_CTX_RESERVE=$PMODE_CTX_RESERVE riservati
+  PMODE_MAX_RETRIES=$PMODE_MAX_RETRIES tentativi · log: ${PMODE_LOG/#$HOME/\~}
+  File troppo grande? GLIA rifiuta invece di tagliarlo (un file mutilato produce
+  modifiche sbagliate): scegli un'IA con più contesto o alza PMODE_NUM_CTX.
+
+IA usata: quella del codice ($ASSIST_NAME --project-model), la stessa di --new.
+Richiede git e jq.
+
+Esempio:
+  $ASSIST_NAME -p backup.sh "aggiungi un'opzione --verbose"
+EOF
+        ;;
+    de) cat <<EOF
+Dateien ändern - $ASSIST_NAME -p   (neu in v2.18)
+
+Ändert eine Datei, die BEREITS EXISTIERT. Zeigt dir den Diff, bevor irgendetwas
+angefasst wird: du entscheidest. Neues Projekt von Null: $ASSIST_NAME --new help
+
+Befehle:
+  $ASSIST_NAME -p <Datei> "<was ändern>"   Änderung vorschlagen, Diff zeigen, fragen
+  $ASSIST_NAME -p help     diese Hilfe
+
+So funktioniert es:
+  1. liest die Datei und schickt sie an die Code-KI
+  2. die KI antwortet mit Suchen/Ersetzen-Blöcken (nicht mit einem Diff: kleine
+     Modelle verwechseln Zeilennummern, der Patch würde nie passen)
+  3. GLIA wendet die Blöcke auf eine temporäre KOPIE an und berechnet den echten Diff
+  4. zeigt dir den farbigen Diff und den exakten git-apply-Befehl
+  5. die Datei wird nur bei $YES_KEY angefasst
+
+Am Prompt:  $YES_KEY = anwenden · Enter oder n = abbrechen · e = Anfrage ändern · q = beenden
+Bei Abbruch bleibt der Patch in /tmp: du kannst ihn jederzeit selbst anwenden.
+
+git wird gebraucht:
+  es ist dein Sicherheitsnetz (git diff, git checkout zum Rückgängigmachen). Ist der
+  Ordner kein Repo, schlägt GLIA git init vor und zeigt den Befehl. Kein Repo und
+  du willst keins? Kein Problem: -p beendet sich, ohne etwas anzufassen.
+
+Wenn die KI die Blöcke verfehlt:
+  bis zu $PMODE_MAX_RETRIES Versuche mit erklärtem Fehler; dann wird die ganze Datei
+  neu angefordert; scheitert auch das, gibt GLIA ehrlich auf und zeigt die Rohantwort.
+  Die Datei bleibt NIE halbfertig zurück.
+
+Einstellungen (oben in der glia-Datei):
+  PMODE_NUM_CTX=$PMODE_NUM_CTX   Kontext in Token · PMODE_CTX_RESERVE=$PMODE_CTX_RESERVE reserviert
+  PMODE_MAX_RETRIES=$PMODE_MAX_RETRIES Versuche · Log: ${PMODE_LOG/#$HOME/\~}
+  Datei zu groß? GLIA lehnt ab statt zu kürzen (eine gekürzte Datei erzeugt falsche
+  Änderungen): nimm eine KI mit mehr Kontext oder erhöhe PMODE_NUM_CTX.
+
+Genutzte KI: die Code-KI ($ASSIST_NAME --project-model), dieselbe wie --new.
+Benötigt git und jq.
+
+Beispiel:
+  $ASSIST_NAME -p backup.sh "füge eine --verbose-Option hinzu"
+EOF
+        ;;
+    *) cat <<EOF
+Edit files - $ASSIST_NAME -p   (new in v2.18)
+
+Changes a file that ALREADY EXISTS. It shows you the diff before touching
+anything: you decide. To create a new project from scratch: $ASSIST_NAME --new help
+
+Commands:
+  $ASSIST_NAME -p <file> "<what to change>"   propose the change, show the diff, ask
+  $ASSIST_NAME -p help     this help
+
+How it works:
+  1. reads the file and sends it to the code AI
+  2. the AI replies with search/replace blocks (not with a diff: small models
+     get line numbers wrong, so the patch would never apply)
+  3. GLIA applies the blocks to a temporary COPY and computes the real diff itself
+  4. shows you the colored diff and the exact git apply command
+  5. the file is touched only if you answer $YES_KEY
+
+At the prompt:  $YES_KEY = apply · Enter or n = cancel · e = edit the request · q = quit
+If you cancel, the patch stays in /tmp: you can apply it by hand whenever you want.
+
+git is needed:
+  it is your safety net (git diff, git checkout to undo). If the folder is not a
+  repo, GLIA proposes git init and shows you the command. Not a repo and you don't
+  want one? No problem: -p exits without touching anything.
+
+If the AI fumbles the blocks:
+  it retries up to $PMODE_MAX_RETRIES times with the error explained; then it asks for
+  the whole file rewritten; if that fails too it gives up honestly and shows you its
+  raw reply. The file is NEVER left half-done.
+
+Settings (top of the glia file):
+  PMODE_NUM_CTX=$PMODE_NUM_CTX   context in tokens · PMODE_CTX_RESERVE=$PMODE_CTX_RESERVE reserved
+  PMODE_MAX_RETRIES=$PMODE_MAX_RETRIES retries · log: ${PMODE_LOG/#$HOME/\~}
+  File too large? GLIA refuses instead of truncating it (a mutilated file produces
+  wrong edits): pick an AI with more context, or raise PMODE_NUM_CTX.
+
+AI used: the code AI ($ASSIST_NAME --project-model), the same one as --new.
+Requires git and jq.
+
+Example:
+  $ASSIST_NAME -p backup.sh "add a --verbose flag"
 EOF
         ;;
     esac
@@ -3195,6 +3487,16 @@ doctor() {
         && [ -w "$LOGDIR" ] && [ -w "$HOME/.config/glia" ]
     doc_line $? "$(t doc_dirs)" "ls -ld $LOGDIR ~/.config/glia"
     [ -s "$WEBMODELFILE" ] && echo -e "  ${BLUE}i${NC} $(t wm_current) ${GREEN}$(head -n1 "$WEBMODELFILE")${NC}"
+    # --- project mode -p (Part A, v2.18) ---
+    command -v git >/dev/null 2>&1; doc_line $? "$(t doc_git)" "$(pkg_install_cmd git)"
+    mkdir -p "$(dirname "$PMODE_LOG")" 2>/dev/null \
+        && { [ ! -e "$PMODE_LOG" ] || [ -w "$PMODE_LOG" ]; } && [ -w "$(dirname "$PMODE_LOG")" ]
+    doc_line $? "$(t doc_pmode_log)" "ls -ld $(dirname "$PMODE_LOG")"
+    if [ -s "$CODEMODELFILE" ]; then
+        echo -e "  ${BLUE}i${NC} $(t doc_codemodel): ${GREEN}$(head -n1 "$CODEMODELFILE")${NC}"
+    else
+        echo -e "  ${BLUE}i${NC} $(t doc_codemodel): $(t pm_follow)   ->   ${GREEN}$ASSIST_NAME --project-model${NC}"
+    fi
     # --- release channel / self-update (Part E, v2.17) ---
     # Informational only: never counted as failures. The repo probe below is
     # the ONLY network touch in doctor.
@@ -4012,6 +4314,392 @@ EOF
     esac
 }
 
+# ============================================================
+#  PROJECT MODE v2 (-p): edit files that ALREADY EXIST (v2.18, Part A)
+#
+#  Pipeline: read the file -> ask the AI for search/replace blocks -> apply them
+#  to a TEMP copy -> WE compute the real unified diff -> show the diff and the
+#  exact `git apply` command -> touch the file only on an explicit yes.
+#
+#  Why search/replace and not a diff straight from the model: a 7B model gets
+#  line numbers and context lines wrong, so `git apply` would fail constantly.
+#  Blocks it gets right most of the time; the diff we compute ourselves is
+#  therefore always authentic and always applies cleanly.
+#
+#  The AI is the SAME dedicated coding model as --new: project_target() +
+#  swap_in/swap_out, exactly as project_mode does. No second selection path.
+# ============================================================
+
+# pmode_log <event> <detail>: timestamped line in PMODE_LOG. Its own log, so the
+# history of code edits stays readable and separate from the command log.
+pmode_log() {
+    mkdir -p "$(dirname "$PMODE_LOG")" 2>/dev/null || return 0
+    printf '%s | %s | %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$1" "$2" >> "$PMODE_LOG"
+}
+
+# pmode_check_repo <dir>: -p needs a git work tree (that is the undo story).
+# Not a repo -> explain, SHOW `git init`, ask. Dirty tree -> warn + extra
+# confirm, never block. Returns 1 to abort the run.
+pmode_check_repo() {
+    local dir="$1" br
+    if git -C "$dir" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+        br="$(git -C "$dir" rev-parse --abbrev-ref HEAD 2>/dev/null)"; [ -z "$br" ] && br="?"
+        if [ -n "$(git -C "$dir" status --porcelain 2>/dev/null)" ]; then
+            echo -e "${BLUE}[pmode]${NC} $(t pmv_repook) ($(t pmv_branch) $br)"
+            echo -e "${YELLOW}$(t pmv_dirty)${NC}"
+            core_show_cmd "git -C ${dir/#$HOME/\~} status --short"
+            core_confirm "$(t pmv_dirtyask)" || { echo "$(t cancelled)"; return 1; }
+        else
+            echo -e "${BLUE}[pmode]${NC} $(t pmv_repook) ($(t pmv_branch) $br, $(t pmv_clean))"
+        fi
+        return 0
+    fi
+    echo -e "${YELLOW}$(t pmv_notrepo)${NC}"
+    echo -e "$(t pmv_needgit)"
+    core_show_cmd "cd ${dir/#$HOME/\~} && git init"
+    if core_confirm "$(t pmv_initask)"; then
+        git -C "$dir" init -q || return 1
+        echo -e "${GREEN}$(t pmv_initdone)${NC}"
+        pmode_log "GIT INIT" "$dir"
+        core_log "PMODE GIT INIT" "$dir"
+        return 0
+    fi
+    echo "$(t pmv_initno)"
+    return 1
+}
+
+# pmode_collect_context <file>: read the target and enforce the context budget.
+# We REFUSE rather than truncate: a cut file breaks search/replace matching and
+# yields edits that look right and are wrong. Token heuristic: bytes/4.
+pmode_collect_context() {
+    local f="$1" bytes budget
+    PMODE_FILE_TEXT="$(cat "$f"; printf x)"; PMODE_FILE_TEXT="${PMODE_FILE_TEXT%x}"
+    PMODE_FILE_LINES="$(wc -l < "$f" | tr -d ' ')"
+    bytes="$(wc -c < "$f" | tr -d ' ')"
+    PMODE_FILE_TOKENS=$(( bytes / 4 ))
+    budget=$(( PMODE_NUM_CTX - PMODE_CTX_RESERVE ))
+    if [ "$PMODE_FILE_TOKENS" -gt "$budget" ]; then
+        echo -e "${RED}$(t pmv_toobig)${NC}" >&2
+        echo -e "  ~$PMODE_FILE_TOKENS $(t pmv_tokens) > $budget $(t pmv_tokens)   (PMODE_NUM_CTX=$PMODE_NUM_CTX - PMODE_CTX_RESERVE=$PMODE_CTX_RESERVE)" >&2
+        echo -e "${YELLOW}$(t pmv_toobig_hint)${NC}" >&2
+        pmode_log "REFUSED (too large)" "$f | ~$PMODE_FILE_TOKENS tokens > $budget"
+        return 1
+    fi
+    return 0
+}
+
+# pmode_build_prompt <file> <request>: fresh conversation + the system prompt
+# that forces the S/R format. English on purpose: the model must reproduce
+# these markers character-for-character.
+pmode_build_prompt() {
+    local f="$1" req="$2"
+    MSGS='[]'
+    add_msg system "You are a code editor. You receive a file and a change request.
+Reply ONLY with one or more edit blocks in exactly this format:
+<<<<<<< SEARCH
+(lines copied EXACTLY from the file, enough to be unique)
+=======
+(the replacement lines)
+>>>>>>> REPLACE
+Rules:
+- SEARCH must be a CONTIGUOUS run of lines copied from the file: never join
+  lines that are not next to each other, never leave lines out in between.
+- Use ONE SEPARATE block for EACH place you change.
+- Copy SEARCH lines character-for-character, including every space and tab.
+- Keep SEARCH as short as possible while still unique in the file.
+- No explanations, no markdown fences, nothing outside the blocks."
+    add_msg user "File: $(basename "$f")
+--- file content start ---
+$PMODE_FILE_TEXT
+--- file content end ---
+
+Change request: $req"
+}
+
+# pmode_get_edit: ONE model call through the existing chat() wrapper (no second
+# curl). The caller has already swapped the code model in.
+pmode_get_edit() {
+    local out
+    echo -e "${YELLOW}$(t pmv_thinking)${NC}" >&2
+    out="$(chat)" || return 1
+    [ -z "$out" ] && return 1
+    printf '%s' "$out"
+}
+
+# pmode_parse_blocks <raw>: fill PMODE_S[] / PMODE_R[] with the SEARCH and
+# REPLACE bodies. Everything outside the markers is ignored on purpose: small
+# models chatter. Returns 1 when there is no well-formed block at all.
+pmode_parse_blocks() {
+    local raw="$1" line state="out" cur_s="" cur_r=""
+    PMODE_S=(); PMODE_R=()
+    while IFS= read -r line; do
+        case "$line" in
+            '<<<<<<< SEARCH'*)
+                state="search"; cur_s=""; cur_r=""; continue ;;
+            '======='*)
+                if [ "$state" = "search" ]; then state="replace"; continue; fi ;;
+            '>>>>>>> REPLACE'*)
+                if [ "$state" = "replace" ]; then
+                    PMODE_S+=("$cur_s"); PMODE_R+=("$cur_r"); state="out"; continue
+                fi ;;
+        esac
+        case "$state" in
+            search)  cur_s+="$line"$'\n' ;;
+            replace) cur_r+="$line"$'\n' ;;
+        esac
+    done <<< "$raw"
+    [ "${#PMODE_S[@]}" -gt 0 ]
+}
+
+# pmode_count_occ <haystack> <needle>: literal (non-regex) occurrence count.
+pmode_count_occ() {
+    local rest="$1" needle="$2" cnt=0
+    [ -z "$needle" ] && { printf 0; return; }
+    while :; do
+        case "$rest" in
+            *"$needle"*) cnt=$((cnt+1)); rest="${rest#*"$needle"}" ;;
+            *) break ;;
+        esac
+    done
+    printf '%d' "$cnt"
+}
+
+# pmode_make_diff <origfile> <relpath> <patchfile>: apply the parsed blocks to a
+# TEMP copy, validate each SEARCH matches EXACTLY ONCE (§1.1), then let git
+# compute the real unified diff. Sets PMODE_ERR with the reason on failure, so
+# the retry ladder can hand it back to the model. Never touches the original.
+pmode_make_diff() {
+    local orig="$1" rel="$2" patch="$3"
+    local i s r n text tmp
+    PMODE_ERR=""
+    text="$PMODE_FILE_TEXT"
+    for i in "${!PMODE_S[@]}"; do
+        s="${PMODE_S[i]}"; r="${PMODE_R[i]}"
+        if [ -z "${s//[$'\n\t ']/}" ]; then
+            PMODE_ERR="block $((i+1)): $(t pmv_emptysearch)"; return 1
+        fi
+        n="$(pmode_count_occ "$text" "$s")"
+        if [ "$n" -eq 0 ]; then
+            # tolerate a missing final newline (last lines of the file)
+            s="${s%$'\n'}"; r="${r%$'\n'}"
+            n="$(pmode_count_occ "$text" "$s")"
+        fi
+        case "$n" in
+            0) PMODE_ERR="block $((i+1)): $(t pmv_nomatch)"; return 1 ;;
+            1) : ;;
+            *) PMODE_ERR="block $((i+1)): $(t pmv_multimatch) ($n)"; return 1 ;;
+        esac
+        text="${text//"$s"/"$r"}"
+    done
+    tmp="$(mktemp "${TMPDIR:-/tmp}/glia-pmode-new.XXXXXX")" || return 1
+    printf '%s' "$text" > "$tmp"
+    # git diff --no-index exits 1 when files differ: that is the normal case.
+    # The header carries the temp paths, so rewrite lines 1-4 to the real
+    # relative path -> the patch applies from the repo root. Only lines 1-4:
+    # a removed body line could legitimately start with '--- '.
+    git diff --no-index --unified=3 -- "$orig" "$tmp" 2>/dev/null \
+        | sed -e "1s|^diff --git .*|diff --git a/$rel b/$rel|" \
+              -e "1,4s|^--- .*|--- a/$rel|" \
+              -e "1,4s|^+++ .*|+++ b/$rel|" > "$patch"
+    rm -f "$tmp"
+    if [ ! -s "$patch" ]; then
+        PMODE_ERR="$(t pmv_nodiff)"; return 1
+    fi
+    return 0
+}
+
+# pmode_show_diff <patchfile> <top>: colored diff + the exact git apply command.
+# The teaching pillar: the command comes BEFORE the offer to run it.
+pmode_show_diff() {
+    local patch="$1" top="$2"
+    echo
+    echo -e "${BLUE}$(t pmv_proposed)${NC}"
+    if command -v delta >/dev/null 2>&1; then delta < "$patch"
+    else git -c color.diff=always diff --no-index /dev/null /dev/null >/dev/null 2>&1
+         sed -e "s/^+.*/$(printf '\033[32m')&$(printf '\033[0m')/" \
+             -e "s/^-.*/$(printf '\033[31m')&$(printf '\033[0m')/" \
+             -e "s/^@@.*/$(printf '\033[36m')&$(printf '\033[0m')/" "$patch"
+    fi
+    echo
+    echo -e "${YELLOW}$(t pmv_applyself)${NC}"
+    echo -e "  ${GREEN}git -C ${top/#$HOME/\~} apply $patch${NC}"
+}
+
+# pmode_apply <top> <patchfile> <file>: --check first, then apply. A patch that
+# does not pass --check is never applied: the tree stays exactly as it was.
+pmode_apply() {
+    local top="$1" patch="$2" f="$3"
+    if ! git -C "$top" apply --check "$patch" 2>/dev/null; then
+        echo -e "${RED}$(t pmv_checkfail)${NC}" >&2
+        pmode_log "APPLY REFUSED (git apply --check failed)" "$f | $patch"
+        return 1
+    fi
+    git -C "$top" apply "$patch" 2>/dev/null || {
+        echo -e "${RED}$(t pmv_checkfail)${NC}" >&2
+        pmode_log "APPLY FAILED" "$f | $patch"
+        return 1
+    }
+    return 0
+}
+
+# pmode_rewrite_fallback <file> <request>: §1.2 step 2. Blocks kept failing ->
+# ask for the COMPLETE corrected file, but only when it fits in half the budget
+# (the model must both read it and write it back). We still compute the diff.
+pmode_rewrite_fallback() {
+    local f="$1" req="$2" out tmp
+    [ "$PMODE_FILE_TOKENS" -gt $(( PMODE_NUM_CTX / 2 )) ] && return 1
+    echo -e "${YELLOW}$(t pmv_rewrite)${NC}" >&2
+    MSGS='[]'
+    add_msg system "You are a code editor. You receive a file and a change request. Reply ONLY with the complete corrected file content: no explanations, no markdown fences, nothing else."
+    add_msg user "File: $(basename "$f")
+--- file content start ---
+$PMODE_FILE_TEXT
+--- file content end ---
+
+Change request: $req
+Reply with the COMPLETE file after the change."
+    out="$(pmode_get_edit)" || return 1
+    out="$(strip_fences <<< "$out")"
+    [ -z "${out//[$'\n\t ']/}" ] && return 1
+    # one synthetic block: whole file -> whole file. Reuses the same diff path.
+    PMODE_S=("$PMODE_FILE_TEXT"); PMODE_R=("$out"$'\n')
+    return 0
+}
+
+# pmode_main <file> <request...>: the -p entry point.
+pmode_main() {
+    local f="$1"; shift
+    local req="$*" dir top rel patch raw tries=0 rc
+
+    # -p edits EXISTING files. No auto-detect on purpose: a typo in a filename
+    # would silently scaffold a whole project - a silent surprise, which is
+    # exactly what GLIA must never do. Teach the right command instead.
+    if [ ! -e "$f" ]; then
+        echo -e "${RED}$(t pmv_notafile)${NC}" >&2
+        echo -e "  ${GREEN}$ASSIST_NAME --new <$(t pmv_idea)>${NC}" >&2
+        echo -e "${YELLOW}$(t pmv_notafile_hint) $f${NC}" >&2
+        return 1
+    fi
+    [ -f "$f" ] || { echo -e "${RED}$(t pmv_notregular) $f${NC}" >&2; return 1; }
+    [ -r "$f" ] || { echo -e "${RED}$(t pmv_notreadable) $f${NC}" >&2; return 1; }
+    if [ -z "$req" ]; then
+        echo -e "${RED}$(t pmv_norequest)${NC}" >&2
+        echo -e "  ${GREEN}$ASSIST_NAME -p $f \"<$(t pmv_request)>\"${NC}" >&2
+        return 1
+    fi
+    # Binary check: a NUL byte, or file(1) calling the ENCODING binary. Do NOT
+    # match the word "executable" from `file -b`: every script with a shebang is
+    # "ASCII text executable" - that would refuse the main use case.
+    if [ -s "$f" ] && { LC_ALL=C grep -qP '\x00' "$f" 2>/dev/null \
+         || [ "$(file --mime-encoding -b "$f" 2>/dev/null)" = "binary" ]; }; then
+        echo -e "${RED}$(t pmv_binary)${NC}" >&2
+        pmode_log "REFUSED (binary)" "$f"
+        return 1
+    fi
+    command -v git >/dev/null || { echo -e "${RED}$(pkg_install_cmd git)${NC}" >&2; return 1; }
+    command -v jq  >/dev/null || { echo "$(t need_jq)" >&2; return 1; }
+    check_ai
+
+    f="$(realpath "$f")"
+    dir="$(dirname "$f")"
+    pmode_check_repo "$dir" || return 1
+    top="$(git -C "$dir" rev-parse --show-toplevel 2>/dev/null)" || return 1
+    rel="${f#"$top"/}"
+
+    pmode_collect_context "$f" || return 1
+
+    # Same dedicated coding AI as --new, same shared RAM swap (v2.15 machinery).
+    # PROJ_* are GLOBAL on purpose: the EXIT trap must still see them.
+    PROJ_DEF="${MODEL#ollama:}"
+    PROJ_TARGET="$(project_target)"
+    if [ "$PROJ_TARGET" != "$PROJ_DEF" ]; then
+        echo -e "${BLUE}$(t pm_using) ${GREEN}$PROJ_TARGET${NC}"
+        swap_in "$PROJ_TARGET" "$PROJ_DEF"
+        MODEL="ollama:$PROJ_TARGET"
+        trap 'swap_out "$PROJ_TARGET" "$PROJ_DEF"' EXIT
+    fi
+
+    echo -e "${BLUE}[pmode]${NC} $(t pmv_sending) $rel ($PMODE_FILE_LINES $(t pmv_lines), ~$PMODE_FILE_TOKENS $(t pmv_tokens)) -> ${GREEN}$PROJ_TARGET${NC}"
+    pmode_log "START" "$rel | $req | model=$PROJ_TARGET | ~$PMODE_FILE_TOKENS tokens"
+
+    patch="$(mktemp "${TMPDIR:-/tmp}/glia-pmode-XXXXXX.patch")" || return 1
+    pmode_build_prompt "$f" "$req"
+
+    while :; do
+        raw="$(pmode_get_edit)" || raw=""
+        if [ -z "$raw" ]; then
+            echo -e "${RED}$(t pmv_noreply)${NC}" >&2
+            pmode_log "GIVE UP (no reply)" "$rel"
+            rm -f "$patch"; return 1
+        fi
+        if pmode_parse_blocks "$raw" && pmode_make_diff "$f" "$rel" "$patch"; then
+            break
+        fi
+        [ -z "$PMODE_ERR" ] && PMODE_ERR="$(t pmv_noblocks)"
+        tries=$((tries+1))
+        if [ "$tries" -le "$PMODE_MAX_RETRIES" ]; then
+            echo -e "${YELLOW}$(t pmv_retry) $tries/$PMODE_MAX_RETRIES): $PMODE_ERR${NC}" >&2
+            pmode_log "RETRY $tries" "$rel | $PMODE_ERR"
+            add_msg assistant "$raw"
+            add_msg user "That did not work: $PMODE_ERR. The SEARCH text must appear EXACTLY ONCE in the file, copied character-for-character from the file content above, including every space and tab. Try again and reply ONLY with edit blocks."
+            continue
+        fi
+        # retries exhausted -> whole-file rewrite -> otherwise give up gracefully
+        if pmode_rewrite_fallback "$f" "$req" && pmode_make_diff "$f" "$rel" "$patch"; then
+            pmode_log "FALLBACK rewrite" "$rel"
+            break
+        fi
+        echo -e "${RED}$(t pmv_giveup)${NC}" >&2
+        echo -e "${YELLOW}$(t pmv_rawout)${NC}" >&2
+        printf '%s\n' "$raw" >&2
+        pmode_log "GIVE UP" "$rel | retries=$tries | $PMODE_ERR"
+        rm -f "$patch"
+        return 1
+    done
+
+    pmode_show_diff "$patch" "$top"
+
+    local A
+    while :; do
+        read -r -p "$(t pmv_ask)" A < /dev/tty || A="n"
+        case "$A" in
+            "$YES_KEY"|y|Y)
+                if pmode_apply "$top" "$patch" "$rel"; then
+                    echo -e "${GREEN}$(t pmv_applied) $rel${NC}"
+                    pmode_log "APPLIED" "$rel | $patch"
+                    core_log "PMODE APPLIED" "$rel | $req"
+                else
+                    rm -f "$patch"; return 1
+                fi
+                break ;;
+            e|E)
+                echo -e "${YELLOW}$(t pmv_newreq)${NC}"
+                local NEWREQ
+                read -r NEWREQ < /dev/tty || NEWREQ=""
+                [ -z "$NEWREQ" ] && { echo "$(t cancelled)"; break; }
+                req="$NEWREQ"
+                pmode_build_prompt "$f" "$req"
+                raw="$(pmode_get_edit)" || raw=""
+                if [ -n "$raw" ] && pmode_parse_blocks "$raw" && pmode_make_diff "$f" "$rel" "$patch"; then
+                    pmode_show_diff "$patch" "$top"
+                else
+                    echo -e "${RED}${PMODE_ERR:-$(t pmv_noblocks)}${NC}" >&2
+                    pmode_log "GIVE UP (after edit)" "$rel | ${PMODE_ERR:-no blocks}"
+                    break
+                fi
+                continue ;;
+            q|Q|n|N|"")
+                echo -e "${YELLOW}$(t pmv_kept)${NC} $patch"
+                pmode_log "DECLINED" "$rel | patch kept at $patch"
+                echo -e "${BLUE}$(t pmv_logged)${NC} ${PMODE_LOG/#$HOME/\~}"
+                return 0 ;;
+            *) continue ;;
+        esac
+    done
+    echo -e "${BLUE}$(t pmv_logged)${NC} ${PMODE_LOG/#$HOME/\~}"
+    return 0
+}
+
 case "$1" in
     -h|--help)
         show_help_paged
@@ -4049,6 +4737,16 @@ case "$1" in
         kaboom
         ;;
     -p|--project)
+        # v2.18: -p EDITS an existing file. The old -p (generate a new project)
+        # moved to --new: the two are opposite jobs and must not share a flag.
+        shift
+        case "${1:-}" in
+            help|-h|--help|"") page pmode_help ;;
+            *)                 pmode_main "$@" ;;
+        esac
+        ;;
+    -n|--new)
+        # v2.18: this is the pre-2.18 -p, behaviour unchanged.
         shift
         case "${1:-}" in
             help|-h|--help|"") page project_help ;;

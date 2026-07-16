@@ -1,6 +1,6 @@
 # ============================================================
 #  glia.fish - Fish completion for the glia AI assistant
-#  Version: 1.2 - 2026-07-15 (adds -w/--web + --web-model + --project-model)
+#  Version: 1.3 - 2026-07-16 (-p now edits files -> completes paths; adds --new/-n)
 #  Author: Michele (with Claude)
 #  Project: GLIA (GNU Linux IA)
 #
@@ -51,10 +51,12 @@ complete -c glia -n __glia_first -a '-d'          -d 'answer in words, run nothi
 complete -c glia -n __glia_first -a '-l'          -d 'command log'
 complete -c glia -n __glia_first -a '-a'          -d 'aliases (shortcuts)'
 complete -c glia -n __glia_first -a '-m'          -d 'models / AI'
-complete -c glia -n __glia_first -a '-p'          -d 'project mode'
+complete -c glia -n __glia_first -a '-p'          -d 'edit an existing file (shows the diff first)'
+complete -c glia -n __glia_first -a '--new'       -d 'new project from scratch (was -p up to v2.17)'
+complete -c glia -n __glia_first -a '-n'          -d 'new project from scratch (short for --new)'
 complete -c glia -n __glia_first -a '-w'          -d 'web search with sources'
 complete -c glia -n __glia_first -a '--web-model' -d 'pin the AI used by -w'
-complete -c glia -n __glia_first -a '--project-model' -d 'pin the AI used by -p'
+complete -c glia -n __glia_first -a '--project-model' -d 'pin the AI used by -p and --new'
 complete -c glia -n __glia_first -a '--remember'  -d 'store a fact'
 complete -c glia -n __glia_first -a '--memory'    -d 'list stored facts'
 complete -c glia -n __glia_first -a '--forget'    -d 'delete fact number n'
@@ -91,7 +93,10 @@ complete -c glia -n 'contains -- (__glia_prev) --web-model --project-model' -a '
 complete -c glia -n 'contains -- (__glia_prev) --web-model --project-model' -a '(__glia_models)'
 
 # groups that take "help"
-complete -c glia -n 'contains -- (__glia_prev) --update --memory -p --project -i --interactive' -a 'help'
+complete -c glia -n 'contains -- (__glia_prev) --update --memory -p --project -n --new -i --interactive' -a 'help'
+
+# -p <file>: v2.18 edits an EXISTING file, so complete real paths
+complete -c glia -n 'contains -- (__glia_prev) -p --project' -F
 
 # --update --check: ask only, install nothing. Bare --update already updates
 # GLIA itself; 'glia'/'ollama' remain hidden aliases and are not offered here.

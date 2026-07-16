@@ -126,10 +126,18 @@ green by design, and it's a whole system, not a lone command.
   `-a list` / `-a rm` / `-a edit`.
   Web search with sources: `glia -w <question>` queries DuckDuckGo through
   the w3m text browser (no API key) and the local model summarizes with a
-  **Sources** list. Pick the AI per job: `glia -m` sets the default and shows
+  **Sources** list.
+  Edit files you already have: `glia -p <file> "<request>"` asks the code AI
+  for the change, computes the **real diff itself**, shows it together with the
+  exact `git apply` command, and touches the file only if you say yes — decline
+  and the patch is left in `/tmp` for you to apply by hand. It needs a git repo
+  (that is the undo story) and proposes `git init` when there isn't one. Every
+  run is logged to `~/.config/glia/pmode.log`. Creating something from scratch
+  is a different job and has its own flag: `glia --new <idea>` (this was `-p`
+  up to v2.17). Pick the AI per job: `glia -m` sets the default and shows
   role tags (default / web / project) next to each model, while
   `glia --web-model` and `glia --project-model` pin a dedicated AI for web
-  search and for project mode (`glia -p`). Only one model stays resident in
+  search and for code (`glia -p`, `glia --new`). Only one model stays resident in
   RAM: GLIA swaps it out and back for a one-off task — showing which AI it
   loads — and if you stop the default yourself it is left off. Standard flags
   throughout: `-h/--help`, `-V/--version`, `-d/--ask`, `-l/--log`.
@@ -300,7 +308,8 @@ glia find the largest files in /home   # proposes the command → Enter runs it
 glia                                   # interactive REPL: request after request, any symbol allowed; empty line quits
 glia -d what does rsync do             # plain-text explanation only
 cat error.log | glia why does it fail  # piped input becomes context for the AI
-glia -p a bash backup script with rsync and a README explaining how to use it   # project mode: plans the steps, then writes the files (with confirmation)
+glia -p backup.sh "add a --verbose flag"   # edit an EXISTING file: shows the diff and the git apply command, then asks
+glia --new a bash backup script with rsync and a README explaining how to use it   # new project: plans the steps, then writes the files (with confirmation)
 glia -l                                # log of executed commands
 glia --doctor                          # one-shot health check (engine, model, RAM, config)
 glia -m pull                           # guided download: hardware check + the AI models that FIT this machine

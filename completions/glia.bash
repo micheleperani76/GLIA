@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ============================================================
 #  glia.bash - Bash completion for the glia AI assistant
-#  Version: 1.3 - 2026-07-15 (adds -w/--web + --web-model + --project-model)
+#  Version: 1.4 - 2026-07-16 (-p now edits files -> completes paths; adds --new/-n)
 #  Author: Michele (with Claude)
 #  Project: GLIA (GNU Linux IA)
 #
@@ -34,7 +34,7 @@ _glia() {
     cur="${COMP_WORDS[COMP_CWORD]}"
     prev="${COMP_WORDS[COMP_CWORD-1]}"
     flags="-h --help -V --version -i --interactive -d --ask -l --log
-           -a --alias -m --model -p --project --remember --memory --forget
+           -a --alias -m --model -p --project -n --new --remember --memory --forget
            -w --web -w+ --web-deep --web-model --project-model
            --clear-cache --doctor -U --update --update-engine --channel --rollback
            --rename --lang"
@@ -72,7 +72,11 @@ _glia() {
         --memory)
             COMPREPLY=( $(compgen -W "help" -- "$cur") )
             return ;;
-        -p|--project|-i|--interactive)
+        -p|--project)
+            # v2.18: -p edits an EXISTING file -> complete file names (and help)
+            COMPREPLY=( $(compgen -W "help" -- "$cur") $(compgen -f -- "$cur") )
+            return ;;
+        -n|--new|-i|--interactive)
             COMPREPLY=( $(compgen -W "help" -- "$cur") )
             return ;;
         rm|remove)

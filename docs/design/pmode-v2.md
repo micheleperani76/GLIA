@@ -1,8 +1,27 @@
 # GLIA — `-p` Project Mode v2 — Design Draft
 
-Version: 0.1 (draft)
-Status: PLANNING — not implemented yet
+Version: 0.2
+Status: PHASE 1 SHIPPED (v2.18.0) — Phases 2–5 still planned
 Scope: rework of the `-p` project-coding mode. Bash only. Fully in-house.
+
+> **Superseded where they disagree.** The authoritative spec is
+> `pmode-v2-dev-plan.md` (Part A). Two decisions in this draft are out of date:
+>
+> 1. **Edit format.** This draft says "unified diff". It is NOT: the model emits
+>    **search/replace blocks** and GLIA computes the real diff itself
+>    (`git diff --no-index` on a temp copy). A 7B model gets line numbers and
+>    context lines wrong, so a model-authored diff would fail `git apply`
+>    constantly. See dev plan §1.1.
+> 2. **The flag.** `-p` was the project *generator*. Since v2.18 `-p` **edits
+>    existing files** and the generator moved to `--new` (`-n`). The two are
+>    opposite jobs and cannot share a flag. `-p <not-a-file>` prints a teaching
+>    error — it never auto-detects, because a typo in a filename would then
+>    silently scaffold a project.
+>
+> Shipped in Phase 1: S/R parsing, the retry ladder (retry → whole-file rewrite
+> → graceful give-up), the `git init` proposal, the context budget (refuse,
+> never truncate), the config block, the nine `pmode_*` functions, it/de/en
+> strings, `--doctor` checks.
 
 ---
 
