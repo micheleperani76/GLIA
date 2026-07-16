@@ -55,6 +55,7 @@ complete -c glia -n __glia_first -a '-p'          -d 'edit an existing file (sho
 complete -c glia -n __glia_first -a '--new'       -d 'new project from scratch (was -p up to v2.17)'
 complete -c glia -n __glia_first -a '-n'          -d 'new project from scratch (short for --new)'
 complete -c glia -n __glia_first -a '-w'          -d 'web search with sources'
+complete -c glia -n __glia_first -a '-ws'         -d 'direct web results, no AI (also opens a URL)'
 complete -c glia -n __glia_first -a '--web-model' -d 'pin the AI used by -w'
 complete -c glia -n __glia_first -a '--web-engine' -d 'show/switch the -w search engine (ddg|bing|searx)'
 complete -c glia -n __glia_first -a '--project-model' -d 'pin the AI used by -p and --new'

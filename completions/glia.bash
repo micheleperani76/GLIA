@@ -35,7 +35,7 @@ _glia() {
     prev="${COMP_WORDS[COMP_CWORD-1]}"
     flags="-h --help -V --version -i --interactive -d --ask -l --log
            -a --alias -m --model -p --project -n --new --remember --memory --forget
-           -w --web -w+ --web-deep --web-model --web-engine --project-model
+           -w --web -w+ --web-deep -ws --web-search --web-model --web-engine --project-model
            --clear-cache --doctor -U --update --update-engine --channel --rollback
            --rename --lang"
 

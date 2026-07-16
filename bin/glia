@@ -1178,6 +1178,15 @@ t() {
         it:web_searx_nourl) echo "manca l'istanza SearXNG:  $ASSIST_NAME --web-engine searx <URL>" ;;
         de:web_searx_nourl) echo "SearXNG-Instanz fehlt:  $ASSIST_NAME --web-engine searx <URL>" ;;
         *:web_searx_nourl)  echo "SearXNG instance missing:  $ASSIST_NAME --web-engine searx <URL>" ;;
+        it:ws_usage)        echo "Uso: $ASSIST_NAME -ws <ricerca | URL>   (risultati diretti, senza IA)" ;;
+        de:ws_usage)        echo "Verwendung: $ASSIST_NAME -ws <Suche | URL>   (direkte Treffer, ohne KI)" ;;
+        *:ws_usage)         echo "Usage: $ASSIST_NAME -ws <search | URL>   (direct results, no AI)" ;;
+        it:web_open)        echo "Apro la pagina:" ;;
+        de:web_open)        echo "Öffne die Seite:" ;;
+        *:web_open)         echo "Opening the page:" ;;
+        it:web_open_hint)   echo "Per navigarla in modo interattivo:" ;;
+        de:web_open_hint)   echo "Zum interaktiven Navigieren:" ;;
+        *:web_open_hint)    echo "To browse it interactively:" ;;
         # ---- model swap (v2.14) ----
         it:ms_reload)       echo "Ricarico la tua IA di default:" ;;
         de:ms_reload)       echo "Lade deine Standard-KI wieder:" ;;
@@ -1426,7 +1435,7 @@ Aiuto per area — ogni help elenca TUTTI i suoi sotto-comandi:
   -m help        le IA: list · pull · update · rm · ps · stop · <n> default
   -p help        modifica file: più file insieme · -p --undo · --project-model
   --new help     progetto nuovo da zero: pianifica e scrive i file
-  -w help        ricerca web: -w veloce · -w+ approfondita · --web-model
+  -w help        ricerca web: -w veloce · -w+ approfondita · -ws senza IA · --web-engine · --web-model
   -i help        modalità interattiva (frasi con simboli speciali)
   --memory help  memoria: --remember salva · --forget scorda · --memory elenca
   --update help  aggiorna: -U · --check · --channel · --rollback · engine
@@ -1458,7 +1467,7 @@ Hilfe pro Bereich — jede Hilfe listet ALLE ihre Unterbefehle:
   -m help        die KIs: list · pull · update · rm · ps · stop · <n> Standard
   -p help        Dateien ändern: mehrere Dateien · -p --undo · --project-model
   --new help     neues Projekt von Null: plant und schreibt die Dateien
-  -w help        Websuche: -w schnell · -w+ gründlich · --web-model
+  -w help        Websuche: -w schnell · -w+ gründlich · -ws ohne KI · --web-engine · --web-model
   -i help        interaktiver Modus (Sätze mit Sonderzeichen)
   --memory help  Gedächtnis: --remember merken · --forget vergessen · --memory
   --update help  aktualisieren: -U · --check · --channel · --rollback · Engine
@@ -1490,7 +1499,7 @@ Help per area — each help lists ALL of its subcommands:
   -m help        the AIs: list · pull · update · rm · ps · stop · <n> default
   -p help        edit files: several files at once · -p --undo · --project-model
   --new help     new project from scratch: plans and writes the files
-  -w help        web search: -w fast · -w+ deep · --web-model
+  -w help        web search: -w fast · -w+ deep · -ws no AI · --web-engine · --web-model
   -i help        interactive mode (requests with special characters)
   --memory help  memory: --remember saves · --forget drops · --memory lists
   --update help  updating: -U · --check · --channel · --rollback · engine
@@ -4448,17 +4457,63 @@ project_model_cmd() {
     esac
 }
 
-# web_answer <query> <deep 0|1>
-web_answer() {
-    local q="$1" deep="${2:-0}" pages ctx sys prompt body target def keep eng wurl
-    # v2.18: an "engine:" prefix picks the search engine for THIS search only
-    # ("-w bing: query" or "-w bing:query"); --web-engine sets the default.
-    case "$q" in
+# web_take_prefix <query...>: an "engine:" prefix picks the engine for THIS
+# search only ("-w bing: query" or "-w bing:query"); --web-engine sets the
+# default. Sets WEB_ENGINE_ONEOFF and leaves the cleaned query in WEB_Q
+# (globals: a subshell could not hand both back). Shared by -w, -w+ and -ws.
+web_take_prefix() {
+    WEB_Q="$*"
+    case "$WEB_Q" in
         ddg:*|bing:*|searx:*)
-            WEB_ENGINE_ONEOFF="${q%%:*}"
-            q="${q#*:}"; q="${q# }"
+            WEB_ENGINE_ONEOFF="${WEB_Q%%:*}"
+            WEB_Q="${WEB_Q#*:}"; WEB_Q="${WEB_Q# }"
             ;;
     esac
+}
+
+# web_raw <query|url>: direct web access, NO model involved (v2.18).
+# A query prints titles, URLs and snippets straight from the engine; a URL
+# or bare domain ("www.morrolinux.it") opens that page directly, paged.
+web_raw() {
+    local eng wurl i=0 url title snip u
+    web_take_prefix "$1"; local q="$WEB_Q"
+    web_deps_ok || exit 1
+    net_online || { echo -e "${RED}$(t web_noweb)${NC}" >&2; exit 1; }
+    # already an address? open it, do not search it. One token, no spaces,
+    # and either a scheme or a plausible domain (dot + TLD).
+    if [[ "$q" != *" "* ]] && { [[ "$q" =~ ^https?:// ]] \
+         || [[ "$q" =~ ^[A-Za-z0-9][A-Za-z0-9.-]*\.[A-Za-z]{2,}(/.*)?$ ]]; }; then
+        u="$q"
+        [[ "$u" =~ ^https?:// ]] || u="https://$u"
+        echo -e "${BLUE}$(t web_open)${NC} ${GREEN}$u${NC}" >&2
+        show_equiv "w3m -dump '$u'" >&2
+        echo -e "$(t web_open_hint) ${GREEN}w3m $u${NC}" >&2
+        page w3m -dump "$u"
+        write_log "WEB PAGE" "$u"
+        return 0
+    fi
+    eng="$(web_engine)"
+    wurl="$(web_engine_url "$eng" "$(web_urlenc "$q")")" \
+        || { echo -e "${RED}$(t web_searx_nourl)${NC}" >&2; exit 1; }
+    echo -e "${BLUE}$(t web_searching)${NC} ${GREEN}$q${NC}   ($(t we_engine): ${GREEN}$eng${NC})" >&2
+    show_equiv "w3m -dump -cols $WEB_COLS '$wurl'" >&2
+    echo
+    while IFS=$'\t' read -r url title snip; do
+        [ -z "$url" ] && continue
+        i=$((i+1))
+        echo -e "${GREEN}$i. $title${NC}"
+        echo -e "   ${BLUE}$url${NC}"
+        [ -n "$snip" ] && echo "   $snip"
+        echo
+    done < <(web_search "$q")
+    [ "$i" -eq 0 ] && { echo -e "${RED}$(t web_noresult)${NC}" >&2; exit 1; }
+    write_log "WEB RAW" "$q"
+}
+
+# web_answer <query> <deep 0|1>
+web_answer() {
+    local q deep="${2:-0}" pages ctx sys prompt body target def keep eng wurl
+    web_take_prefix "$1"; q="$WEB_Q"
     web_deps_ok || exit 1
     net_online || { echo -e "${RED}$(t web_noweb)${NC}" >&2; exit 1; }   # v2.14.2: no net, no point
     check_ai
@@ -4526,6 +4581,7 @@ $ASSIST_NAME -w — ricerca sul web con fonti
   $ASSIST_NAME -w <domanda>    cerca sul web e risponde citando le fonti
   $ASSIST_NAME -w+ <domanda>   come sopra, ma legge anche le prime pagine (più lento, più dettaglio)
   $ASSIST_NAME -w bing: <domanda>   questa sola ricerca con Bing (prefissi: ddg: bing: searx:)
+  $ASSIST_NAME -ws <ricerca|URL>    risultati diretti SENZA IA (veloce); con un URL apre la pagina
 
 Motore di ricerca:
   $ASSIST_NAME --web-engine             mostra il motore attuale
@@ -4561,6 +4617,7 @@ $ASSIST_NAME -w — Websuche mit Quellen
   $ASSIST_NAME -w <Frage>     sucht im Web und antwortet mit Quellenangabe
   $ASSIST_NAME -w+ <Frage>    wie oben, liest zusätzlich die ersten Seiten (langsamer, mehr Detail)
   $ASSIST_NAME -w bing: <Frage>    nur diese Suche mit Bing (Präfixe: ddg: bing: searx:)
+  $ASSIST_NAME -ws <Suche|URL>     direkte Treffer OHNE KI (schnell); mit URL wird die Seite geöffnet
 
 Suchmaschine:
   $ASSIST_NAME --web-engine             zeigt die aktuelle Suchmaschine
@@ -4596,6 +4653,7 @@ $ASSIST_NAME -w — web search with sources
   $ASSIST_NAME -w <question>    search the web and answer, citing the sources
   $ASSIST_NAME -w+ <question>   same, but also reads the top pages (slower, more detail)
   $ASSIST_NAME -w bing: <question>   this one search with Bing (prefixes: ddg: bing: searx:)
+  $ASSIST_NAME -ws <search|URL>      direct results with NO AI (fast); a URL opens that page
 
 Search engine:
   $ASSIST_NAME --web-engine             show the current engine
@@ -5331,6 +5389,14 @@ case "$1" in
             help|-h|--help) page web_help ;;
             "")             echo -e "${YELLOW}$(t web_usage)${NC}" >&2; exit 1 ;;
             *)              web_answer "$*" 1 ;;
+        esac
+        ;;
+    -ws|--web-search)
+        shift
+        case "${1:-}" in
+            help|-h|--help) page web_help ;;
+            "")             echo -e "${YELLOW}$(t ws_usage)${NC}" >&2; exit 1 ;;
+            *)              web_raw "$*" ;;
         esac
         ;;
     --web-engine|--webengine)
