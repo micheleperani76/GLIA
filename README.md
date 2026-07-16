@@ -138,12 +138,25 @@ green by design, and it's a whole system, not a lone command.
   (that is the undo story) and proposes `git init` when there isn't one. Every
   run is logged to `~/.config/glia/pmode.log`. Creating something from scratch
   is a different job and has its own flag: `glia --new <idea>` (this was `-p`
-  up to v2.17). Pick the AI per job: `glia -m` sets the default and shows
-  role tags (default / web / project) next to each model, while
-  `glia --web-model` and `glia --project-model` pin a dedicated AI for web
-  search and for code (`glia -p`, `glia --new`). Only one model stays resident in
+  up to v2.17).
+  Translate a file: `glia -T <file> [lang]` writes the translation into a
+  **new file next to it** (`README.md` → `README.en.md`) and never touches the
+  original; the target name is shown before anything is written. The text
+  streams as the AI writes it, and the result is checked (a translated `.md`
+  must still be Markdown, a `.sh` must pass `bash -n`) — if a check keeps
+  failing it saves **with a warning** instead of pretending. In code only
+  comments and messages are translated, never the code itself.
+  Pick the AI per job: `glia -m` sets the default and shows
+  role tags (default / web / project / translate) next to each model, while
+  `glia --web-model`, `glia --project-model` and `glia --translate-model` pin a
+  dedicated AI for web search, for code (`glia -p`, `glia --new`) and for
+  translations. Only one model stays resident in
   RAM: GLIA swaps it out and back for a one-off task — showing which AI it
-  loads — and if you stop the default yourself it is left off. Standard flags
+  loads — and if you stop the default yourself it is left off.
+  Name it yours: `glia --rename <name>` — and since a nickname is a **command
+  in your PATH**, a name that already exists is refused rather than silently
+  buried; `glia --doctor` also reports any older nickname that is shadowing
+  one. Standard flags
   throughout: `-h/--help`, `-V/--version`, `-d/--ask`, `-l/--log`.
 - **`bin/glia-hardware`** — detects RAM/GPU/VRAM and recommends the right
   AI model tier. JSON output (`-j`) designed for the installer.
@@ -292,7 +305,7 @@ On Debian, Fedora and other distros:
 
 ```bash
 curl -fsSL https://ollama.com/install.sh | sh    # official Ollama installer
-                                                 # (yes, glia would ask you to type YES for a curl|sh — read scripts before running them!)
+                                                 # (yes, glia would explain a curl|sh and make you confirm it before running — read scripts before you pipe them to a shell!)
 # aichat: grab the binary for your arch from https://github.com/sigoden/aichat/releases
 # and put it in ~/.local/bin/
 
@@ -310,10 +323,13 @@ mkdir -p ~/.config/aichat && cp config/aichat-config.yaml ~/.config/aichat/confi
 ```bash
 glia find the largest files in /home   # proposes the command → Enter runs it
 glia                                   # interactive REPL: request after request, any symbol allowed; empty line quits
-glia -d what does rsync do             # plain-text explanation only
+glia --ask what does rsync do          # plain-text explanation only (-d is the old short form)
 cat error.log | glia why does it fail  # piped input becomes context for the AI
+glia -w latest stable linux kernel     # search the web and answer, always with sources (-w+ reads the pages too)
+glia -ws linux kernel                  # direct results, no AI call — a URL opens that page
 glia -p backup.sh "add a --verbose flag"   # edit an EXISTING file: shows the diff and the git apply command, then asks
 glia --new a bash backup script with rsync and a README explaining how to use it   # new project: plans the steps, then writes the files (with confirmation)
+glia -T README.md en                   # translate into a NEW file next to it (README.en.md); the original is never touched
 glia -l                                # log of executed commands
 glia --doctor                          # one-shot health check (engine, model, RAM, config)
 glia -m pull                           # guided download: hardware check + the AI models that FIT this machine
@@ -324,7 +340,8 @@ glia --update                          # update GLIA itself, from your channel (
 glia --update --check                  # is there a new version? ask only, install nothing
 glia --rollback                        # go back to a previously installed version
 glia --update-engine                   # update the Ollama engine itself
-glia --kaboom                          # guided uninstall (level 1: program only · level 2: everything) — asks you to type YES
+glia --rename mypc                     # name the assistant (a name already taken by a command is refused, not buried)
+glia --kaboom                          # guided uninstall (level 1: program only · level 2: everything) — asks for the confirm word in your language (YES/SI/JA)
 glia-hardware                           # hardware report and recommended models
 ```
 
