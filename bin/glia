@@ -1286,6 +1286,38 @@ t() {
         it:doc_codemodel)   echo "IA per il codice (-p, --new)" ;;
         de:doc_codemodel)   echo "KI für Code (-p, --new)" ;;
         *:doc_codemodel)    echo "code AI (-p, --new)" ;;
+        # ---- pmode Phase 2: local commit + undo (v2.18) ----
+        it:pmv_commit_ask)  echo "Salvo la modifica come commit locale? (non viene mai pushato) " ;;
+        de:pmv_commit_ask)  echo "Änderung als lokalen Commit speichern? (wird nie gepusht) " ;;
+        *:pmv_commit_ask)   echo "Save the change as a local commit? (never pushed) " ;;
+        it:pmv_commit_done) echo "Commit locale creato:" ;;
+        de:pmv_commit_done) echo "Lokaler Commit erstellt:" ;;
+        *:pmv_commit_done)  echo "Local commit created:" ;;
+        it:pmv_undo_none)   echo "Nessun commit di -p da annullare in questo repo." ;;
+        de:pmv_undo_none)   echo "Kein -p-Commit zum Rückgängigmachen in diesem Repo." ;;
+        *:pmv_undo_none)    echo "No -p commit to undo in this repo." ;;
+        it:pmv_undo_found)  echo "Ultimo commit di -p:" ;;
+        de:pmv_undo_found)  echo "Letzter -p-Commit:" ;;
+        *:pmv_undo_found)   echo "Most recent -p commit:" ;;
+        it:pmv_undo_alt)    echo "Alternativa manuale (cancella DAVVERO l'ultimo commit dalla storia locale):" ;;
+        de:pmv_undo_alt)    echo "Manuelle Alternative (löscht den letzten Commit WIRKLICH aus der lokalen Historie):" ;;
+        *:pmv_undo_alt)     echo "Manual alternative (REALLY deletes the last commit from local history):" ;;
+        it:pmv_undo_ask)    echo "Annullo con git revert? " ;;
+        de:pmv_undo_ask)    echo "Mit git revert rückgängig machen? " ;;
+        *:pmv_undo_ask)     echo "Undo with git revert? " ;;
+        it:pmv_undo_done)   echo "Annullato (commit di revert creato)." ;;
+        de:pmv_undo_done)   echo "Rückgängig gemacht (Revert-Commit erstellt)." ;;
+        *:pmv_undo_done)    echo "Undone (revert commit created)." ;;
+        it:pmv_undo_nothead) echo "Non è l'ultimo commit: annullo SOLO con revert (mai reset)." ;;
+        de:pmv_undo_nothead) echo "Nicht der letzte Commit: Rückgängig NUR per revert (nie reset)." ;;
+        *:pmv_undo_nothead)  echo "Not the last commit: undoing ONLY via revert (never reset)." ;;
+        # ---- pmode Phase 3: multi-file (v2.18) ----
+        it:pmv_badfile)     echo "il blocco indica un file fuori dal contesto" ;;
+        de:pmv_badfile)     echo "der Block nennt eine Datei außerhalb des Kontexts" ;;
+        *:pmv_badfile)      echo "the block names a file outside the context" ;;
+        it:pmv_nofilehdr)   echo "con più file ogni blocco deve avere l'intestazione 'file:'" ;;
+        de:pmv_nofilehdr)   echo "bei mehreren Dateien braucht jeder Block die 'file:'-Kopfzeile" ;;
+        *:pmv_nofilehdr)    echo "with multiple files every block needs the 'file:' header" ;;
     esac
 }
 
@@ -4542,6 +4574,63 @@ pmode_apply() {
     return 0
 }
 
+# pmode_commit <top> <request> <relfile...>: Phase 2 — offer an OPTIONAL local
+# commit after a successful apply. Message prefixed 'glia-pmode: ' so undo can
+# find it. Nothing is ever pushed; only the named files are staged.
+pmode_commit() {
+    local top="$1" req="$2"; shift 2
+    local msg h
+    msg="glia-pmode: ${req%%$'\n'*}"
+    core_show_cmd "git -C ${top/#$HOME/\~} add $* && git commit -m \"$msg\""
+    core_confirm "$(t pmv_commit_ask)" || { pmode_log "COMMIT DECLINED" "$*"; return 0; }
+    git -C "$top" add -- "$@" && git -C "$top" commit -q -m "$msg" || return 1
+    h="$(git -C "$top" rev-parse --short HEAD)"
+    echo -e "${GREEN}$(t pmv_commit_done)${NC} $h  $msg"
+    pmode_log "COMMIT" "$h | $msg | $*"
+    core_log "PMODE COMMIT" "$h | $msg"
+    return 0
+}
+
+# pmode_undo: `glia -p --undo`. Finds the most recent 'glia-pmode: ' commit.
+# HEAD + clean tree -> git revert --no-edit HEAD (safe default), with
+# reset --hard shown ONLY as the manual alternative. Not HEAD -> revert only,
+# never reset (§4). Dirty tree -> warn + extra confirm, same as apply.
+pmode_undo() {
+    local dir top h subj head
+    dir="$(pwd)"
+    git -C "$dir" rev-parse --is-inside-work-tree >/dev/null 2>&1 \
+        || { echo -e "${RED}$(t pmv_notrepo)${NC}" >&2; return 1; }
+    top="$(git -C "$dir" rev-parse --show-toplevel)"
+    h="$(git -C "$top" log --grep='^glia-pmode: ' -n1 --format=%H 2>/dev/null)"
+    if [ -z "$h" ]; then
+        echo -e "${YELLOW}$(t pmv_undo_none)${NC}"; return 0
+    fi
+    subj="$(git -C "$top" log -n1 --format=%s "$h")"
+    head="$(git -C "$top" rev-parse HEAD)"
+    echo -e "${BLUE}$(t pmv_undo_found)${NC} $(git -C "$top" rev-parse --short "$h")  $subj"
+    if [ -n "$(git -C "$top" status --porcelain 2>/dev/null)" ]; then
+        echo -e "${YELLOW}$(t pmv_dirty)${NC}"
+        core_confirm "$(t pmv_dirtyask)" || { echo "$(t cancelled)"; return 1; }
+    fi
+    if [ "$h" = "$head" ]; then
+        core_show_cmd "git -C ${top/#$HOME/\~} revert --no-edit HEAD"
+        echo -e "${YELLOW}$(t pmv_undo_alt)${NC}  ${GREEN}git reset --hard HEAD~1${NC}"
+    else
+        echo -e "${YELLOW}$(t pmv_undo_nothead)${NC}"
+        core_show_cmd "git -C ${top/#$HOME/\~} revert --no-edit $(git -C "$top" rev-parse --short "$h")"
+    fi
+    core_confirm "$(t pmv_undo_ask)" || { echo "$(t cancelled)"; return 0; }
+    git -C "$top" revert --no-edit "$h" || {
+        git -C "$top" revert --abort 2>/dev/null
+        echo -e "${RED}$(t pmv_checkfail)${NC}" >&2
+        pmode_log "UNDO FAILED" "$h"; return 1
+    }
+    echo -e "${GREEN}$(t pmv_undo_done)${NC}"
+    pmode_log "UNDO" "reverted $h | $subj"
+    core_log "PMODE UNDO" "reverted $h"
+    return 0
+}
+
 # pmode_rewrite_fallback <file> <request>: §1.2 step 2. Blocks kept failing ->
 # ask for the COMPLETE corrected file, but only when it fits in half the budget
 # (the model must both read it and write it back). We still compute the diff.
@@ -4668,6 +4757,7 @@ pmode_main() {
                     echo -e "${GREEN}$(t pmv_applied) $rel${NC}"
                     pmode_log "APPLIED" "$rel | $patch"
                     core_log "PMODE APPLIED" "$rel | $req"
+                    pmode_commit "$top" "$req" "$rel"   # Phase 2: optional local commit
                 else
                     rm -f "$patch"; return 1
                 fi
@@ -4742,6 +4832,7 @@ case "$1" in
         shift
         case "${1:-}" in
             help|-h|--help|"") page pmode_help ;;
+            --undo|undo)       pmode_undo ;;       # Phase 2 (v2.18)
             *)                 pmode_main "$@" ;;
         esac
         ;;
