@@ -90,6 +90,18 @@ No external coding tool is used. We reimplement the useful patterns in bash.
 - Phase 3: multiple files in one change.
 - Phase 4: lite repo-map (tree + grep of function names/headers) so the
   model knows the project without loading everything.
+- Phase 5 (goal loop): the model works towards a goal over several rounds
+  instead of one edit. **Hard requirement, decided 2026-07-16: the loop must
+  NOT hold the terminal.** A goal takes minutes on a local 7B; a blocked
+  prompt with a spinner is not acceptable, and Ctrl+Z is not an answer (it
+  suspends the whole job — see the `-m pull` bug of the same day). The loop
+  runs detached, and the user gets commands to:
+    - see where it is (which round, which file, what it changed so far);
+    - stop it, and resume it later;
+    - read the work done (the log / the commits it made).
+  Design note: this is the SAME need as a long `ollama pull`. Whatever
+  background+status mechanism we build here must be one mechanism, reused by
+  both — not two half-solutions (DRY: duplication = bug).
 
 ## 7. Open questions
 

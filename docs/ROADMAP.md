@@ -1,6 +1,6 @@
 # GLIA Roadmap
 
-Updated: 2026-07-12
+Updated: 2026-07-16
 
 ## Assistant intelligence mechanisms
 
@@ -71,6 +71,19 @@ Implemented in glia v1.6:
   - model download: during install if online, else first-boot service
 
 ## TODO
+
+- **An AI in RAM that GLIA did not load** (decided 2026-07-16, not yet built).
+  Today `swap_in` only unloads `$def`, GLIA's own default. If the user has
+  started a model by hand (say `phi4:14b`, downloaded outside GLIA) and then
+  runs GLIA, GLIA loads its own model *next to it*: two AIs in RAM, and the
+  single-model policy of v2.15.1 is a promise we break in practice.
+  Decision: `swap_in` must unload ANY model it finds loaded, not just its
+  own — **but ask first**, because that AI is the user's work, not ours, and
+  we do not kill someone's work silently. `swap_out` does not bring it back:
+  the v2.15.5 rule stands — GLIA only restores what GLIA stopped. After that,
+  the normal rotation of the AIs configured in GLIA resumes.
+  Open: what to do when there is no tty to ask on (scripted runs) — refuse,
+  or fall back to leaving it alone and warning?
 
 - **glia-firstboot robustness** (found in VM test 2026-07-12): the one-time
   setup runs on every login until finished, so two concurrent logins (console
