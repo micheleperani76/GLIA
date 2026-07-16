@@ -1318,6 +1318,9 @@ t() {
         it:pmv_nofilehdr)   echo "con più file ogni blocco deve avere l'intestazione 'file:'" ;;
         de:pmv_nofilehdr)   echo "bei mehreren Dateien braucht jeder Block die 'file:'-Kopfzeile" ;;
         *:pmv_nofilehdr)    echo "with multiple files every block needs the 'file:' header" ;;
+        it:pmv_sametree)    echo "tutti i file devono stare nello STESSO repository git" ;;
+        de:pmv_sametree)    echo "alle Dateien müssen im SELBEN Git-Repository liegen" ;;
+        *:pmv_sametree)     echo "all files must live in the SAME git repository" ;;
     esac
 }
 
@@ -4400,33 +4403,72 @@ pmode_check_repo() {
     return 1
 }
 
-# pmode_collect_context <file>: read the target and enforce the context budget.
-# We REFUSE rather than truncate: a cut file breaks search/replace matching and
-# yields edits that look right and are wrong. Token heuristic: bytes/4.
+# pmode_collect_context <absfile...>: read the target(s) and enforce ONE
+# combined context budget. We REFUSE rather than truncate: a cut file breaks
+# search/replace matching and yields edits that look right and are wrong.
+# Token heuristic: bytes/4. Phase 3: with 2+ files the model-facing text gets
+# '==== FILE: <rel> ====' separators; with ONE file it stays exactly as in
+# Phase 1 (raw content - the tuned prompt is not disturbed).
+# Fills: PMODE_ABS[] PMODE_RELS[] PMODE_TEXTS[] PMODE_MULTI PMODE_FILE_TEXT
+#        PMODE_FILE_LINES PMODE_FILE_TOKENS
 pmode_collect_context() {
-    local f="$1" bytes budget
-    PMODE_FILE_TEXT="$(cat "$f"; printf x)"; PMODE_FILE_TEXT="${PMODE_FILE_TEXT%x}"
-    PMODE_FILE_LINES="$(wc -l < "$f" | tr -d ' ')"
-    bytes="$(wc -c < "$f" | tr -d ' ')"
-    PMODE_FILE_TOKENS=$(( bytes / 4 ))
+    local f rel txt budget total=0 lines=0
+    PMODE_ABS=(); PMODE_RELS=(); PMODE_TEXTS=(); PMODE_FILE_TEXT=""
+    [ "$#" -gt 1 ] && PMODE_MULTI=1 || PMODE_MULTI=0
+    for f in "$@"; do
+        rel="${f#"$PMODE_TOP"/}"
+        txt="$(cat "$f"; printf x)"; txt="${txt%x}"
+        PMODE_ABS+=("$f"); PMODE_RELS+=("$rel"); PMODE_TEXTS+=("$txt")
+        lines=$(( lines + $(wc -l < "$f") ))
+        total=$(( total + $(wc -c < "$f") ))
+        if [ "$PMODE_MULTI" = 1 ]; then
+            PMODE_FILE_TEXT+="==== FILE: $rel ===="$'\n'"$txt"$'\n'
+        else
+            PMODE_FILE_TEXT="$txt"
+        fi
+    done
+    PMODE_FILE_LINES="$lines"
+    PMODE_FILE_TOKENS=$(( total / 4 ))
     budget=$(( PMODE_NUM_CTX - PMODE_CTX_RESERVE ))
     if [ "$PMODE_FILE_TOKENS" -gt "$budget" ]; then
         echo -e "${RED}$(t pmv_toobig)${NC}" >&2
         echo -e "  ~$PMODE_FILE_TOKENS $(t pmv_tokens) > $budget $(t pmv_tokens)   (PMODE_NUM_CTX=$PMODE_NUM_CTX - PMODE_CTX_RESERVE=$PMODE_CTX_RESERVE)" >&2
         echo -e "${YELLOW}$(t pmv_toobig_hint)${NC}" >&2
-        pmode_log "REFUSED (too large)" "$f | ~$PMODE_FILE_TOKENS tokens > $budget"
+        pmode_log "REFUSED (too large)" "${PMODE_RELS[*]} | ~$PMODE_FILE_TOKENS tokens > $budget"
         return 1
     fi
     return 0
 }
 
-# pmode_build_prompt <file> <request>: fresh conversation + the system prompt
-# that forces the S/R format. English on purpose: the model must reproduce
-# these markers character-for-character.
+# pmode_build_prompt <request>: fresh conversation + the system prompt that
+# forces the S/R format. English on purpose: the model must reproduce these
+# markers character-for-character. Phase 3: with 2+ files every block must
+# carry a 'file:' header naming the target; empty SEARCH = append to that file.
+# The single-file prompt is the Phase-1-tuned one, untouched.
 pmode_build_prompt() {
-    local f="$1" req="$2"
+    local req="$1" label
     MSGS='[]'
-    add_msg system "You are a code editor. You receive a file and a change request.
+    if [ "$PMODE_MULTI" = 1 ]; then
+        add_msg system "You are a code editor. You receive several files and a change request.
+Reply ONLY with one or more edit blocks in exactly this format:
+<<<<<<< SEARCH file: relative/path
+(lines copied EXACTLY from that file, enough to be unique)
+=======
+(the replacement lines)
+>>>>>>> REPLACE
+Rules:
+- EVERY block MUST name its file on the SEARCH line, exactly as written in
+  the '==== FILE: ... ====' headers below. Never invent other files.
+- SEARCH must be a CONTIGUOUS run of lines copied from that file: never join
+  lines that are not next to each other, never leave lines out in between.
+- Use ONE SEPARATE block for EACH place you change.
+- Copy SEARCH lines character-for-character, including every space and tab.
+- Keep SEARCH as short as possible while still unique in that file.
+- An EMPTY SEARCH means: append the replacement lines at the end of that file.
+- No explanations, no markdown fences, nothing outside the blocks."
+        label="Files:"
+    else
+        add_msg system "You are a code editor. You receive a file and a change request.
 Reply ONLY with one or more edit blocks in exactly this format:
 <<<<<<< SEARCH
 (lines copied EXACTLY from the file, enough to be unique)
@@ -4440,7 +4482,10 @@ Rules:
 - Copy SEARCH lines character-for-character, including every space and tab.
 - Keep SEARCH as short as possible while still unique in the file.
 - No explanations, no markdown fences, nothing outside the blocks."
-    add_msg user "File: $(basename "$f")
+        label="File: ${PMODE_RELS[0]##*/}"
+    fi
+    [ "$PMODE_MULTI" = 1 ] && label="Files: ${PMODE_RELS[*]}"
+    add_msg user "$label
 --- file content start ---
 $PMODE_FILE_TEXT
 --- file content end ---
@@ -4462,17 +4507,24 @@ pmode_get_edit() {
 # REPLACE bodies. Everything outside the markers is ignored on purpose: small
 # models chatter. Returns 1 when there is no well-formed block at all.
 pmode_parse_blocks() {
-    local raw="$1" line state="out" cur_s="" cur_r=""
-    PMODE_S=(); PMODE_R=()
+    local raw="$1" line state="out" cur_s="" cur_r="" cur_f="" hdr
+    PMODE_S=(); PMODE_R=(); PMODE_F=()
     while IFS= read -r line; do
         case "$line" in
             '<<<<<<< SEARCH'*)
+                # Phase 3: optional ' file: relative/path' on the marker line
+                hdr="${line#<<<<<<< SEARCH}"; hdr="${hdr# }"
+                case "$hdr" in
+                    file:*) cur_f="${hdr#file:}"; cur_f="${cur_f# }"; cur_f="${cur_f%% }" ;;
+                    *)      cur_f="" ;;
+                esac
                 state="search"; cur_s=""; cur_r=""; continue ;;
             '======='*)
                 if [ "$state" = "search" ]; then state="replace"; continue; fi ;;
             '>>>>>>> REPLACE'*)
                 if [ "$state" = "replace" ]; then
-                    PMODE_S+=("$cur_s"); PMODE_R+=("$cur_r"); state="out"; continue
+                    PMODE_S+=("$cur_s"); PMODE_R+=("$cur_r"); PMODE_F+=("$cur_f")
+                    state="out"; continue
                 fi ;;
         esac
         case "$state" in
@@ -4496,44 +4548,73 @@ pmode_count_occ() {
     printf '%d' "$cnt"
 }
 
-# pmode_make_diff <origfile> <relpath> <patchfile>: apply the parsed blocks to a
-# TEMP copy, validate each SEARCH matches EXACTLY ONCE (§1.1), then let git
-# compute the real unified diff. Sets PMODE_ERR with the reason on failure, so
-# the retry ladder can hand it back to the model. Never touches the original.
+# pmode_make_diff <patchfile>: apply the parsed blocks to TEMP copies of the
+# context files, validate each SEARCH matches EXACTLY ONCE in ITS file (§1.1),
+# then let git compute ONE combined unified diff (§5: git applies multi-file
+# patches natively - one confirm, one apply, one commit). Sets PMODE_ERR on
+# failure for the retry ladder. Never touches the originals.
+# Phase 3 rules: with 2+ files every block needs a valid 'file:' header naming
+# a file IN CONTEXT; an empty SEARCH appends to that file. With one file the
+# header is optional and empty SEARCH is still rejected (Phase 1 behaviour).
 pmode_make_diff() {
-    local orig="$1" rel="$2" patch="$3"
-    local i s r n text tmp
+    local patch="$1"
+    local i j s r n idx tmp rel
+    local -a texts=()
     PMODE_ERR=""
-    text="$PMODE_FILE_TEXT"
+    for j in "${!PMODE_TEXTS[@]}"; do texts[j]="${PMODE_TEXTS[j]}"; done
     for i in "${!PMODE_S[@]}"; do
         s="${PMODE_S[i]}"; r="${PMODE_R[i]}"
+        # --- which file does this block target? ---
+        if [ "$PMODE_MULTI" = 1 ]; then
+            [ -z "${PMODE_F[i]}" ] && { PMODE_ERR="block $((i+1)): $(t pmv_nofilehdr)"; return 1; }
+            idx=-1
+            for j in "${!PMODE_RELS[@]}"; do
+                [ "${PMODE_RELS[j]}" = "${PMODE_F[i]}" ] && { idx=$j; break; }
+            done
+            [ "$idx" -lt 0 ] && { PMODE_ERR="block $((i+1)): $(t pmv_badfile) (${PMODE_F[i]})"; return 1; }
+        else
+            idx=0
+        fi
+        # --- empty SEARCH: append (multi-file only, §5) ---
         if [ -z "${s//[$'\n\t ']/}" ]; then
+            if [ "$PMODE_MULTI" = 1 ]; then
+                [ -n "${texts[idx]}" ] && [ "${texts[idx]%$'\n'}" = "${texts[idx]}" ] \
+                    && texts[idx]+=$'\n'
+                texts[idx]+="$r"
+                continue
+            fi
             PMODE_ERR="block $((i+1)): $(t pmv_emptysearch)"; return 1
         fi
-        n="$(pmode_count_occ "$text" "$s")"
+        n="$(pmode_count_occ "${texts[idx]}" "$s")"
         if [ "$n" -eq 0 ]; then
             # tolerate a missing final newline (last lines of the file)
             s="${s%$'\n'}"; r="${r%$'\n'}"
-            n="$(pmode_count_occ "$text" "$s")"
+            n="$(pmode_count_occ "${texts[idx]}" "$s")"
         fi
         case "$n" in
             0) PMODE_ERR="block $((i+1)): $(t pmv_nomatch)"; return 1 ;;
             1) : ;;
             *) PMODE_ERR="block $((i+1)): $(t pmv_multimatch) ($n)"; return 1 ;;
         esac
-        text="${text//"$s"/"$r"}"
+        texts[idx]="${texts[idx]//"$s"/"$r"}"
     done
-    tmp="$(mktemp "${TMPDIR:-/tmp}/glia-pmode-new.XXXXXX")" || return 1
-    printf '%s' "$text" > "$tmp"
-    # git diff --no-index exits 1 when files differ: that is the normal case.
-    # The header carries the temp paths, so rewrite lines 1-4 to the real
-    # relative path -> the patch applies from the repo root. Only lines 1-4:
-    # a removed body line could legitimately start with '--- '.
-    git diff --no-index --unified=3 -- "$orig" "$tmp" 2>/dev/null \
-        | sed -e "1s|^diff --git .*|diff --git a/$rel b/$rel|" \
-              -e "1,4s|^--- .*|--- a/$rel|" \
-              -e "1,4s|^+++ .*|+++ b/$rel|" > "$patch"
-    rm -f "$tmp"
+    # --- ONE combined patch: per-file real git diffs, concatenated ---
+    : > "$patch"
+    for j in "${!PMODE_RELS[@]}"; do
+        [ "${texts[j]}" = "${PMODE_TEXTS[j]}" ] && continue
+        rel="${PMODE_RELS[j]}"
+        tmp="$(mktemp "${TMPDIR:-/tmp}/glia-pmode-new.XXXXXX")" || return 1
+        printf '%s' "${texts[j]}" > "$tmp"
+        # git diff --no-index exits 1 when files differ: the normal case.
+        # Rewrite ONLY the 4 header lines to the real relative path so the
+        # patch applies from the repo root; a removed body line could
+        # legitimately start with '--- '.
+        git diff --no-index --unified=3 -- "${PMODE_ABS[j]}" "$tmp" 2>/dev/null \
+            | sed -e "1s|^diff --git .*|diff --git a/$rel b/$rel|" \
+                  -e "1,4s|^--- .*|--- a/$rel|" \
+                  -e "1,4s|^+++ .*|+++ b/$rel|" >> "$patch"
+        rm -f "$tmp"
+    done
     if [ ! -s "$patch" ]; then
         PMODE_ERR="$(t pmv_nodiff)"; return 1
     fi
@@ -4655,47 +4736,64 @@ Reply with the COMPLETE file after the change."
     return 0
 }
 
-# pmode_main <file> <request...>: the -p entry point.
+# pmode_main <file...> <request...>: the -p entry point. Phase 3: leading args
+# that are existing files become the context (1..N); everything after the last
+# file is the request. Quoting the request stays the documented form; the
+# fallthrough keeps Phase 1's unquoted usage working for a single file.
 pmode_main() {
-    local f="$1"; shift
-    local req="$*" dir top rel patch raw tries=0 rc
+    local -a FILES=()
+    local f req dir top t2 patch raw tries=0 rels
+
+    while [ "$#" -gt 0 ] && [ -f "$1" ]; do FILES+=("$1"); shift; done
+    req="$*"
 
     # -p edits EXISTING files. No auto-detect on purpose: a typo in a filename
     # would silently scaffold a whole project - a silent surprise, which is
     # exactly what GLIA must never do. Teach the right command instead.
-    if [ ! -e "$f" ]; then
+    if [ "${#FILES[@]}" -eq 0 ]; then
         echo -e "${RED}$(t pmv_notafile)${NC}" >&2
         echo -e "  ${GREEN}$ASSIST_NAME --new <$(t pmv_idea)>${NC}" >&2
-        echo -e "${YELLOW}$(t pmv_notafile_hint) $f${NC}" >&2
+        echo -e "${YELLOW}$(t pmv_notafile_hint) ${1:-}${NC}" >&2
         return 1
     fi
-    [ -f "$f" ] || { echo -e "${RED}$(t pmv_notregular) $f${NC}" >&2; return 1; }
-    [ -r "$f" ] || { echo -e "${RED}$(t pmv_notreadable) $f${NC}" >&2; return 1; }
     if [ -z "$req" ]; then
         echo -e "${RED}$(t pmv_norequest)${NC}" >&2
-        echo -e "  ${GREEN}$ASSIST_NAME -p $f \"<$(t pmv_request)>\"${NC}" >&2
+        echo -e "  ${GREEN}$ASSIST_NAME -p ${FILES[*]} \"<$(t pmv_request)>\"${NC}" >&2
         return 1
     fi
-    # Binary check: a NUL byte, or file(1) calling the ENCODING binary. Do NOT
-    # match the word "executable" from `file -b`: every script with a shebang is
-    # "ASCII text executable" - that would refuse the main use case.
-    if [ -s "$f" ] && { LC_ALL=C grep -qP '\x00' "$f" 2>/dev/null \
-         || [ "$(file --mime-encoding -b "$f" 2>/dev/null)" = "binary" ]; }; then
-        echo -e "${RED}$(t pmv_binary)${NC}" >&2
-        pmode_log "REFUSED (binary)" "$f"
-        return 1
-    fi
+    for f in "${FILES[@]}"; do
+        [ -r "$f" ] || { echo -e "${RED}$(t pmv_notreadable) $f${NC}" >&2; return 1; }
+        # Binary check: a NUL byte, or file(1) calling the ENCODING binary. Do
+        # NOT match the word "executable" from `file -b`: every script with a
+        # shebang is "ASCII text executable" - that would refuse the main use case.
+        if [ -s "$f" ] && { LC_ALL=C grep -qP '\x00' "$f" 2>/dev/null \
+             || [ "$(file --mime-encoding -b "$f" 2>/dev/null)" = "binary" ]; }; then
+            echo -e "${RED}$(t pmv_binary)${NC}" >&2
+            pmode_log "REFUSED (binary)" "$f"
+            return 1
+        fi
+    done
     command -v git >/dev/null || { echo -e "${RED}$(pkg_install_cmd git)${NC}" >&2; return 1; }
     command -v jq  >/dev/null || { echo "$(t need_jq)" >&2; return 1; }
     check_ai
 
-    f="$(realpath "$f")"
-    dir="$(dirname "$f")"
+    local i
+    for i in "${!FILES[@]}"; do FILES[i]="$(realpath "${FILES[i]}")"; done
+    dir="$(dirname "${FILES[0]}")"
     pmode_check_repo "$dir" || return 1
     top="$(git -C "$dir" rev-parse --show-toplevel 2>/dev/null)" || return 1
-    rel="${f#"$top"/}"
+    for f in "${FILES[@]}"; do
+        t2="$(git -C "$(dirname "$f")" rev-parse --show-toplevel 2>/dev/null)"
+        if [ "$t2" != "$top" ]; then
+            echo -e "${RED}$(t pmv_sametree)${NC}" >&2
+            echo -e "  $top  <->  ${t2:-?}  ($f)" >&2
+            return 1
+        fi
+    done
+    PMODE_TOP="$top"
 
-    pmode_collect_context "$f" || return 1
+    pmode_collect_context "${FILES[@]}" || return 1
+    rels="${PMODE_RELS[*]}"
 
     # Same dedicated coding AI as --new, same shared RAM swap (v2.15 machinery).
     # PROJ_* are GLOBAL on purpose: the EXIT trap must still see them.
@@ -4708,40 +4806,41 @@ pmode_main() {
         trap 'swap_out "$PROJ_TARGET" "$PROJ_DEF"' EXIT
     fi
 
-    echo -e "${BLUE}[pmode]${NC} $(t pmv_sending) $rel ($PMODE_FILE_LINES $(t pmv_lines), ~$PMODE_FILE_TOKENS $(t pmv_tokens)) -> ${GREEN}$PROJ_TARGET${NC}"
-    pmode_log "START" "$rel | $req | model=$PROJ_TARGET | ~$PMODE_FILE_TOKENS tokens"
+    echo -e "${BLUE}[pmode]${NC} $(t pmv_sending) $rels ($PMODE_FILE_LINES $(t pmv_lines), ~$PMODE_FILE_TOKENS $(t pmv_tokens)) -> ${GREEN}$PROJ_TARGET${NC}"
+    pmode_log "START" "$rels | $req | model=$PROJ_TARGET | ~$PMODE_FILE_TOKENS tokens"
 
     patch="$(mktemp "${TMPDIR:-/tmp}/glia-pmode-XXXXXX.patch")" || return 1
-    pmode_build_prompt "$f" "$req"
+    pmode_build_prompt "$req"
 
     while :; do
         raw="$(pmode_get_edit)" || raw=""
         if [ -z "$raw" ]; then
             echo -e "${RED}$(t pmv_noreply)${NC}" >&2
-            pmode_log "GIVE UP (no reply)" "$rel"
+            pmode_log "GIVE UP (no reply)" "$rels"
             rm -f "$patch"; return 1
         fi
-        if pmode_parse_blocks "$raw" && pmode_make_diff "$f" "$rel" "$patch"; then
+        if pmode_parse_blocks "$raw" && pmode_make_diff "$patch"; then
             break
         fi
         [ -z "$PMODE_ERR" ] && PMODE_ERR="$(t pmv_noblocks)"
         tries=$((tries+1))
         if [ "$tries" -le "$PMODE_MAX_RETRIES" ]; then
             echo -e "${YELLOW}$(t pmv_retry) $tries/$PMODE_MAX_RETRIES): $PMODE_ERR${NC}" >&2
-            pmode_log "RETRY $tries" "$rel | $PMODE_ERR"
+            pmode_log "RETRY $tries" "$rels | $PMODE_ERR"
             add_msg assistant "$raw"
             add_msg user "That did not work: $PMODE_ERR. The SEARCH text must appear EXACTLY ONCE in the file, copied character-for-character from the file content above, including every space and tab. Try again and reply ONLY with edit blocks."
             continue
         fi
-        # retries exhausted -> whole-file rewrite -> otherwise give up gracefully
-        if pmode_rewrite_fallback "$f" "$req" && pmode_make_diff "$f" "$rel" "$patch"; then
-            pmode_log "FALLBACK rewrite" "$rel"
+        # retries exhausted -> whole-file rewrite (single file only) -> give up
+        if [ "$PMODE_MULTI" = 0 ] \
+           && pmode_rewrite_fallback "${FILES[0]}" "$req" && pmode_make_diff "$patch"; then
+            pmode_log "FALLBACK rewrite" "$rels"
             break
         fi
         echo -e "${RED}$(t pmv_giveup)${NC}" >&2
         echo -e "${YELLOW}$(t pmv_rawout)${NC}" >&2
         printf '%s\n' "$raw" >&2
-        pmode_log "GIVE UP" "$rel | retries=$tries | $PMODE_ERR"
+        pmode_log "GIVE UP" "$rels | retries=$tries | $PMODE_ERR"
         rm -f "$patch"
         return 1
     done
@@ -4753,11 +4852,11 @@ pmode_main() {
         read -r -p "$(t pmv_ask)" A < /dev/tty || A="n"
         case "$A" in
             "$YES_KEY"|y|Y)
-                if pmode_apply "$top" "$patch" "$rel"; then
-                    echo -e "${GREEN}$(t pmv_applied) $rel${NC}"
-                    pmode_log "APPLIED" "$rel | $patch"
-                    core_log "PMODE APPLIED" "$rel | $req"
-                    pmode_commit "$top" "$req" "$rel"   # Phase 2: optional local commit
+                if pmode_apply "$top" "$patch" "$rels"; then
+                    echo -e "${GREEN}$(t pmv_applied) $rels${NC}"
+                    pmode_log "APPLIED" "$rels | $patch"
+                    core_log "PMODE APPLIED" "$rels | $req"
+                    pmode_commit "$top" "$req" "${PMODE_RELS[@]}"   # Phase 2: optional local commit
                 else
                     rm -f "$patch"; return 1
                 fi
@@ -4768,19 +4867,19 @@ pmode_main() {
                 read -r NEWREQ < /dev/tty || NEWREQ=""
                 [ -z "$NEWREQ" ] && { echo "$(t cancelled)"; break; }
                 req="$NEWREQ"
-                pmode_build_prompt "$f" "$req"
+                pmode_build_prompt "$req"
                 raw="$(pmode_get_edit)" || raw=""
-                if [ -n "$raw" ] && pmode_parse_blocks "$raw" && pmode_make_diff "$f" "$rel" "$patch"; then
+                if [ -n "$raw" ] && pmode_parse_blocks "$raw" && pmode_make_diff "$patch"; then
                     pmode_show_diff "$patch" "$top"
                 else
                     echo -e "${RED}${PMODE_ERR:-$(t pmv_noblocks)}${NC}" >&2
-                    pmode_log "GIVE UP (after edit)" "$rel | ${PMODE_ERR:-no blocks}"
+                    pmode_log "GIVE UP (after edit)" "$rels | ${PMODE_ERR:-no blocks}"
                     break
                 fi
                 continue ;;
             q|Q|n|N|"")
                 echo -e "${YELLOW}$(t pmv_kept)${NC} $patch"
-                pmode_log "DECLINED" "$rel | patch kept at $patch"
+                pmode_log "DECLINED" "$rels | patch kept at $patch"
                 echo -e "${BLUE}$(t pmv_logged)${NC} ${PMODE_LOG/#$HOME/\~}"
                 return 0 ;;
             *) continue ;;
