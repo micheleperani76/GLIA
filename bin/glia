@@ -1354,7 +1354,7 @@ Aiuto per area — ogni help elenca TUTTI i suoi sotto-comandi:
   -a help        scorciatoie: -a <nome> esegue · add · save · rm · edit
   -m help        le IA: list · pull · update · rm · ps · stop · <n> default
   -p help        modifica file: più file insieme · -p --undo · --project-model
-  --new help     progetto nuovo da zero (era -p fino alla v2.17)
+  --new help     progetto nuovo da zero: pianifica e scrive i file
   -w help        ricerca web: -w veloce · -w+ approfondita · --web-model
   -i help        modalità interattiva (frasi con simboli speciali)
   --memory help  memoria: --remember salva · --forget scorda · --memory elenca
@@ -1386,7 +1386,7 @@ Hilfe pro Bereich — jede Hilfe listet ALLE ihre Unterbefehle:
   -a help        Shortcuts: -a <Name> ausführen · add · save · rm · edit
   -m help        die KIs: list · pull · update · rm · ps · stop · <n> Standard
   -p help        Dateien ändern: mehrere Dateien · -p --undo · --project-model
-  --new help     neues Projekt von Null (war -p bis v2.17)
+  --new help     neues Projekt von Null: plant und schreibt die Dateien
   -w help        Websuche: -w schnell · -w+ gründlich · --web-model
   -i help        interaktiver Modus (Sätze mit Sonderzeichen)
   --memory help  Gedächtnis: --remember merken · --forget vergessen · --memory
@@ -1418,7 +1418,7 @@ Help per area — each help lists ALL of its subcommands:
   -a help        shortcuts: -a <name> runs · add · save · rm · edit
   -m help        the AIs: list · pull · update · rm · ps · stop · <n> default
   -p help        edit files: several files at once · -p --undo · --project-model
-  --new help     new project from scratch (was -p up to v2.17)
+  --new help     new project from scratch: plans and writes the files
   -w help        web search: -w fast · -w+ deep · --web-model
   -i help        interactive mode (requests with special characters)
   --memory help  memory: --remember saves · --forget drops · --memory lists
