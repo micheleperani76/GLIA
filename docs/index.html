@@ -296,6 +296,20 @@ footer .fbrand{font-weight:800;color:var(--white);font-size:1.1rem;margin-bottom
         <tr><td>4</td><td>GPU ≥20 GB VRAM</td><td class="mono">qwen3-coder:30b · qwen2.5-coder:32b · devstral:24b</td></tr>
       </tbody>
     </table>
+
+    <p class="lead" style="margin-top:38px"><b>One AI per job — or one AI for several.</b> Pin a coder to <code style="font-family:var(--mono);color:var(--teal)">-p</code>, a fast one to <code style="font-family:var(--mono);color:var(--teal)">-w</code>, leave the rest unassigned. Whatever you pin, GLIA still keeps exactly <b>one</b> AI in RAM at a time.</p>
+    <div class="term" style="margin:0 auto">
+      <div class="term-bar"><span class="tr"></span><span class="ty"></span><span class="tg"></span><span class="t">michele@glia:~</span></div>
+      <div class="term-body">
+        <div><span class="p">$</span> <span class="u">glia</span> <span class="c">-m</span></div>
+        <div class="o">Available AIs (already downloaded):</div>
+        <div>&nbsp;&nbsp;1) <span class="k">gemma4:latest</span>&nbsp;&nbsp;&nbsp;<span class="c">← default · web</span></div>
+        <div>&nbsp;&nbsp;2) <span class="k">qwen2.5-coder:7b</span>&nbsp;&nbsp;&nbsp;<span class="c">← project</span></div>
+        <div>&nbsp;&nbsp;3) <span class="k">qwen3:30b-a3b</span></div>
+        <div>&nbsp;&nbsp;4) <span class="k">deepseek-r1:14b</span></div>
+        <div class="o">Which one to always use? type the number (Enter = keep current):</div>
+      </div>
+    </div>
   </div>
 </section>
 
