@@ -1350,15 +1350,19 @@ L'essenziale:
   $ASSIST_NAME -m                  scegli quale IA usare (guidato)
   $ASSIST_NAME --doctor            controllo rapido: motore, modello, RAM
 
-Ogni area ha il suo aiuto dedicato (comando + help):
-  -a help        scorciatoie           -m help        le IA: scegli/scarica
-  -p help        modifica file         --new help     progetto nuovo da zero
-  -w help        ricerca web           -i help        modalità interattiva
-  --memory help  memoria (fatti)       --update help  aggiornare GLIA e motore
+Aiuto per area — ogni help elenca TUTTI i suoi sotto-comandi:
+  -a help        scorciatoie: -a <nome> esegue · add · save · rm · edit
+  -m help        le IA: list · pull · update · rm · ps · stop · <n> default
+  -p help        modifica file: più file insieme · -p --undo · --project-model
+  --new help     progetto nuovo da zero (era -p fino alla v2.17)
+  -w help        ricerca web: -w veloce · -w+ approfondita · --web-model
+  -i help        modalità interattiva (frasi con simboli speciali)
+  --memory help  memoria: --remember salva · --forget scorda · --memory elenca
+  --update help  aggiorna: -U · --check · --channel · --rollback · engine
 
-Altri comandi (dettagli nei rispettivi help e nel README):
-  --channel · --rollback · --update-engine · --lang · --remember
-  -a add · -l (log) · --clear-cache · --kaboom · -V
+Comandi secchi (una cosa sola, nessun sotto-menù):
+  --rename <nome> · --lang <it|en|de> · -l (log) · --clear-cache
+  --kaboom (disinstalla) · -V (versione)
 
 Esempio:   $ASSIST_NAME trova i file più grandi in /home
 Se l'IA non risponde:   systemctl start ollama   ·   glia-hardware
@@ -1378,15 +1382,19 @@ Das Wesentliche:
   $ASSIST_NAME -m                 KI wählen (geführt)
   $ASSIST_NAME --doctor           Schnellcheck: Engine, Modell, RAM
 
-Jeder Bereich hat seine eigene Hilfe (Befehl + help):
-  -a help        Shortcuts            -m help        KIs: wählen/laden
-  -p help        Dateien ändern       --new help     Projekt von Null
-  -w help        Websuche             -i help        interaktiver Modus
-  --memory help  Gedächtnis           --update help  GLIA und Engine aktualisieren
+Hilfe pro Bereich — jede Hilfe listet ALLE ihre Unterbefehle:
+  -a help        Shortcuts: -a <Name> ausführen · add · save · rm · edit
+  -m help        die KIs: list · pull · update · rm · ps · stop · <n> Standard
+  -p help        Dateien ändern: mehrere Dateien · -p --undo · --project-model
+  --new help     neues Projekt von Null (war -p bis v2.17)
+  -w help        Websuche: -w schnell · -w+ gründlich · --web-model
+  -i help        interaktiver Modus (Sätze mit Sonderzeichen)
+  --memory help  Gedächtnis: --remember merken · --forget vergessen · --memory
+  --update help  aktualisieren: -U · --check · --channel · --rollback · Engine
 
-Weitere Befehle (Details in den jeweiligen Hilfen und im README):
-  --channel · --rollback · --update-engine · --lang · --remember
-  -a add · -l (Log) · --clear-cache · --kaboom · -V
+Einfache Befehle (eine Sache, kein Untermenü):
+  --rename <Name> · --lang <it|en|de> · -l (Log) · --clear-cache
+  --kaboom (deinstallieren) · -V (Version)
 
 Beispiel:   $ASSIST_NAME finde die größten Dateien in /home
 Wenn die KI nicht antwortet:   systemctl start ollama   ·   glia-hardware
@@ -1406,15 +1414,19 @@ The essentials:
   $ASSIST_NAME -m                 choose which AI to use (guided)
   $ASSIST_NAME --doctor           quick check: engine, model, RAM
 
-Every area has its own dedicated help (command + help):
-  -a help        shortcuts            -m help        the AIs: choose/download
-  -p help        edit files           --new help     new project from scratch
-  -w help        web search           -i help        interactive mode
-  --memory help  memory (facts)       --update help  update GLIA and the engine
+Help per area — each help lists ALL of its subcommands:
+  -a help        shortcuts: -a <name> runs · add · save · rm · edit
+  -m help        the AIs: list · pull · update · rm · ps · stop · <n> default
+  -p help        edit files: several files at once · -p --undo · --project-model
+  --new help     new project from scratch (was -p up to v2.17)
+  -w help        web search: -w fast · -w+ deep · --web-model
+  -i help        interactive mode (requests with special characters)
+  --memory help  memory: --remember saves · --forget drops · --memory lists
+  --update help  updating: -U · --check · --channel · --rollback · engine
 
-Other commands (details in their help pages and the README):
-  --channel · --rollback · --update-engine · --lang · --remember
-  -a add · -l (log) · --clear-cache · --kaboom · -V
+Plain commands (one job, no submenu):
+  --rename <name> · --lang <it|en|de> · -l (log) · --clear-cache
+  --kaboom (uninstall) · -V (version)
 
 Example:   $ASSIST_NAME find the largest files in /home
 If the AI does not answer:   systemctl start ollama   ·   glia-hardware
