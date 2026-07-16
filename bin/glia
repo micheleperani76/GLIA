@@ -528,6 +528,12 @@ t() {
         it:rc_chan_bad)     echo "Canale non valido. Usa: stable | beta" ;;
         de:rc_chan_bad)     echo "Ungueltiger Kanal. Nutze: stable | beta" ;;
         *:rc_chan_bad)      echo "Invalid channel. Use: stable | beta" ;;
+        it:rc_installed)    echo "installato:" ;;
+        de:rc_installed)    echo "installiert:" ;;
+        *:rc_installed)     echo "installed:" ;;
+        it:rc_tag_fallback) echo "nessun tag registrato: assumo" ;;
+        de:rc_tag_fallback) echo "kein Tag vermerkt: nehme an" ;;
+        *:rc_tag_fallback)  echo "no tag recorded: assuming" ;;
         it:rc_lastcheck)    echo "ultimo controllo" ;;
         de:rc_lastcheck)    echo "letzte Pruefung" ;;
         *:rc_lastcheck)     echo "last check" ;;
@@ -552,6 +558,9 @@ t() {
         it:rc_rollcurrent)  echo "in uso ora" ;;
         de:rc_rollcurrent)  echo "derzeit aktiv" ;;
         *:rc_rollcurrent)   echo "running now" ;;
+        it:rc_rollwhen)     echo "in uso il" ;;
+        de:rc_rollwhen)     echo "aktiv am" ;;
+        *:rc_rollwhen)      echo "in use on" ;;
         it:rc_rollpick)     echo "Numero (Invio = 1, altro = annulla): " ;;
         de:rc_rollpick)     echo "Nummer (Enter = 1, sonst = abbrechen): " ;;
         *:rc_rollpick)      echo "Number (Enter = 1, anything else = cancel): " ;;
@@ -1777,18 +1786,37 @@ core_fetch_tag() {
 }
 
 rc_backup_current() {
-    # copy the CURRENTLY installed script (+ companion) into versions/<ver>/
+    # Copy the CURRENTLY installed script (+ companion) into versions/<tag>/.
+    # Keyed by TAG, not by $VERSION (E6.1): beta.1 and beta.2 share the same
+    # VERSION 2.17.0, so a version-keyed backup made them overwrite each other
+    # and the older beta became unrecoverable.
     local self dir vdir
     self="$(realpath "$0" 2>/dev/null)"; dir="$(dirname "$self")"
-    vdir="$GLIA_VERSIONS_DIR/$VERSION"
+    vdir="$GLIA_VERSIONS_DIR/$(glia_effective_tag)"
     mkdir -p "$vdir" 2>/dev/null || return 1
     cp -f "$self" "$vdir/glia" 2>/dev/null || return 1
+    # Written while this version is still the running one, so it answers
+    # "when was this version in use?" for the --rollback list.
+    date +%s > "$vdir/installed-at" 2>/dev/null
     [ -e "$dir/glia-hardware" ] && cp -f "$dir/glia-hardware" "$vdir/glia-hardware" 2>/dev/null
     return 0
 }
 
+rc_backup_when() {
+    # $1 = backup dir name. Prints a human date, or nothing if unknown
+    # (legacy backups predate the installed-at stamp).
+    local f="$GLIA_VERSIONS_DIR/$1/installed-at" ts
+    [ -r "$f" ] || return 1
+    ts="$(head -n1 "$f" 2>/dev/null)"
+    [[ "$ts" =~ ^[0-9]+$ ]] || return 1
+    date -d "@$ts" '+%Y-%m-%d' 2>/dev/null
+}
+
 rc_sort_versions() {
-    # read version strings on stdin, print them ASCENDING (oldest first) by ver_cmp
+    # Read version/tag strings on stdin, print them ASCENDING (oldest first).
+    # Tag-named ("v2.17.0-beta.1") and legacy version-named ("2.17.0") dirs mix
+    # freely: ver_cmp already ignores a leading 'v', so no normalisation pass is
+    # needed here and the caller keeps the REAL directory name for its paths.
     local -a a=(); local x i j tmp n
     while IFS= read -r x; do [ -n "$x" ] && a+=("$x"); done
     n=${#a[@]}
@@ -1872,7 +1900,8 @@ glia_rollback() {
     # rc_backup_current. The CURRENT script is backed up first, so a rollback is
     # itself reversible. Newest backup first; Enter picks it.
     local self dir; self="$(realpath "$0" 2>/dev/null)"; dir="$(dirname "$self")"
-    local -a vers=(); local v d i=1 ans pick src sudo=""
+    local -a vers=(); local v d i=1 ans pick src sudo="" when cur
+    cur="$(glia_effective_tag)"      # backups are keyed by TAG since E6.1
     if [ -d "$GLIA_VERSIONS_DIR" ]; then
         while IFS= read -r v; do [ -n "$v" ] && vers+=("$v"); done < <(
             for d in "$GLIA_VERSIONS_DIR"/*/; do
@@ -1882,10 +1911,11 @@ glia_rollback() {
     [ "${#vers[@]}" -gt 0 ] || { echo -e "${YELLOW}$(t rc_norollback)${NC}"; return 0; }
     echo -e "${BLUE}$(t rc_rolllist)${NC}"
     for v in "${vers[@]}"; do
-        if [ "$v" = "$VERSION" ]; then
-            echo -e "  $i) $v   ${YELLOW}($(t rc_rollcurrent))${NC}"
+        when="$(rc_backup_when "$v")" && when="   ${BLUE}($(t rc_rollwhen) $when)${NC}" || when=""
+        if [ "$v" = "$cur" ]; then
+            echo -e "  $i) $v   ${YELLOW}($(t rc_rollcurrent))${NC}$when"
         else
-            echo "  $i) $v"
+            echo -e "  $i) $v$when"
         fi
         i=$((i+1))
     done
@@ -1898,7 +1928,7 @@ glia_rollback() {
     pick="${vers[$((ans-1))]}"
     src="$GLIA_VERSIONS_DIR/$pick/glia"
     [ -f "$src" ] || { echo -e "${RED}$(t rc_norollback)${NC}" >&2; return 1; }
-    [ "$pick" = "$VERSION" ] && { echo -e "${YELLOW}$(t rc_rollsame)${NC}"; return 0; }
+    [ "$pick" = "$cur" ] && { echo -e "${YELLOW}$(t rc_rollsame)${NC}"; return 0; }
     echo -e "$(t rc_rollto) ${GREEN}$pick${NC}"
     core_confirm "$(t rc_rollconfirm)" || { echo "$(t su_denied)"; return 0; }
     bash -n "$src" 2>/dev/null || { echo -e "${RED}$(t su_dlfail)${NC}" >&2; return 1; }
@@ -1912,7 +1942,11 @@ glia_rollback() {
     if [ -f "$GLIA_VERSIONS_DIR/$pick/glia-hardware" ] && [ -e "$dir/glia-hardware" ]; then
         $sudo install -m755 "$GLIA_VERSIONS_DIR/$pick/glia-hardware" "$dir/glia-hardware" 2>/dev/null
     fi
-    core_log "rollback" "$VERSION -> $pick"
+    # Easy to miss, essential (E6.1): without this the record would keep naming
+    # the version we just rolled AWAY from, and every later comparison would be
+    # made against a tag that is no longer installed.
+    tag_set "$pick"
+    core_log "rollback" "$cur -> $pick"
     echo -e "${GREEN}$(t su_done)${NC}"
     core_show_cmd "install -m755 ${src/#$HOME/\~} ${dir/#$HOME/\~}/glia"
     "$dir/glia" -V
@@ -2972,9 +3006,13 @@ chan_set() {
 tag_set() {
     # $1 = tag (e.g. v2.17.0-beta.2). Called after EVERY successful install:
     # --update and --rollback alike (a record that lies is worse than none).
-    [ -n "${1:-}" ] || return 1
+    # Canonicalised here, at the single write point: a rollback to a legacy
+    # backup dir named "2.17.0" still records "v2.17.0".
+    local tag="${1:-}"
+    [ -n "$tag" ] || return 1
+    case "$tag" in v*) ;; *) tag="v$tag" ;; esac
     mkdir -p "$(dirname "$GLIA_INSTALLED_TAG_FILE")" 2>/dev/null || return 1
-    printf '%s\n' "$1" > "$GLIA_INSTALLED_TAG_FILE"
+    printf '%s\n' "$tag" > "$GLIA_INSTALLED_TAG_FILE"
 }
 
 glia_effective_tag() {
@@ -3052,8 +3090,9 @@ rc_cached() {
 
 # --- offline version line for -V (never touches the network) ---
 version_line() {
-    echo "$ASSIST_NAME $VERSION (GLIA)"
-    echo -e "$(t rc_channel): $(chan_get)"
+    # One honest line: VERSION is the code, the tag is WHICH build of that code.
+    # Showing 2.17.0 while v2.17.0-beta.1 is installed was confusing (E6.1).
+    echo -e "$ASSIST_NAME $VERSION (GLIA) · $(t rc_channel): $(chan_get) · $(t rc_installed) $(glia_effective_tag)"
     local c chan tag cmp age
     if c="$(rc_cached)"; then
         chan="${c%%|*}"; c="${c#*|}"
@@ -3131,8 +3170,13 @@ doctor() {
     # the ONLY network touch in doctor.
     local dsrc blist nback=0 cc age
     dsrc="$(realpath "$0" 2>/dev/null)"
-    echo -e "  ${BLUE}i${NC} $(t doc_rc_version) ${GREEN}$VERSION${NC}   ($(t rc_channel): $(chan_get))"
+    echo -e "  ${BLUE}i${NC} $(t doc_rc_version) ${GREEN}$VERSION${NC}   [$(glia_effective_tag)]   ($(t rc_channel): $(chan_get))"
     echo -e "  ${BLUE}i${NC} $(t doc_rc_source) ${dsrc/#$HOME/\~}"
+    # The tag record missing or stale is a DIAGNOSTIC, not a failure: it is the
+    # normal state of a fresh install, and it explains which tag we compare with.
+    if tag_is_fallback; then
+        echo -e "  ${BLUE}i${NC} $(t rc_tag_fallback) ${GREEN}v$VERSION${NC}   (${GLIA_INSTALLED_TAG_FILE/#$HOME/\~})"
+    fi
     if [ -d "$GLIA_VERSIONS_DIR" ]; then
         blist="$(for d in "$GLIA_VERSIONS_DIR"/*/; do [ -f "$d/glia" ] && basename "$d"; done \
                  | rc_sort_versions | tac | paste -sd' ' -)"
