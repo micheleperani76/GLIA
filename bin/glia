@@ -1,12 +1,35 @@
 #!/usr/bin/env bash
 # ============================================================
 #  glia - AI terminal assistant (Ollama + aichat)
-#  Version: 2.16.0 - 2026-07-15
+#  Version: 2.17.0 - 2026-07-16
 #  Author: Michele (with Claude)
 #  Project: GLIA (GNU Linux IA)
 #
 #  Design pillar: commands follow standard terminal conventions, so
 #  what you learn here you can reuse in other programs (and vice versa).
+#
+#  What's new in v2.17 ("release channels: beta, and a way back"):
+#   - GLIA updates itself from git TAGS now, not from the tip of main. Two
+#     channels: stable (only vX.Y.Z) and beta (also previews, -beta/-rc).
+#     `--channel [stable|beta]` shows or switches it; the default is stable.
+#   - CHANGED: bare `--update` now updates GLIA itself; the Ollama ENGINE
+#     moved to `--update-engine`. The explicit old forms keep working as
+#     hidden aliases (`--update glia`, `--update ollama`), so ONLY the bare
+#     form changed behaviour. `-U` is an alias of `--update`.
+#   - `--update --check`: ask only, install nothing.
+#   - every update backs the running script up first (~/.local/share/glia/
+#     versions, the last 3 are kept), so `--rollback` can put any of them
+#     back - and a rollback is itself reversible (it backs up first too).
+#   - the new version is fetched with ONE shallow clone of the tag and
+#     validated BEFORE it replaces anything (bash -n + the file's VERSION
+#     must match the tag); the swap is atomic (install + mv), so a failed
+#     update leaves the working version untouched. Companions (glia-hardware,
+#     completions) are refreshed from the SAME tag, so a version is coherent.
+#   - `-V` no longer touches the network: it prints the version, the channel
+#     and the last CACHED check with its age. The online check happens only
+#     in `--update [--check]` and `--doctor`.
+#   - `--doctor` gained a release section: version, channel, running file,
+#     versions available for rollback, repo reachability, cached-check age.
 #
 #  What's new in v2.16 ("show the load"):
 #   - a rotating spinner appears while a model is loaded into RAM (the guest AI
@@ -114,8 +137,9 @@
 #     saved default if it was the one removed)
 #   - `-m list|ls`: aliases of the plain `-m` listing (ollama nomenclature:
 #     pull/rm/list are the SAME words ollama uses)
-#   - `--update`: update the Ollama ENGINE itself, distro-aware (pacman
-#     repo on Arch/CachyOS, official install script elsewhere)
+#   - `--update-engine` (it was `--update` until v2.17): update the Ollama
+#     ENGINE itself, distro-aware (pacman repo on Arch/CachyOS, official
+#     install script elsewhere)
 #   - teaching pillar, everywhere: glia can do it FOR you, but its real job
 #     is to hand you the command so YOU can try it at the terminal. Every
 #     internal action now prints the equivalent manual command via
@@ -283,7 +307,11 @@
 #    glia --clear-cache    empty the command cache
 #    glia --doctor         one-shot health check (engine, model, RAM, config)
 #    glia -m pull [name]   download a new AI model (alone: guided menu; update/rm)
-#    glia --update         update the Ollama engine itself (--update help: guide)
+#    glia --update         update GLIA itself, from the chosen channel (-U)
+#    glia --update --check check for a new version, install nothing
+#    glia --update-engine  update the Ollama engine itself (--update help: guide)
+#    glia --channel [ch]   show or switch the release channel (stable|beta)
+#    glia --rollback       go back to a previously installed version
 #    glia --kaboom         guided uninstall (program only, or everything)
 #    glia --rename <name>  rename the assistant (glia always stays too)
 #    glia --lang <code>    set interface language (en, it, de)
@@ -292,7 +320,7 @@
 # ============================================================
 
 # ----------------- CONFIGURATION -----------------
-VERSION="2.16.0"
+VERSION="2.17.0"
 DEFAULT_MODEL="qwen2.5-coder:7b"
 if [ -r "$HOME/.config/glia/model" ]; then
     MODEL="ollama:$(head -n1 "$HOME/.config/glia/model")"
@@ -1126,8 +1154,11 @@ Impostazioni:
   $ASSIST_NAME --rename <nome>     dai un nuovo nome all'assistente (glia resta sempre)
   $ASSIST_NAME --lang <it|en|de>   cambia la lingua dell'interfaccia
   $ASSIST_NAME --doctor            controllo rapido: motore, modello, RAM, config
-  $ASSIST_NAME --update            aggiorna il motore Ollama
-  $ASSIST_NAME --update glia       aggiorna GLIA stesso (il programma)
+  $ASSIST_NAME --update            aggiorna GLIA stesso (il programma)   [-U]
+  $ASSIST_NAME --update --check    controlla se c'e' una versione nuova, non installa
+  $ASSIST_NAME --channel [canale]  mostra/cambia il canale (stable | beta)
+  $ASSIST_NAME --rollback          torna a una versione precedente
+  $ASSIST_NAME --update-engine     aggiorna il motore Ollama
   $ASSIST_NAME --clear-cache       svuota la cache delle risposte
   $ASSIST_NAME --kaboom            disinstalla (chiede: solo il programma, o anche motore e IA)
   $ASSIST_NAME -V, --version       mostra la versione
@@ -1175,8 +1206,11 @@ Einstellungen:
   $ASSIST_NAME --rename <Name>    dem Assistenten einen neuen Namen geben (glia bleibt immer)
   $ASSIST_NAME --lang <it|en|de>  Sprache der Oberfläche ändern
   $ASSIST_NAME --doctor           Schnellcheck: Engine, Modell, RAM, Config
-  $ASSIST_NAME --update           Ollama-Engine aktualisieren
-  $ASSIST_NAME --update glia      GLIA selbst aktualisieren (das Programm)
+  $ASSIST_NAME --update           GLIA selbst aktualisieren (das Programm)   [-U]
+  $ASSIST_NAME --update --check   nur pruefen, ob es eine neue Version gibt
+  $ASSIST_NAME --channel [Kanal]  Kanal zeigen/wechseln (stable | beta)
+  $ASSIST_NAME --rollback         zu einer frueheren Version zurueck
+  $ASSIST_NAME --update-engine    Ollama-Engine aktualisieren
   $ASSIST_NAME --clear-cache      Antwort-Cache leeren
   $ASSIST_NAME --kaboom           deinstallieren (fragt: nur Programm, oder auch Engine und KIs)
   $ASSIST_NAME -V, --version      Version anzeigen
@@ -1224,8 +1258,11 @@ Settings:
   $ASSIST_NAME --rename <name>    give the assistant a new name (glia always stays)
   $ASSIST_NAME --lang <it|en|de>  change the interface language
   $ASSIST_NAME --doctor           quick check: engine, model, RAM, config
-  $ASSIST_NAME --update           update the Ollama engine
-  $ASSIST_NAME --update glia      update GLIA itself (the program)
+  $ASSIST_NAME --update           update GLIA itself (the program)   [-U]
+  $ASSIST_NAME --update --check   check for a new version, install nothing
+  $ASSIST_NAME --channel [ch]     show/switch the release channel (stable | beta)
+  $ASSIST_NAME --rollback         go back to a previous version
+  $ASSIST_NAME --update-engine    update the Ollama engine
   $ASSIST_NAME --clear-cache      empty the answer cache
   $ASSIST_NAME --kaboom           uninstall (asks: program only, or engine and AIs too)
   $ASSIST_NAME -V, --version      show the version
@@ -2377,7 +2414,7 @@ Comandi:
   $ASSIST_NAME -m pull <nome>      scarica una nuova IA (es. qwen3:8b), con controllo RAM
   $ASSIST_NAME -m update [n|nome]  aggiorna le IA scaricate (tutte, o solo quella indicata)
   $ASSIST_NAME -m rm <n|nome>      rimuove una IA (chiede conferma)
-  $ASSIST_NAME --update            aggiorna il motore Ollama stesso
+  $ASSIST_NAME --update-engine     aggiorna il motore Ollama stesso
   $ASSIST_NAME -m help             questo aiuto
 
 Stessi nomi di Ollama (list, pull, rm): quello che impari qui vale anche là.
@@ -2411,7 +2448,7 @@ Befehle:
   $ASSIST_NAME -m pull <Name>        eine neue KI laden (z. B. qwen3:8b), mit RAM-Check
   $ASSIST_NAME -m update [n|Name]    geladene KIs aktualisieren (alle, oder nur die eine)
   $ASSIST_NAME -m rm <n|Name>        eine KI entfernen (fragt nach Bestätigung)
-  $ASSIST_NAME --update              die Ollama-Engine selbst aktualisieren
+  $ASSIST_NAME --update-engine       die Ollama-Engine selbst aktualisieren
   $ASSIST_NAME -m help               diese Hilfe
 
 Gleiche Namen wie Ollama (list, pull, rm): was du hier lernst, gilt auch dort.
@@ -2445,7 +2482,7 @@ Commands:
   $ASSIST_NAME -m pull <name>      download a new AI (e.g. qwen3:8b), with a RAM check
   $ASSIST_NAME -m update [n|name]  refresh the downloaded AIs (all, or just that one)
   $ASSIST_NAME -m rm <n|name>      remove an AI (asks for confirmation)
-  $ASSIST_NAME --update            update the Ollama engine itself
+  $ASSIST_NAME --update-engine     update the Ollama engine itself
   $ASSIST_NAME -m help             this help
 
 Same names as Ollama (list, pull, rm): what you learn here works there too.
@@ -2476,12 +2513,21 @@ Caricamento e aggiornamento IA - $ASSIST_NAME --update / -m pull
 Il motore (Ollama) fa girare le IA; i modelli SONO le IA.
 Due cose diverse, due aggiornamenti diversi.
 
-Motore:
-  $ASSIST_NAME --update            aggiorna Ollama (usa il package manager di QUESTA macchina)
+Programma (GLIA):
+  $ASSIST_NAME --update             aggiorna GLIA stesso: ultimo tag del canale scelto   [-U]
+  $ASSIST_NAME --update --check     controlla soltanto, non installa niente
+  $ASSIST_NAME --channel            mostra il canale in uso
+  $ASSIST_NAME --channel beta       anteprime (-beta/-rc) oltre alle definitive
+  $ASSIST_NAME --channel stable     solo versioni definitive (predefinito)
+  $ASSIST_NAME --rollback           torna a una versione precedente (backup automatici)
 
-Programma:
-  $ASSIST_NAME --update glia        aggiorna GLIA stesso (scarica l'ultima versione da GitHub)
-  a mano:  git clone https://github.com/micheleperani76/GLIA && ./GLIA/scripts/install-assistant.sh
+  · prima di ogni aggiornamento la versione in uso viene salvata in
+    ~/.local/share/glia/versions (ultime 3), quindi si puo' sempre tornare indietro
+  · la nuova versione viene verificata PRIMA di sostituire quella che funziona
+  · a mano:  git clone https://github.com/micheleperani76/GLIA && ./GLIA/scripts/install-assistant.sh
+
+Motore (Ollama):
+  $ASSIST_NAME --update-engine      aggiorna Ollama (usa il package manager di QUESTA macchina)
 
 Modelli:
   $ASSIST_NAME -m pull             (da solo) check hardware + lista di IA fattibili, scegli e scarica
@@ -2500,7 +2546,7 @@ Puoi farlo tu, dal terminale:
   curl -fsSL https://ollama.com/install.sh | sh    aggiorna il motore (altre distro)
 
 Esempi:
-  $ASSIST_NAME --update && $ASSIST_NAME -m pull    prima il motore, poi una IA nuova
+  $ASSIST_NAME --update-engine && $ASSIST_NAME -m pull   prima il motore, poi una IA nuova
   $ASSIST_NAME -m pull qwen3:30b-a3b
 
 Note:
@@ -2514,12 +2560,21 @@ KIs laden und aktualisieren - $ASSIST_NAME --update / -m pull
 Die Engine (Ollama) laesst die KIs laufen; die Modelle SIND die KIs.
 Zwei verschiedene Dinge, zwei verschiedene Updates.
 
-Engine:
-  $ASSIST_NAME --update            Ollama aktualisieren (nutzt den Paketmanager DIESES Rechners)
+Programm (GLIA):
+  $ASSIST_NAME --update             GLIA selbst aktualisieren: neuester Tag im Kanal   [-U]
+  $ASSIST_NAME --update --check     nur pruefen, nichts installieren
+  $ASSIST_NAME --channel            aktuellen Kanal anzeigen
+  $ASSIST_NAME --channel beta       Vorabversionen (-beta/-rc) zusaetzlich zu finalen
+  $ASSIST_NAME --channel stable     nur finale Versionen (Standard)
+  $ASSIST_NAME --rollback           zu einer frueheren Version zurueck (automatische Backups)
 
-Programm:
-  $ASSIST_NAME --update glia        GLIA selbst aktualisieren (laedt die neueste Version von GitHub)
-  manuell: git clone https://github.com/micheleperani76/GLIA && ./GLIA/scripts/install-assistant.sh
+  · vor jedem Update wird die laufende Version in ~/.local/share/glia/versions
+    gesichert (die letzten 3), man kann also immer zurueck
+  · die neue Version wird geprueft, BEVOR die funktionierende ersetzt wird
+  · manuell: git clone https://github.com/micheleperani76/GLIA && ./GLIA/scripts/install-assistant.sh
+
+Engine (Ollama):
+  $ASSIST_NAME --update-engine      Ollama aktualisieren (nutzt den Paketmanager DIESES Rechners)
 
 Modelle:
   $ASSIST_NAME -m pull             (allein) Hardware-Check + Liste machbarer KIs, waehlen und laden
@@ -2538,7 +2593,7 @@ Du kannst es selbst tun, im Terminal:
   curl -fsSL https://ollama.com/install.sh | sh    Engine aktualisieren (andere Distros)
 
 Beispiele:
-  $ASSIST_NAME --update && $ASSIST_NAME -m pull    erst die Engine, dann eine neue KI
+  $ASSIST_NAME --update-engine && $ASSIST_NAME -m pull   erst die Engine, dann eine neue KI
   $ASSIST_NAME -m pull qwen3:30b-a3b
 
 Hinweise:
@@ -2552,12 +2607,21 @@ Downloading and updating AIs - $ASSIST_NAME --update / -m pull
 The engine (Ollama) runs the AIs; the models ARE the AIs.
 Two different things, two different updates.
 
-Engine:
-  $ASSIST_NAME --update            update Ollama (uses THIS machine's package manager)
+Program (GLIA):
+  $ASSIST_NAME --update             update GLIA itself: latest tag on the chosen channel   [-U]
+  $ASSIST_NAME --update --check     check only, install nothing
+  $ASSIST_NAME --channel            show the channel in use
+  $ASSIST_NAME --channel beta       previews (-beta/-rc) on top of the final ones
+  $ASSIST_NAME --channel stable     final versions only (default)
+  $ASSIST_NAME --rollback           go back to a previous version (automatic backups)
 
-Program:
-  $ASSIST_NAME --update glia        update GLIA itself (downloads the latest version from GitHub)
-  by hand: git clone https://github.com/micheleperani76/GLIA && ./GLIA/scripts/install-assistant.sh
+  · before every update the running version is saved in
+    ~/.local/share/glia/versions (last 3 kept), so you can always go back
+  · the new version is validated BEFORE it replaces the one that works
+  · by hand: git clone https://github.com/micheleperani76/GLIA && ./GLIA/scripts/install-assistant.sh
+
+Engine (Ollama):
+  $ASSIST_NAME --update-engine      update Ollama (uses THIS machine's package manager)
 
 Models:
   $ASSIST_NAME -m pull             (alone) hardware check + list of feasible AIs, pick and download
@@ -2576,7 +2640,7 @@ You can do it yourself, at the terminal:
   curl -fsSL https://ollama.com/install.sh | sh    update the engine (other distros)
 
 Examples:
-  $ASSIST_NAME --update && $ASSIST_NAME -m pull    engine first, then a new AI
+  $ASSIST_NAME --update-engine && $ASSIST_NAME -m pull   engine first, then a new AI
   $ASSIST_NAME -m pull qwen3:30b-a3b
 
 Notes:

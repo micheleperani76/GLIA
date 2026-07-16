@@ -60,7 +60,10 @@ complete -c glia -n __glia_first -a '--memory'    -d 'list stored facts'
 complete -c glia -n __glia_first -a '--forget'    -d 'delete fact number n'
 complete -c glia -n __glia_first -a '--clear-cache' -d 'empty the command cache'
 complete -c glia -n __glia_first -a '--doctor'    -d 'one-shot health check'
-complete -c glia -n __glia_first -a '--update'    -d 'update the Ollama engine'
+complete -c glia -n __glia_first -a '--update'    -d 'update GLIA itself (chosen channel)'
+complete -c glia -n __glia_first -a '--update-engine' -d 'update the Ollama engine'
+complete -c glia -n __glia_first -a '--channel'   -d 'show/switch release channel (stable|beta)'
+complete -c glia -n __glia_first -a '--rollback'  -d 'go back to a previous version'
 complete -c glia -n __glia_first -a '--rename'    -d 'rename the assistant'
 complete -c glia -n __glia_first -a '--lang'      -d 'interface language'
 
@@ -90,8 +93,13 @@ complete -c glia -n 'contains -- (__glia_prev) --web-model --project-model' -a '
 # groups that take "help"
 complete -c glia -n 'contains -- (__glia_prev) --update --memory -p --project -i --interactive' -a 'help'
 
-# --update glia: update the GLIA program itself (self-update)
-complete -c glia -n 'contains -- (__glia_prev) --update' -a 'glia' -d 'update GLIA itself'
+# --update --check: ask only, install nothing. Bare --update already updates
+# GLIA itself; 'glia'/'ollama' remain hidden aliases and are not offered here.
+complete -c glia -n 'contains -- (__glia_prev) --update' -a '--check' -d 'check only, install nothing'
+
+# --channel stable|beta
+complete -c glia -n 'contains -- (__glia_prev) --channel' -a 'stable' -d 'final versions only (default)'
+complete -c glia -n 'contains -- (__glia_prev) --channel' -a 'beta' -d 'also previews (-beta/-rc)'
 
 # renamed assistant? add its name too, e.g.:
 # complete -c myai --wraps glia

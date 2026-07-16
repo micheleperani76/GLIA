@@ -307,8 +307,10 @@ glia -m pull                           # guided download: hardware check + the A
 glia -m update                         # refresh the downloaded models (only fetches new versions)
 glia -m ps                             # which model is loaded in RAM right now (= ollama ps)
 glia -m stop <n|name>                  # unload a model from RAM immediately (= ollama stop)
-glia --update                          # update the Ollama engine itself (glia --update help: full guide)
-glia --update glia                     # update GLIA itself: pulls the latest version from GitHub, asks before replacing
+glia --update                          # update GLIA itself, from your channel (glia --update help: full guide)
+glia --update --check                  # is there a new version? ask only, install nothing
+glia --rollback                        # go back to a previously installed version
+glia --update-engine                   # update the Ollama engine itself
 glia --kaboom                          # guided uninstall (level 1: program only · level 2: everything) — asks you to type YES
 glia-hardware                           # hardware report and recommended models
 ```
@@ -316,6 +318,49 @@ glia-hardware                           # hardware report and recommended models
 At every proposed command you can also press `m` to edit it in place before
 running, or `e` to have the AI explain what it does. Bash tab-completion is in
 `completions/glia.bash` (source it from `~/.bashrc`).
+
+## Updates, the beta channel, and going back
+
+GLIA updates itself from git **tags**, not from the tip of `main`, so an update
+always lands on a version that was deliberately released. There are two channels:
+
+| Channel | What you get | Tags |
+|---|---|---|
+| `stable` (default) | only finished versions | `vX.Y.Z` |
+| `beta` | previews too, as soon as they exist | `vX.Y.Z-beta.N`, `vX.Y.Z-rc.N` |
+
+```bash
+glia --channel                 # which channel am I on?
+glia --channel beta            # opt into previews
+glia --channel stable          # back to finished versions only
+glia --update --check          # ask, install nothing
+glia --update                  # update to the newest tag on your channel
+glia --rollback                # put a previous version back
+```
+
+Safety, by design:
+
+- the running script is **backed up before every update** (`~/.local/share/glia/versions`,
+  the last 3 are kept), so `--rollback` can always put one back — and a rollback
+  backs up too, so it is itself reversible;
+- the new version is fetched with one shallow clone of the tag and **validated
+  before it replaces anything** (syntax check + the file's version must match the
+  tag), and the swap is atomic: a failed update leaves the working version alone;
+- `glia -V` **never touches the network** — it shows your version, your channel
+  and the last cached check with its age. The online check only happens in
+  `glia --update [--check]` and `glia --doctor`.
+
+> **Changed in v2.17:** bare `glia --update` now updates **GLIA**; the Ollama
+> engine moved to `glia --update-engine`. The explicit old forms (`glia --update glia`,
+> `glia --update ollama`) still work, so only the bare form changed.
+
+### Release conventions (for the repo)
+
+- Tags are semver: stable `vX.Y.Z`, pre-releases `vX.Y.Z-beta.N` / `vX.Y.Z-rc.N`.
+- `stable` sees only `vX.Y.Z`; `beta` sees the highest tag of either kind.
+- Promoting a preview = tagging **the same commit** `vX.Y.Z`. Nothing is rebuilt.
+- GitHub Releases carry the changelog for stable tags; betas can be tag-only.
+  The client never depends on the Releases API — plain `git ls-remote --tags`.
 
 ## Model tiers by hardware
 

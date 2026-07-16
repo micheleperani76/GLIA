@@ -36,7 +36,8 @@ _glia() {
     flags="-h --help -V --version -i --interactive -d --ask -l --log
            -a --alias -m --model -p --project --remember --memory --forget
            -w --web -w+ --web-deep --web-model --project-model
-           --clear-cache --doctor --update --rename --lang"
+           --clear-cache --doctor -U --update --update-engine --channel --rollback
+           --rename --lang"
 
     case "$prev" in
         -a|--alias)
@@ -49,8 +50,13 @@ _glia() {
         -m|--model)
             COMPREPLY=( $(compgen -W "help list ls ps stop pull update rm $(_glia_model_names)" -- "$cur") )
             return ;;
-        --update)
-            COMPREPLY=( $(compgen -W "help glia" -- "$cur") )
+        -U|--update)
+            # bare --update updates GLIA itself; --check asks only.
+            # 'glia' and 'ollama' stay as hidden aliases (not offered here).
+            COMPREPLY=( $(compgen -W "--check help" -- "$cur") )
+            return ;;
+        --channel)
+            COMPREPLY=( $(compgen -W "stable beta" -- "$cur") )
             return ;;
         pull)
             # -m pull <name>: a NEW model name is free text, nothing to complete
