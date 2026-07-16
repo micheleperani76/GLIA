@@ -562,9 +562,12 @@ t() {
         it:rc_installed)    echo "installato:" ;;
         de:rc_installed)    echo "installiert:" ;;
         *:rc_installed)     echo "installed:" ;;
-        it:rc_tag_fallback) echo "nessun tag registrato: assumo" ;;
-        de:rc_tag_fallback) echo "kein Tag vermerkt: nehme an" ;;
-        *:rc_tag_fallback)  echo "no tag recorded: assuming" ;;
+        it:rc_tag_fallback) echo "tag non registrato: per gli aggiornamenti assumo" ;;
+        de:rc_tag_fallback) echo "Tag nicht vermerkt: für Updates nehme ich an" ;;
+        *:rc_tag_fallback)  echo "no tag recorded: updates assume" ;;
+        it:rc_tag_fallback_fix) echo "se hai installato a mano, scrivi il tag reale in:" ;;
+        de:rc_tag_fallback_fix) echo "bei Handinstallation den echten Tag eintragen in:" ;;
+        *:rc_tag_fallback_fix)  echo "if you installed by hand, write the real tag into:" ;;
         it:rc_lastcheck)    echo "ultimo controllo" ;;
         de:rc_lastcheck)    echo "letzte Pruefung" ;;
         *:rc_lastcheck)     echo "last check" ;;
@@ -1071,9 +1074,21 @@ t() {
         it:doc_api)         echo "motore Ollama raggiungibile ($OLLAMA_URL)" ;;
         de:doc_api)         echo "Ollama-Engine erreichbar ($OLLAMA_URL)" ;;
         *:doc_api)          echo "Ollama engine reachable ($OLLAMA_URL)" ;;
-        it:doc_model)       echo "modello scaricato: ${MODEL#ollama:}" ;;
-        de:doc_model)       echo "Modell geladen: ${MODEL#ollama:}" ;;
-        *:doc_model)        echo "model downloaded: ${MODEL#ollama:}" ;;
+        it:doc_model)       echo "modello non scaricato: ${MODEL#ollama:}" ;;
+        de:doc_model)       echo "Modell nicht geladen: ${MODEL#ollama:}" ;;
+        *:doc_model)        echo "model not downloaded: ${MODEL#ollama:}" ;;
+        it:doc_sec_tools)   echo "Strumenti:" ;;
+        de:doc_sec_tools)   echo "Werkzeuge:" ;;
+        *:doc_sec_tools)    echo "Tools:" ;;
+        it:doc_sec_engine)  echo "Motore e modello:" ;;
+        de:doc_sec_engine)  echo "Engine und Modell:" ;;
+        *:doc_sec_engine)   echo "Engine and model:" ;;
+        it:doc_sec_paths)   echo "Comando e cartelle:" ;;
+        de:doc_sec_paths)   echo "Befehl und Ordner:" ;;
+        *:doc_sec_paths)    echo "Command and folders:" ;;
+        it:doc_sec_release) echo "Versione e aggiornamenti:" ;;
+        de:doc_sec_release) echo "Version und Updates:" ;;
+        *:doc_sec_release)  echo "Version and updates:" ;;
         it:doc_ram)         echo "RAM libera sufficiente per il modello" ;;
         de:doc_ram)         echo "genug freier RAM für das Modell" ;;
         *:doc_ram)          echo "enough free RAM for the model" ;;
@@ -1333,9 +1348,6 @@ t() {
         it:doc_git)         echo "git installato (serve a -p)" ;;
         de:doc_git)         echo "git installiert (für -p nötig)" ;;
         *:doc_git)          echo "git installed (needed by -p)" ;;
-        it:doc_codemodel)   echo "IA per il codice (-p, --new)" ;;
-        de:doc_codemodel)   echo "KI für Code (-p, --new)" ;;
-        *:doc_codemodel)    echo "code AI (-p, --new)" ;;
         # ---- pmode Phase 2: local commit + undo (v2.18) ----
         it:pmv_commit_ask)  echo "Salvo la modifica come commit locale? (non viene mai pushato) " ;;
         de:pmv_commit_ask)  echo "Änderung als lokalen Commit speichern? (wird nie gepusht) " ;;
@@ -3554,40 +3566,45 @@ doctor() {
             fails=$((fails+1))
         fi
     }
+    # v2.18: output grouped in four sections. Checks that pass stay visible
+    # (proof they ran); the MODEL check is the one exception: a green line per
+    # model was noise, so it only speaks when the model is missing. Skipping
+    # the check entirely would make the doctor blind, so it still runs.
     echo -e "${BLUE}=== $(t doc_title) ===${NC}"
+    echo -e "${YELLOW}$(t doc_sec_tools)${NC}"
     command -v aichat >/dev/null 2>&1;  doc_line $? "$(t doc_aichat)" "$(pkg_install_cmd aichat)"
     command -v jq >/dev/null 2>&1;      doc_line $? "$(t doc_jq)" "$(pkg_install_cmd jq)"
     command -v w3m >/dev/null 2>&1;     doc_line $? "$(t doc_w3m)" "$(pkg_install_cmd w3m)"
     command -v ollama >/dev/null 2>&1;  doc_line $? "$(t doc_ollama)" "https://ollama.com/download"
+    command -v git >/dev/null 2>&1;     doc_line $? "$(t doc_git)" "$(pkg_install_cmd git)"
+    echo
+    echo -e "${YELLOW}$(t doc_sec_engine)${NC}"
     curl -fsS --max-time 2 "$OLLAMA_URL/api/tags" >/dev/null 2>&1
     doc_line $? "$(t doc_api)" "systemctl start ollama"
     mname="${MODEL#ollama:}"
     case "$mname" in *:*) : ;; *) mname="$mname:latest" ;; esac
-    curl -fsS --max-time 5 "$OLLAMA_URL/api/tags" 2>/dev/null | grep -q "\"$mname\""
-    doc_line $? "$(t doc_model)" "ollama pull ${MODEL#ollama:}"
+    if ! curl -fsS --max-time 5 "$OLLAMA_URL/api/tags" 2>/dev/null | grep -q "\"$mname\""; then
+        doc_line 1 "$(t doc_model)" "ollama pull ${MODEL#ollama:}"
+    fi
     avail=$(awk '/MemAvailable/ {print int($2/1024)}' /proc/meminfo)
     need=$(ram_needed_mb)
     [ -n "$avail" ] && [ "$avail" -ge "$need" ]
     doc_line $? "$(t doc_ram) (${avail:-?} MB / ~${need} MB)" "glia-hardware"
+    echo
+    echo -e "${YELLOW}$(t doc_sec_paths)${NC}"
     command -v "$ASSIST_NAME" >/dev/null 2>&1
     doc_line $? "$(t doc_name)" "cp bin/glia ~/.local/bin/  (+ echo \$PATH)"
     mkdir -p "$LOGDIR" "$HOME/.config/glia" 2>/dev/null \
         && [ -w "$LOGDIR" ] && [ -w "$HOME/.config/glia" ]
     doc_line $? "$(t doc_dirs)" "ls -ld $LOGDIR ~/.config/glia"
-    [ -s "$WEBMODELFILE" ] && echo -e "  ${BLUE}i${NC} $(t wm_current) ${GREEN}$(head -n1 "$WEBMODELFILE")${NC}"
-    # --- project mode -p (Part A, v2.18) ---
-    command -v git >/dev/null 2>&1; doc_line $? "$(t doc_git)" "$(pkg_install_cmd git)"
     mkdir -p "$(dirname "$PMODE_LOG")" 2>/dev/null \
         && { [ ! -e "$PMODE_LOG" ] || [ -w "$PMODE_LOG" ]; } && [ -w "$(dirname "$PMODE_LOG")" ]
     doc_line $? "$(t doc_pmode_log)" "ls -ld $(dirname "$PMODE_LOG")"
-    if [ -s "$CODEMODELFILE" ]; then
-        echo -e "  ${BLUE}i${NC} $(t doc_codemodel): ${GREEN}$(head -n1 "$CODEMODELFILE")${NC}"
-    else
-        echo -e "  ${BLUE}i${NC} $(t doc_codemodel): $(t pm_follow)   ->   ${GREEN}$ASSIST_NAME --project-model${NC}"
-    fi
     # --- release channel / self-update (Part E, v2.17) ---
     # Informational only: never counted as failures. The repo probe below is
     # the ONLY network touch in doctor.
+    echo
+    echo -e "${YELLOW}$(t doc_sec_release)${NC}"
     local dsrc blist nback=0 cc cts
     dsrc="$(realpath "$0" 2>/dev/null)"
     echo -e "  ${BLUE}i${NC} $(t doc_rc_version) ${GREEN}$VERSION${NC}   [$(glia_effective_tag)]   ($(t rc_channel): $(chan_get))"
@@ -3595,7 +3612,8 @@ doctor() {
     # The tag record missing or stale is a DIAGNOSTIC, not a failure: it is the
     # normal state of a fresh install, and it explains which tag we compare with.
     if tag_is_fallback; then
-        echo -e "  ${BLUE}i${NC} $(t rc_tag_fallback) ${GREEN}v$VERSION${NC}   (${GLIA_INSTALLED_TAG_FILE/#$HOME/\~})"
+        echo -e "  ${BLUE}i${NC} $(t rc_tag_fallback) ${GREEN}v$VERSION${NC}"
+        echo -e "    $(t rc_tag_fallback_fix) ${GLIA_INSTALLED_TAG_FILE/#$HOME/\~}"
     fi
     if [ -d "$GLIA_VERSIONS_DIR" ]; then
         blist="$(for d in "$GLIA_VERSIONS_DIR"/*/; do [ -f "$d/glia" ] && basename "$d"; done \
