@@ -3073,19 +3073,39 @@ rc_check() {
     # ver_cmp v2.17.0-beta.2 vs 2.17.0 = -1 ("older"), so a newer beta was
     # never offered: the beta channel could not iterate.
     cmp="$(ver_cmp "$tag" "$(glia_effective_tag)")"
-    printf '%s\n%s\n%s\n' "$chan" "$tag" "$cmp" | core_cache_put "$RC_CHECK_KEY"
+    # Cache FACTS ONLY (E6.2): the channel we asked and the tag we saw. Storing
+    # the VERDICT froze it: right after an update -V kept saying "available",
+    # because the answer had been computed against the OLD installed tag.
+    printf '%s\n%s\n' "$chan" "$tag" | core_cache_put "$RC_CHECK_KEY"
     if [ "$cmp" = 1 ]; then NEWVER="${tag#v}"; return 1; fi
     return 0
 }
 
-# --- cached read (offline), for -V / --doctor: "chan|tag|cmp|age_days" ---
+# --- cached read (offline), for -V / --doctor: "tag|checked_at_epoch" ---
 rc_cached() {
-    local f="$GLIA_CACHE_DIR/$RC_CHECK_KEY" ts now age chan tag cmp
+    # Facts only (E6.2). No verdict is returned because none is stored: the
+    # caller recomputes it against glia_effective_tag(), so it can never go
+    # stale after an update, a rollback, or a channel switch.
+    # A cache entry from ANOTHER channel is a MISS: otherwise `--channel stable`
+    # would keep showing beta's latest tag. This is why --channel needs no
+    # explicit cache invalidation.
+    local f="$GLIA_CACHE_DIR/$RC_CHECK_KEY" ts chan tag
     [ -r "$f" ] || return 1
     ts="$(sed -n 1p "$f")"; [[ "$ts" =~ ^[0-9]+$ ]] || return 1
-    chan="$(sed -n 2p "$f")"; tag="$(sed -n 3p "$f")"; cmp="$(sed -n 4p "$f")"
-    now="$(date +%s)"; age=$(( (now - ts) / 86400 ))
-    printf '%s|%s|%s|%s' "$chan" "$tag" "$cmp" "$age"
+    chan="$(sed -n 2p "$f")"; tag="$(sed -n 3p "$f")"
+    [ -n "$tag" ] || return 1
+    [ "$chan" = "$(chan_get)" ] || return 1
+    printf '%s|%s' "$tag" "$ts"
+}
+
+rc_age_human() {
+    # $1 = epoch. Compact, language-neutral age: 45m / 2h / 3d. "(0d)" for a
+    # check made a minute ago was technically true and practically useless.
+    local now age; now="$(date +%s)"; age=$(( now - ${1:-0} ))
+    [ "$age" -lt 0 ] && age=0
+    if   [ "$age" -lt 3600 ];  then printf '%dm' $(( age / 60 ))
+    elif [ "$age" -lt 86400 ]; then printf '%dh' $(( age / 3600 ))
+    else                            printf '%dd' $(( age / 86400 )); fi
 }
 
 # --- offline version line for -V (never touches the network) ---
@@ -3093,15 +3113,17 @@ version_line() {
     # One honest line: VERSION is the code, the tag is WHICH build of that code.
     # Showing 2.17.0 while v2.17.0-beta.1 is installed was confusing (E6.1).
     echo -e "$ASSIST_NAME $VERSION (GLIA) · $(t rc_channel): $(chan_get) · $(t rc_installed) $(glia_effective_tag)"
-    local c chan tag cmp age
+    local c tag ts when
     if c="$(rc_cached)"; then
-        chan="${c%%|*}"; c="${c#*|}"
-        tag="${c%%|*}"; c="${c#*|}"
-        cmp="${c%%|*}"; age="${c##*|}"
-        if [ "$cmp" = 1 ]; then
-            echo -e "$(t rc_lastcheck) (${age}d): $(t doc_update_yes) ${GREEN}${tag#v}${NC} [$chan]"
+        tag="${c%%|*}"; ts="${c##*|}"
+        when="$(date -d "@$ts" '+%Y-%m-%d' 2>/dev/null) ($(rc_age_human "$ts"))"
+        # The verdict is computed HERE, from the cached facts (E6.2) — still no
+        # network. Recomputing is what makes -V honest after an update AND after
+        # a rollback, with no cache invalidation anywhere.
+        if [ "$(ver_cmp "$tag" "$(glia_effective_tag)")" = 1 ]; then
+            echo -e "$(t rc_lastcheck): $when — $(t doc_update_yes) ${GREEN}${tag#v}${NC}   ->   ${GREEN}$ASSIST_NAME --update${NC}"
         else
-            echo -e "$(t rc_lastcheck) (${age}d): $(t doc_update_no)"
+            echo -e "$(t rc_lastcheck): $when — $(t doc_update_no)"
         fi
     else
         echo -e "$(t rc_lastcheck): $(t rc_never)"
@@ -3168,7 +3190,7 @@ doctor() {
     # --- release channel / self-update (Part E, v2.17) ---
     # Informational only: never counted as failures. The repo probe below is
     # the ONLY network touch in doctor.
-    local dsrc blist nback=0 cc age
+    local dsrc blist nback=0 cc cts
     dsrc="$(realpath "$0" 2>/dev/null)"
     echo -e "  ${BLUE}i${NC} $(t doc_rc_version) ${GREEN}$VERSION${NC}   [$(glia_effective_tag)]   ($(t rc_channel): $(chan_get))"
     echo -e "  ${BLUE}i${NC} $(t doc_rc_source) ${dsrc/#$HOME/\~}"
@@ -3199,8 +3221,8 @@ doctor() {
         esac
     fi
     if cc="$(rc_cached)"; then
-        age="${cc##*|}"
-        echo -e "  ${BLUE}i${NC} $(t rc_lastcheck): ${age}d"
+        cts="${cc##*|}"
+        echo -e "  ${BLUE}i${NC} $(t rc_lastcheck): $(date -d "@$cts" '+%Y-%m-%d %H:%M' 2>/dev/null) ($(rc_age_human "$cts"))"
     else
         echo -e "  ${BLUE}i${NC} $(t rc_lastcheck): $(t rc_never)"
     fi
