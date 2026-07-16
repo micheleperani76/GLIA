@@ -113,11 +113,12 @@ footer .fbrand{font-weight:800;color:var(--white);font-size:1.05rem;margin-botto
     <a href="#alias">3 · Shortcuts</a>
     <a href="#memory">4 · Memory</a>
     <a href="#models">5 · Models</a>
-    <a href="#project">6 · Project mode</a>
-    <a href="#interactive">7 · Interactive</a>
-    <a href="#log">8 · Log</a>
-    <a href="#settings">9 · Settings</a>
-    <a href="#hardware">10 · Hardware</a>
+    <a href="#project">6 · Code (-p / --new)</a>
+    <a href="#translate">7 · Translate</a>
+    <a href="#interactive">8 · Interactive</a>
+    <a href="#log">9 · Log</a>
+    <a href="#settings">10 · Settings</a>
+    <a href="#hardware">11 · Hardware</a>
   </div>
 </div>
 
@@ -128,6 +129,7 @@ footer .fbrand{font-weight:800;color:var(--white);font-size:1.05rem;margin-botto
     <p class="why"><b>What it is:</b> the two things you always have, before any request. <b>Why it matters:</b> the built-in help is never more than one command away, and the assistant is yours to name. Give it a name that feels right and the terminal becomes <b>your own textual desktop</b> — a command line that answers to you, so working with your machine feels personal instead of intimidating.</p>
     <table class="cmds">
       <tr><td class="c">glia -h · --help</td><td class="d">The full built-in help, <b>always reachable from the terminal</b> — offline, and even if you forget everything else on this page.</td></tr>
+      <tr><td class="c">glia &lt;area&gt; help</td><td class="d">A <b>detailed help per area</b>, each one listing <b>every</b> subcommand it has: <code style="font-family:var(--mono);color:var(--teal)">-a help</code> (shortcuts) · <code style="font-family:var(--mono);color:var(--teal)">-m help</code> (the AIs) · <code style="font-family:var(--mono);color:var(--teal)">-p help</code> (edit files) · <code style="font-family:var(--mono);color:var(--teal)">--new help</code> (new projects) · <code style="font-family:var(--mono);color:var(--teal)">-T help</code> (translate) · <code style="font-family:var(--mono);color:var(--teal)">-w help</code> (web search) · <code style="font-family:var(--mono);color:var(--teal)">-i help</code> (interactive) · <code style="font-family:var(--mono);color:var(--teal)">--memory help</code> · <code style="font-family:var(--mono);color:var(--teal)">--update help</code>. This page mirrors them; the terminal always has the last word.</td></tr>
       <tr><td class="c">glia -V · --version</td><td class="d">Which version you're running.</td></tr>
       <tr><td class="c">glia --rename &lt;name&gt;</td><td class="d">Rename the assistant to whatever feels right — e.g. <code style="font-family:var(--mono);color:var(--teal)">mypc</code> — to build a real rapport with your machine. The <code style="font-family:var(--mono);color:var(--teal)">glia</code> command always stays as a fallback, so you can never lock yourself out.</td></tr>
     </table>
@@ -197,7 +199,7 @@ footer .fbrand{font-weight:800;color:var(--white);font-size:1.05rem;margin-botto
     <div class="grp-h"><span class="n">05</span><h2>Models / AI</h2></div>
     <p class="why"><b>What it is:</b> the models are downloaded and kept by Ollama; GLIA uses one at a time. <b>Why it exists:</b> different machines and tasks want different models — pick the right one, or override it just for a single command.</p>
     <table class="cmds">
-      <tr><td class="c">glia -m</td><td class="d">List downloaded models (numbered) and choose the default (guided). <code>glia -m list</code> and <code>glia -m ls</code> do the same. Each model shows the roles pinned onto it — <b>default · web · project</b> — so you see at a glance which AI serves which command.</td></tr>
+      <tr><td class="c">glia -m</td><td class="d">List downloaded models (numbered) and choose the default (guided). <code>glia -m list</code> and <code>glia -m ls</code> do the same. Each model shows the roles pinned onto it — <b>default · web · project · translate</b> — so you see at a glance which AI serves which command, e.g. <code style="font-family:var(--mono);color:var(--teal)">2) qwen2.5-coder:7b ← project · translate</code>.</td></tr>
       <tr><td class="c">glia -m &lt;n|name&gt;</td><td class="d">Set the default model.</td></tr>
       <tr><td class="c">glia -m &lt;n|name&gt; &lt;task&gt;</td><td class="d">Use that model just for this command — default unchanged.</td></tr>
       <tr><td class="c">glia -m pull</td><td class="d">Guided download: checks RAM, GPU and disk, then offers up to 10 models that actually FIT this machine — pick one by number. Ends by showing the manual command, so you can do it yourself.</td></tr>
@@ -220,17 +222,35 @@ footer .fbrand{font-weight:800;color:var(--white);font-size:1.05rem;margin-botto
     <p class="why"><b>What it is:</b> two opposite jobs, two flags. <code>-p</code> changes a file you already have; <code>--new</code> plans a new project and writes its files. Both confirm at every step. <b>Why it exists:</b> for work that goes beyond a single command — still transparent, still one approval at a time. <b>Heads-up (v2.18):</b> <code>-p</code> used to be the generator. It is now the editor, and the generator moved to <code>--new</code>. <code>glia -p something-that-is-not-a-file</code> tells you so instead of guessing — a typo in a filename must never silently scaffold a project.</p>
     <table class="cmds">
       <tr><td class="c">glia -p &lt;file&gt; "&lt;request&gt;"</td><td class="d">Edit a file that <b>already exists</b>: shows the diff and the exact <code>git apply</code> command, then asks. New in v2.18.</td></tr>
-      <tr><td class="c">glia --new &lt;idea&gt;</td><td class="d">Plan the steps and write the files of a <b>new</b> project (you confirm each one). This was <code>-p</code> up to v2.17.</td></tr>
+      <tr><td class="c">glia -p &lt;f1&gt; &lt;f2&gt; "&lt;request&gt;"</td><td class="d">The same on <b>several files at once</b>: one diff, one confirmation, one commit. New in v2.18.</td></tr>
+      <tr><td class="c">glia -p --undo</td><td class="d">Undo the last <code style="font-family:var(--mono);color:var(--teal)">-p</code> commit. It uses <code>git revert</code>, <b>never</b> <code>git reset</code>: the undo is itself a commit, so your history is never rewritten.</td></tr>
+      <tr><td class="c">glia --new &lt;idea&gt; · -n</td><td class="d">Plan the steps and write the files of a <b>new</b> project (you confirm each one). This was <code>-p</code> up to v2.17.</td></tr>
       <tr><td class="c">glia --project-model &lt;name&gt;</td><td class="d">Pin a dedicated AI for project mode (the twin of <code style="font-family:var(--mono);color:var(--teal)">--web-model</code>). <code style="font-family:var(--mono);color:var(--teal)">--project-model default</code> (or <code style="font-family:var(--mono);color:var(--teal)">-d</code>) follows your default; <code style="font-family:var(--mono);color:var(--teal)">--project-model</code> alone shows it and offers a guided menu.</td></tr>
-      <tr><td class="c">-p: at the diff prompt</td><td class="d"><b>s</b>/<b>y</b> = apply, Enter or <b>n</b> = cancel, <b>e</b> = rewrite the request, <b>q</b> = quit. Cancel and the patch stays in <code>/tmp</code>: apply it by hand whenever you like.</td></tr>
+      <tr><td class="c">-p: at the diff prompt</td><td class="d"><b>the confirm key follows your language</b> (en <b>y</b> · it <b>s</b> · de <b>j</b>) = apply, Enter or <b>n</b> = cancel, <b>e</b> = rewrite the request, <b>q</b> = quit. Cancel and the patch stays in <code>/tmp</code>: apply it by hand whenever you like.</td></tr>
       <tr><td class="c">--new: at the plan prompt</td><td class="d">Enter = proceed, <b>n</b> = cancel, or <b>type a hint</b> — the plan is revised with it, without losing what the original request asked for. Hints accumulate.</td></tr>
       <tr><td class="c">--new: at each file</td><td class="d">Enter = save, <b>v</b> = view all, <b>r</b> = regenerate, <b>type a hint</b> = regenerate following it, <b>s</b> = skip.</td></tr>
     </table>
-    <div class="note"><b>-p</b> never lets the AI write the diff: small models get line numbers wrong, so the patch would never apply. The AI sends <b>search/replace blocks</b>, GLIA applies them to a temporary <b>copy</b> and computes the real diff itself — so what you see always applies cleanly. Blocks that don't match are retried with the error explained, then GLIA asks for the whole file rewritten, then it gives up honestly and shows you the raw reply. <b>Your file is never left half-done.</b> It needs a git repo (that's the undo story) and proposes <code>git init</code> when there isn't one. A file too big for the model's context is <b>refused, not truncated</b> — a mutilated file produces wrong edits. Log: <code>~/.config/glia/pmode.log</code>. Requires <code>git</code> and <code>jq</code>.<br><br><b>--new</b>: list the files you want <b>explicitly</b>, so the AI doesn't forget them · the project is created <b>where you are</b> — <code>&lt;current folder&gt;/&lt;project-name&gt;</code> — so you never lose your context (if the current folder is not writable, it falls back to <code>~/&lt;name&gt;-projects</code> in your home) · it <b>never touches an existing folder</b>: if the name is taken, a free one is picked (<code>name-2</code>, <code>name-3</code>, …) and shown before writing · requires <code>jq</code>.<br><br>Examples: <code>glia -p backup.sh "add a --verbose flag"</code> · <code>glia --new a backup script with rsync and a README explaining it</code></div>
+    <div class="note"><b>-p</b> never lets the AI write the diff: small models get line numbers wrong, so the patch would never apply. The AI sends <b>search/replace blocks</b>, GLIA applies them to a temporary <b>copy</b> and computes the real diff itself — so what you see always applies cleanly. Blocks that don't match are retried with the error explained, then GLIA asks for the whole file rewritten, then it gives up honestly and shows you the raw reply. <b>Your file is never left half-done.</b> It needs a git repo (that's the undo story) and proposes <code>git init</code> when there isn't one. A file too big for the model's context is <b>refused, not truncated</b> — a mutilated file produces wrong edits. Once the change is applied, GLIA offers an <b>optional local commit</b> (never pushed): that commit is what makes <code>glia -p --undo</code> possible. Log: <code>~/.config/glia/pmode.log</code>. Requires <code>git</code> and <code>jq</code>.<br><br><b>--new</b>: list the files you want <b>explicitly</b>, so the AI doesn't forget them · <b>where the project lands</b>: once you have renamed the assistant it gets its own folder, and projects are created in <code>~/&lt;name&gt;/projects/&lt;project-name&gt;</code> — e.g. <code>~/arx/projects/backup-script</code>. While the assistant is still called <code>glia</code> there is no dedicated folder: the project is created <b>where you are</b> (<code>$PWD</code>), leaving the <code>~/glia</code> repo untouched. If the folder can't be written, it falls back to <code>$PWD</code> (or to your home for the <code>glia</code> anchor) · it <b>never touches an existing folder</b>: if the name is taken, a free one is picked (<code>name-2</code>, <code>name-3</code>, …) and shown before writing · requires <code>jq</code>.<br><br>Examples: <code>glia -p backup.sh "add a --verbose flag"</code> · <code>glia --new a backup script with rsync and a README explaining it</code></div>
+  </section>
+
+  <section class="grp" id="translate">
+    <div class="grp-h"><span class="n">07</span><h2>Translate a file</h2></div>
+    <p class="why"><b>What it is:</b> you hand it a file, it writes the translation into a <b>new file next to it</b>. <b>Why it exists:</b> a README, a script's comments, some notes — translating them by hand is tedious, and pasting them into a web service means shipping your work to someone else's computer. This stays on your machine. <b>The original is never touched:</b> the translation is always a new file, so there is nothing to undo.</p>
+    <table class="cmds">
+      <tr><td class="c">glia -T &lt;file&gt;</td><td class="d">Translate into the <b>interface language</b> (the one from <code style="font-family:var(--mono);color:var(--teal)">glia --lang</code>).</td></tr>
+      <tr><td class="c">glia -T &lt;file&gt; &lt;lang&gt;</td><td class="d">Translate into that language — <code>it</code>, <code>en</code>, <code>de</code>, <b>or the full name</b>: anything the three codes don't cover is handed to the AI as you wrote it, so <code>glia -T notes.md portuguese</code> works and lands in <code>notes.portuguese.md</code>.</td></tr>
+      <tr><td class="c">glia -T help</td><td class="d">The detailed help for this area. <code style="font-family:var(--mono);color:var(--teal)">glia --translate-model help</code> lands here too.</td></tr>
+      <tr><td class="c">glia --translate-model</td><td class="d">Show the AI currently pinned for translations and open the guided menu.</td></tr>
+      <tr><td class="c">glia --translate-model &lt;name&gt;</td><td class="d">Pin a dedicated AI for translations (the same idea as <code style="font-family:var(--mono);color:var(--teal)">--web-model</code> and <code style="font-family:var(--mono);color:var(--teal)">--project-model</code>).</td></tr>
+      <tr><td class="c">glia --translate-model -d</td><td class="d">Go back to following the default AI. With nothing pinned there is <b>no model swap and no waiting</b>.</td></tr>
+      <tr><td class="c">glia -m &lt;name&gt; -T &lt;file&gt;</td><td class="d">Use that AI <b>only for this translation</b>; your default is restored afterwards.</td></tr>
+      <tr><td class="c">(while translating)</td><td class="d">The text appears <b>as the AI writes it</b> — no invented percentage, you watch the work. At the end: Enter = save · <b>r</b> = redo · <b>type a hint</b> = redo following it · <b>s</b> = discard.</td></tr>
+    </table>
+    <div class="note"><b>Where it lands.</b> <code>README.md</code> → <code>README.en.md</code>: the name is shown <b>before</b> anything is written, and if it already exists a free one is picked (<code>.en-2</code>, …). The original file is never modified.<br><br><b>It checks its own work</b> (the same checks as <code>--new</code>): a translated <code>.md</code> must still be Markdown, a <code>.sh</code> must pass <code>bash -n</code>. If a check fails it retries with the error explained, then saves <b>with a warning</b> rather than pretending. In code <b>only comments and messages</b> are translated — never code, commands, variables or URLs. Binary files, and files too big for the model's context, are <b>refused, not truncated</b>.<br><br>Examples: <code>glia -T README.md</code> · <code>glia -T README.md en</code> · <code>glia -T backup.sh de</code> (comments and messages only, code untouched)</div>
   </section>
 
   <section class="grp" id="interactive">
-    <div class="grp-h"><span class="n">07</span><h2>Interactive mode</h2></div>
+    <div class="grp-h"><span class="n">08</span><h2>Interactive mode</h2></div>
     <p class="why"><b>What it is:</b> a dedicated prompt where special characters are taken literally. <b>Why it exists:</b> the shell interprets <code>'  "  $  |  ;  &amp;  *  ( )  `</code> before GLIA ever sees them, breaking a sentence that contains them. The interactive prompt reads your request character by character instead.</p>
     <table class="cmds">
       <tr><td class="c">glia</td><td class="d">On its own, enters the prompt <code style="font-family:var(--mono);color:var(--teal)">glia&gt;</code> — a real REPL: type request after request, the conversation context carries over.</td></tr>
@@ -240,7 +260,7 @@ footer .fbrand{font-weight:800;color:var(--white);font-size:1.05rem;margin-botto
   </section>
 
   <section class="grp" id="log">
-    <div class="grp-h"><span class="n">08</span><h2>Log</h2></div>
+    <div class="grp-h"><span class="n">09</span><h2>Log</h2></div>
     <p class="why"><b>What it is:</b> the history of commands GLIA actually executed. <b>Why it exists:</b> transparency you can audit — see exactly what ran on your machine.</p>
     <table class="cmds">
       <tr><td class="c">glia -l</td><td class="d">Show the log of executed commands.</td></tr>
@@ -250,13 +270,13 @@ footer .fbrand{font-weight:800;color:var(--white);font-size:1.05rem;margin-botto
   </section>
 
   <section class="grp" id="settings">
-    <div class="grp-h"><span class="n">09</span><h2>Settings &amp; identity</h2></div>
+    <div class="grp-h"><span class="n">10</span><h2>Settings &amp; identity</h2></div>
     <p class="why"><b>What it is:</b> naming, language and housekeeping. <b>Why it exists:</b> the assistant is yours to name and tune — and you can always find it again, because <code>glia</code> never goes away.</p>
     <table class="cmds">
       <tr><td class="c">glia --rename &lt;name&gt;</td><td class="d">Give the assistant a new name (e.g. <code style="font-family:var(--mono);color:var(--teal)">mypc</code>). The <code style="font-family:var(--mono);color:var(--teal)">glia</code> command always stays as a fallback.</td></tr>
       <tr><td class="c">glia --lang &lt;it|en|de&gt;</td><td class="d">Change the interface language.</td></tr>
       <tr><td class="c">glia --doctor</td><td class="d">One-shot health check, grouped in clear sections (v2.18): tools · engine and model · command and folders · version and updates — with a fix hint for anything wrong. Checks that pass stay visible; the model check speaks only when the model is missing.</td></tr>
-      <tr><td class="c">glia --clear-cache</td><td class="d">Empty the answer cache.</td></tr>
+      <tr><td class="c">glia --clear-cache</td><td class="d">Empty the answer cache. The old spelling <code style="font-family:var(--mono);color:var(--teal)">--cache-clear</code> still works.</td></tr>
       <tr><td class="c">glia --kaboom</td><td class="d">Guided uninstall, two levels: <b>1</b> = only the program (engine and AIs stay), <b>2</b> = everything. Every command is shown first, then it asks you to type <code>YES</code> to proceed. Shared tools (curl, jq) are never touched.</td></tr>
       <tr><td class="c">glia -V · --version</td><td class="d">Show the version.</td></tr>
       <tr><td class="c">glia -h</td><td class="d">Show the built-in help.</td></tr>
@@ -265,7 +285,7 @@ footer .fbrand{font-weight:800;color:var(--white);font-size:1.05rem;margin-botto
   </section>
 
   <section class="grp" id="hardware">
-    <div class="grp-h"><span class="n">10</span><h2>Hardware helper</h2></div>
+    <div class="grp-h"><span class="n">11</span><h2>Hardware helper</h2></div>
     <p class="why"><b>What it is:</b> a companion command that reads your machine and recommends the right model tier. <b>Why it exists:</b> picking a model that's too big stalls; too small underperforms. Let the hardware decide.</p>
     <table class="cmds">
       <tr><td class="c">glia-hardware</td><td class="d">Hardware report (RAM / GPU / VRAM) and recommended models.</td></tr>
