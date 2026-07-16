@@ -381,6 +381,7 @@ CODEMODELFILE="$HOME/.config/glia/code_model" # optional AI dedicated to -p proj
 # URL (public, no auth, no SSH key) for `git ls-remote`; the raw base fetches a
 # tagged copy of the script. Backups live under GLIA_VERSIONS_DIR for rollback.
 GLIA_CHANNEL_FILE="$HOME/.config/glia/channel"                          # persisted: stable|beta (default stable)
+GLIA_INSTALLED_TAG_FILE="$HOME/.config/glia/installed-tag"              # exact tag installed, e.g. v2.17.0-beta.1
 GLIA_REPO_URL="https://github.com/micheleperani76/GLIA.git"             # HTTPS for ls-remote (no auth)
 GLIA_RAW_BASE="https://raw.githubusercontent.com/micheleperani76/GLIA"  # + /<ref>/bin/glia
 GLIA_VERSIONS_DIR="$HOME/.local/share/glia/versions"                    # backups of installed scripts
@@ -2954,6 +2955,44 @@ chan_get() {
 chan_set() {
     mkdir -p "$(dirname "$GLIA_CHANNEL_FILE")" 2>/dev/null
     printf '%s\n' "$1" > "$GLIA_CHANNEL_FILE"
+}
+
+# --- installed TAG record (E6) ---
+# VERSION identifies the CODE (rule 3.6: it is the BASE of the tag, so that
+# promoting a beta to stable is a pure re-tag of the SAME commit). The tag
+# record identifies WHICH TAG of that code is installed. Without it,
+# ver_cmp 2.17.0 vs 2.17.0-beta.2 = 1 and beta.2 is never offered: the beta
+# channel could not iterate. Plain text on purpose: the user can `cat` it.
+tag_set() {
+    # $1 = tag (e.g. v2.17.0-beta.2). Called after EVERY successful install:
+    # --update and --rollback alike (a record that lies is worse than none).
+    [ -n "${1:-}" ] || return 1
+    mkdir -p "$(dirname "$GLIA_INSTALLED_TAG_FILE")" 2>/dev/null || return 1
+    printf '%s\n' "$1" > "$GLIA_INSTALLED_TAG_FILE"
+}
+
+glia_effective_tag() {
+    # The tag we compare against the remote. Priority:
+    #   1) the recorded installed tag, IF its base == $VERSION  (guards against
+    #      hand-installs that replaced the script without updating the record:
+    #      the record would be lying)
+    #   2) fallback "v$VERSION"  (fresh install from the installer/git, script
+    #      copied by hand, first run after upgrading from <= 2.16, missing or
+    #      corrupt record)
+    local rec base
+    if [ -r "$GLIA_INSTALLED_TAG_FILE" ]; then
+        rec="$(head -n1 "$GLIA_INSTALLED_TAG_FILE" 2>/dev/null)"
+        base="${rec#v}"; base="${base%%-*}"
+        [ "$base" = "$VERSION" ] && { printf '%s\n' "$rec"; return 0; }
+    fi
+    printf 'v%s\n' "$VERSION"
+}
+
+tag_is_fallback() {
+    # 0 = the record is missing/corrupt/stale and glia_effective_tag() is
+    # falling back to v$VERSION. A real diagnostic for --doctor, not an error.
+    [ "$(glia_effective_tag)" = "v$VERSION" ] && \
+        [ "$(head -n1 "$GLIA_INSTALLED_TAG_FILE" 2>/dev/null)" != "v$VERSION" ]
 }
 
 # --- tag discovery: pure git, no API, no jq ---
