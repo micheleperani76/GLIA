@@ -517,6 +517,27 @@ t() {
         it:rc_updconfirm)   echo "$YES_KEY = aggiorna | Invio o n = annulla: " ;;
         de:rc_updconfirm)   echo "$YES_KEY = aktualisieren | Enter oder n = abbrechen: " ;;
         *:rc_updconfirm)    echo "$YES_KEY = update | Enter or n = cancel: " ;;
+        it:rc_rolllist)     echo "Versioni disponibili per tornare indietro (backup locali):" ;;
+        de:rc_rolllist)     echo "Verfuegbare Versionen zum Zuruecksetzen (lokale Backups):" ;;
+        *:rc_rolllist)      echo "Versions available to roll back to (local backups):" ;;
+        it:rc_rollcurrent)  echo "in uso ora" ;;
+        de:rc_rollcurrent)  echo "derzeit aktiv" ;;
+        *:rc_rollcurrent)   echo "running now" ;;
+        it:rc_rollpick)     echo "Numero (Invio = 1, altro = annulla): " ;;
+        de:rc_rollpick)     echo "Nummer (Enter = 1, sonst = abbrechen): " ;;
+        *:rc_rollpick)      echo "Number (Enter = 1, anything else = cancel): " ;;
+        it:rc_rollto)       echo "Torno alla versione:" ;;
+        de:rc_rollto)       echo "Zuruecksetzen auf Version:" ;;
+        *:rc_rollto)        echo "Rolling back to version:" ;;
+        it:rc_rollconfirm)  echo "$YES_KEY = torna a questa versione | Invio o n = annulla: " ;;
+        de:rc_rollconfirm)  echo "$YES_KEY = auf diese Version zurueck | Enter oder n = abbrechen: " ;;
+        *:rc_rollconfirm)   echo "$YES_KEY = roll back to this version | Enter or n = cancel: " ;;
+        it:rc_rollsame)     echo "E' gia' la versione in uso." ;;
+        de:rc_rollsame)     echo "Das ist bereits die laufende Version." ;;
+        *:rc_rollsame)      echo "That is already the running version." ;;
+        it:rc_norollback)   echo "Nessun backup disponibile: il rollback e' possibile dopo il primo aggiornamento." ;;
+        de:rc_norollback)   echo "Keine Backups vorhanden: Rollback ist nach dem ersten Update moeglich." ;;
+        *:rc_norollback)    echo "No backups available: rollback becomes possible after the first update." ;;
         it:no_command)      echo "Nessun comando generato." ;;
         de:no_command)      echo "Kein Befehl erzeugt." ;;
         *:no_command)       echo "No command generated." ;;
@@ -1785,8 +1806,59 @@ glia_self_update() {
     unset -f _rc_put
     rm -rf "$repodir"
     echo -e "${GREEN}$(t su_done)${NC}"
-    core_show_cmd "git clone --depth 1 --branch $tag $GLIA_REPO_URL /tmp/glia && install -m755 /tmp/glia/bin/glia $dir/glia"
+    core_show_cmd "git clone --depth 1 --branch $tag $GLIA_REPO_URL /tmp/glia && install -m755 /tmp/glia/bin/glia ${dir/#$HOME/\~}/glia"
     echo -e "$(t rc_rollhint) ${GREEN}$ASSIST_NAME --rollback${NC}"
+    "$dir/glia" -V
+}
+
+glia_rollback() {
+    # Go back to a previously installed version, from the local backups made by
+    # rc_backup_current. The CURRENT script is backed up first, so a rollback is
+    # itself reversible. Newest backup first; Enter picks it.
+    local self dir; self="$(realpath "$0" 2>/dev/null)"; dir="$(dirname "$self")"
+    local -a vers=(); local v d i=1 ans pick src sudo=""
+    if [ -d "$GLIA_VERSIONS_DIR" ]; then
+        while IFS= read -r v; do [ -n "$v" ] && vers+=("$v"); done < <(
+            for d in "$GLIA_VERSIONS_DIR"/*/; do
+                [ -f "$d/glia" ] && basename "$d"
+            done | rc_sort_versions | tac )
+    fi
+    [ "${#vers[@]}" -gt 0 ] || { echo -e "${YELLOW}$(t rc_norollback)${NC}"; return 0; }
+    echo -e "${BLUE}$(t rc_rolllist)${NC}"
+    for v in "${vers[@]}"; do
+        if [ "$v" = "$VERSION" ]; then
+            echo -e "  $i) $v   ${YELLOW}($(t rc_rollcurrent))${NC}"
+        else
+            echo "  $i) $v"
+        fi
+        i=$((i+1))
+    done
+    (exec 3</dev/tty) 2>/dev/null || { echo "$(t cancelled)"; return 1; }
+    read -r -p "$(t rc_rollpick)" ans < /dev/tty || return 1
+    [ -z "$ans" ] && ans=1
+    if ! [[ "$ans" =~ ^[0-9]+$ ]] || [ "$ans" -lt 1 ] || [ "$ans" -gt "${#vers[@]}" ]; then
+        echo "$(t cancelled)"; return 0
+    fi
+    pick="${vers[$((ans-1))]}"
+    src="$GLIA_VERSIONS_DIR/$pick/glia"
+    [ -f "$src" ] || { echo -e "${RED}$(t rc_norollback)${NC}" >&2; return 1; }
+    [ "$pick" = "$VERSION" ] && { echo -e "${YELLOW}$(t rc_rollsame)${NC}"; return 0; }
+    echo -e "$(t rc_rollto) ${GREEN}$pick${NC}"
+    core_confirm "$(t rc_rollconfirm)" || { echo "$(t su_denied)"; return 0; }
+    bash -n "$src" 2>/dev/null || { echo -e "${RED}$(t su_dlfail)${NC}" >&2; return 1; }
+    rc_backup_current || echo -e "${YELLOW}$(t rc_backupwarn)${NC}"   # keep it reversible
+    [ -w "$dir" ] || sudo="sudo"
+    if ! $sudo install -m755 "$src" "$dir/glia.new" \
+         || ! $sudo mv -f "$dir/glia.new" "$dir/glia"; then
+        echo -e "${RED}$(t su_dlfail)${NC}" >&2; return 1
+    fi
+    # companion from the SAME backup, only where it already exists
+    if [ -f "$GLIA_VERSIONS_DIR/$pick/glia-hardware" ] && [ -e "$dir/glia-hardware" ]; then
+        $sudo install -m755 "$GLIA_VERSIONS_DIR/$pick/glia-hardware" "$dir/glia-hardware" 2>/dev/null
+    fi
+    core_log "rollback" "$VERSION -> $pick"
+    echo -e "${GREEN}$(t su_done)${NC}"
+    core_show_cmd "install -m755 ${src/#$HOME/\~} ${dir/#$HOME/\~}/glia"
     "$dir/glia" -V
 }
 
@@ -3746,6 +3818,9 @@ case "$1" in
         ;;
     --update-engine)
         engine_update
+        ;;
+    --rollback)
+        glia_rollback
         ;;
     --kaboom)
         kaboom
