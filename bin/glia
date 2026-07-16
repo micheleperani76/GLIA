@@ -1,12 +1,39 @@
 #!/usr/bin/env bash
 # ============================================================
 #  glia - AI terminal assistant (Ollama + aichat)
-#  Version: 2.17.2 - 2026-07-16
+#  Version: 2.18.1 - 2026-07-16
 #  Author: Michele (with Claude)
 #  Project: GLIA (GNU Linux IA)
 #
 #  Design pillar: commands follow standard terminal conventions, so
 #  what you learn here you can reuse in other programs (and vice versa).
+#
+#  What's new in v2.18 ("-p edits, --new creates, -T translates"):
+#   - v2.18.1: `-T <file> [lang]` translates a file into a NEW file next to
+#     it (README.md -> README.en.md); the original is NEVER touched and the
+#     target name is shown before anything is written. The text streams as
+#     the AI writes it - no invented percentage. The generated content is
+#     verified (.md still Markdown, .sh passes bash -n): on failure it
+#     retries with the error explained, then saves WITH A WARNING rather
+#     than pretending. In code only comments and messages are translated.
+#     `--translate-model [name|-d]` pins a dedicated AI (the twin of
+#     --web-model / --project-model), `-m <name> -T <file>` is the one-off.
+#     `-T help` is a full help page (it/de/en); the -m sheet shows the
+#     `translate` role, so no pinned role stays invisible.
+#   - CHANGED: `-p` now EDITS an existing file - it shows the diff and asks;
+#     the generator (the old `-p <idea>`) moved to `--new` [-n]. They are
+#     opposite jobs and must not share a flag: `-p not-a-file` says so
+#     instead of silently scaffolding a project from a typo.
+#   - `-p` takes SEVERAL files in one change (one diff, one confirm, one
+#     commit), offers an optional local commit after applying, and `-p
+#     --undo` reverts it (git revert, never reset: history stays intact).
+#   - web search is pluggable: ddg | bing | searx via `--web-engine`, or a
+#     one-off `engine:` prefix; `-ws <search|URL>` gives direct results with
+#     NO AI call (and opens a URL as a page).
+#   - `--doctor` groups its output in sections; `--new` verifies what it
+#     generated, reusing the -p retry ladder.
+#   - the general help fits one screen again: every area points to its own
+#     help page, and each of those lists ALL of its subcommands.
 #
 #  What's new in v2.17 ("release channels: beta, and a way back"):
 #   - v2.17.2: the installer no longer reassigns a default model you already
@@ -306,7 +333,10 @@
 #    glia -i|--interactive same as no-args; `-i help` shows a guide
 #    glia -p <file> "<request>"  edit an EXISTING file: show the diff, then ask
 #    glia --new <idea>     new project: plan steps, write files (was -p up to v2.17)
+#    glia -T <file> [lang] translate a file into a NEW file next to it (-T help)
 #    glia -d|--ask <q>     plain-text answer, no command
+#    glia -w|-w+ <q>       search the web and answer with sources (-w help)
+#    glia -ws <search|URL> direct results, no AI call (a URL opens that page)
 #    glia -l|--log         show the command log
 #    glia -a <name>        run a saved alias (shortcut)
 #    glia -a add [name cmd] create an alias  (list | rm <name> | edit)
@@ -329,7 +359,7 @@
 # ============================================================
 
 # ----------------- CONFIGURATION -----------------
-VERSION="2.18.0"
+VERSION="2.18.1"
 DEFAULT_MODEL="qwen2.5-coder:7b"
 if [ -r "$HOME/.config/glia/model" ]; then
     MODEL="ollama:$(head -n1 "$HOME/.config/glia/model")"
@@ -4284,7 +4314,7 @@ EOF
 $ASSIST_NAME -T — eine Datei übersetzen
 
   $ASSIST_NAME -T <Datei>             übersetzt in die Sprache der Oberfläche ($UILANG)
-  $ASSIST_NAME -T <Datei> <Sprache>   übersetzt in diese Sprache (it, en, de, ...)
+  $ASSIST_NAME -T <Datei> <Sprache>   übersetzt in diese Sprache (it, en, de, ... oder der volle Name)
   $ASSIST_NAME -T help                diese Hilfe
 
 Das Original wird NIE angefasst:
@@ -4317,7 +4347,7 @@ EOF
 $ASSIST_NAME -T — translate a file
 
   $ASSIST_NAME -T <file>              translates into the interface language ($UILANG)
-  $ASSIST_NAME -T <file> <lang>       translates into that language (it, en, de, ...)
+  $ASSIST_NAME -T <file> <lang>       translates into that language (it, en, de, ... or the full name)
   $ASSIST_NAME -T help                this help
 
 The original is NEVER touched:
