@@ -124,9 +124,13 @@ green by design, and it's a whole system, not a lone command.
   Aliases (`glia -a add <name> <cmd>`) save commands you use often so you
   don't ask the AI every time (e.g. `glia -a bangkok`); manage them with
   `-a list` / `-a rm` / `-a edit`.
-  Web search with sources: `glia -w <question>` queries DuckDuckGo through
-  the w3m text browser (no API key) and the local model summarizes with a
-  **Sources** list.
+  Web search with sources: `glia -w <question>` queries the chosen engine
+  (DuckDuckGo by default; `glia --web-engine` switches to Bing or a SearXNG
+  instance, an `engine:` prefix like `glia -w bing: <question>` picks one for
+  a single search) through the w3m text browser (no API key) and the local
+  model summarizes with a **Sources** list. `glia -ws <search | URL>` skips
+  the AI entirely: direct results in seconds, or the page itself if you
+  already have the address.
   Edit files you already have: `glia -p <file> "<request>"` asks the code AI
   for the change, computes the **real diff itself**, shows it together with the
   exact `git apply` command, and touches the file only if you say yes — decline
