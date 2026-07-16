@@ -348,6 +348,19 @@ WEB_NUMPREDICT=600        # max tokens generated for the web answer
 WEBMODELFILE="$HOME/.config/glia/web_model"   # optional AI dedicated to -w (empty = follow default)
 CODEMODELFILE="$HOME/.config/glia/code_model" # optional AI dedicated to -p projects/coding (empty = follow default)
 
+# --- Release channel / self-update (v2.17, Part E) ---
+# Everything here is meant to be easy to change. Discovery uses the HTTPS repo
+# URL (public, no auth, no SSH key) for `git ls-remote`; the raw base fetches a
+# tagged copy of the script. Backups live under GLIA_VERSIONS_DIR for rollback.
+GLIA_CHANNEL_FILE="$HOME/.config/glia/channel"                          # persisted: stable|beta (default stable)
+GLIA_REPO_URL="https://github.com/micheleperani76/GLIA.git"             # HTTPS for ls-remote (no auth)
+GLIA_RAW_BASE="https://raw.githubusercontent.com/micheleperani76/GLIA"  # + /<ref>/bin/glia
+GLIA_VERSIONS_DIR="$HOME/.local/share/glia/versions"                    # backups of installed scripts
+GLIA_KEEP_VERSIONS=3                                                    # how many backups to keep
+GLIA_CACHE_DIR="$HOME/.cache/glia"                                      # small check-result cache
+GLIA_UPDATE_CACHE_MAX_AGE=86400                                         # seconds a check result stays fresh
+RC_CHECK_KEY="update-check"                                             # cache file name for the update check
+
 # Aliases (v2.0): user shortcuts, one per line
 #   name<TAB>type<TAB>request<TAB>command   (type = run | ask)
 ALIASFILE="$HOME/.config/glia/aliases"
@@ -468,6 +481,9 @@ t() {
         it:cancelled)       echo "Annullato." ;;
         de:cancelled)       echo "Abgebrochen." ;;
         *:cancelled)        echo "Cancelled." ;;
+        it:rc_confirm_generic) echo "Invio o n = annulla | $YES_KEY = conferma: " ;;
+        de:rc_confirm_generic) echo "Enter oder n = abbrechen | $YES_KEY = bestaetigen: " ;;
+        *:rc_confirm_generic)  echo "Enter or n = cancel | $YES_KEY = confirm: " ;;
         it:no_command)      echo "Nessun comando generato." ;;
         de:no_command)      echo "Kein Befehl erzeugt." ;;
         *:no_command)       echo "No command generated." ;;
@@ -1192,6 +1208,84 @@ show_equiv() {
     # also SHOWS the equivalent manual command, so you can try it yourself.
     echo -e "  ${YELLOW}($(t equiv) $*)${NC}"
 }
+
+# ================= CORE helpers (Part E, v2.17) =================
+# Built here in Session ZERO so later Parts (A-F) reuse the same names.
+
+# core_show_cmd / core_log: documented CORE aliases over the existing helpers,
+# so future modules have a stable name to call (the old names keep working).
+core_show_cmd() { show_equiv "$@"; }
+core_log()      { write_log "$@"; }
+
+core_confirm() {
+    # y/N confirmation, default NO. Honors $YES_KEY and the localized confirm
+    # word (s/j/y, si/ja/yes). Set GLIA_ASSUME_YES=1 for non-interactive "yes"
+    # (used by scripted runs and tests). Returns 0 on yes, 1 otherwise.
+    local prompt="${1:-$(t rc_confirm_generic)}" ans yeslc
+    [ "${GLIA_ASSUME_YES:-}" = 1 ] && return 0
+    (exec 3</dev/tty) 2>/dev/null || return 1
+    read -r -p "$prompt" ans < /dev/tty || return 1
+    yeslc="$(printf '%s' "$CONFIRM_WORD" | tr '[:upper:]' '[:lower:]')"
+    case "${ans,,}" in "$YES_KEY"|y|yes|"$yeslc") return 0 ;; *) return 1 ;; esac
+}
+
+ver_cmp() {
+    # SemVer compare WITH pre-releases. Echoes -1 (A<B), 0 (A==B), 1 (A>B).
+    # A leading 'v' is ignored. Rules (SemVer 2.0.0 section 11):
+    #   - compare MAJOR.MINOR.PATCH numerically;
+    #   - a version WITHOUT a pre-release is GREATER than the same with one
+    #     (2.17.0 > 2.17.0-beta.1);
+    #   - pre-release identifiers compared left-to-right: numeric<numeric
+    #     numerically, numeric always lower than alphanumeric, else by ASCII.
+    # Test table (see below): run  glia --selftest-vercmp  is NOT shipped; these
+    # are validated in dev with a scratch harness.
+    #   2.17.0       vs 2.16.0        -> 1
+    #   2.16.0       vs 2.17.0        -> -1
+    #   2.17.0       vs 2.17.0        -> 0
+    #   2.17.0       vs 2.17.0-beta.1 -> 1
+    #   2.17.0-beta.1 vs 2.17.0-beta.2 -> -1
+    #   2.17.0-rc.1  vs 2.17.0-beta.9 -> 1
+    #   2.17.0-beta.10 vs 2.17.0-beta.2 -> 1
+    local A="${1#v}" B="${2#v}"
+    local Amain="${A%%-*}" Bmain="${B%%-*}" Apre="" Bpre=""
+    [ "$A" != "$Amain" ] && Apre="${A#*-}"
+    [ "$B" != "$Bmain" ] && Bpre="${B#*-}"
+    local -a Af Bf
+    IFS=. read -r -a Af <<< "$Amain"
+    IFS=. read -r -a Bf <<< "$Bmain"
+    local i a b
+    for i in 0 1 2; do
+        a="${Af[i]:-0}"; b="${Bf[i]:-0}"
+        a="${a//[!0-9]/}"; b="${b//[!0-9]/}"; a="${a:-0}"; b="${b:-0}"
+        if [ "$a" -gt "$b" ]; then echo 1; return; fi
+        if [ "$a" -lt "$b" ]; then echo -1; return; fi
+    done
+    # main version equal -> pre-release rules
+    if [ -z "$Apre" ] && [ -z "$Bpre" ]; then echo 0; return; fi
+    if [ -z "$Apre" ]; then echo 1; return; fi     # no pre > has pre
+    if [ -z "$Bpre" ]; then echo -1; return; fi
+    local -a Ap Bp
+    IFS=. read -r -a Ap <<< "$Apre"
+    IFS=. read -r -a Bp <<< "$Bpre"
+    local n=${#Ap[@]} x y
+    [ ${#Bp[@]} -gt "$n" ] && n=${#Bp[@]}
+    for ((i=0; i<n; i++)); do
+        x="${Ap[i]-}"; y="${Bp[i]-}"
+        # fewer fields (when all previous equal) = lower precedence
+        if [ -z "$x" ] && [ -n "$y" ]; then echo -1; return; fi
+        if [ -n "$x" ] && [ -z "$y" ]; then echo 1; return; fi
+        [ "$x" = "$y" ] && continue
+        if [[ "$x" =~ ^[0-9]+$ ]] && [[ "$y" =~ ^[0-9]+$ ]]; then
+            if [ "$x" -gt "$y" ]; then echo 1; else echo -1; fi; return
+        elif [[ "$x" =~ ^[0-9]+$ ]]; then echo -1; return   # numeric < alnum
+        elif [[ "$y" =~ ^[0-9]+$ ]]; then echo 1; return
+        else
+            if [[ "$x" > "$y" ]]; then echo 1; else echo -1; fi; return
+        fi
+    done
+    echo 0
+}
+# =============== end CORE helpers (Part E) ===============
 
 ram_needed_mb() {
     # optional $1 = a model name; default = the active MODEL (v2.10)
