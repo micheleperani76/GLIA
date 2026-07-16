@@ -538,6 +538,18 @@ t() {
         it:rc_norollback)   echo "Nessun backup disponibile: il rollback e' possibile dopo il primo aggiornamento." ;;
         de:rc_norollback)   echo "Keine Backups vorhanden: Rollback ist nach dem ersten Update moeglich." ;;
         *:rc_norollback)    echo "No backups available: rollback becomes possible after the first update." ;;
+        it:doc_rc_version)  echo "versione installata:" ;;
+        de:doc_rc_version)  echo "installierte Version:" ;;
+        *:doc_rc_version)   echo "installed version:" ;;
+        it:doc_rc_source)   echo "eseguibile in uso:" ;;
+        de:doc_rc_source)   echo "laufende Datei:" ;;
+        *:doc_rc_source)    echo "running file:" ;;
+        it:doc_rc_backups)  echo "versioni per il rollback:" ;;
+        de:doc_rc_backups)  echo "Versionen fuer Rollback:" ;;
+        *:doc_rc_backups)   echo "versions available for rollback:" ;;
+        it:doc_rc_nobackups) echo "nessun backup ancora (arrivano col primo aggiornamento)" ;;
+        de:doc_rc_nobackups) echo "noch keine Backups (kommen mit dem ersten Update)" ;;
+        *:doc_rc_nobackups)  echo "no backups yet (they appear with the first update)" ;;
         it:no_command)      echo "Nessun comando generato." ;;
         de:no_command)      echo "Kein Befehl erzeugt." ;;
         *:no_command)       echo "No command generated." ;;
@@ -3002,15 +3014,40 @@ doctor() {
         && [ -w "$LOGDIR" ] && [ -w "$HOME/.config/glia" ]
     doc_line $? "$(t doc_dirs)" "ls -ld $LOGDIR ~/.config/glia"
     [ -s "$WEBMODELFILE" ] && echo -e "  ${BLUE}i${NC} $(t wm_current) ${GREEN}$(head -n1 "$WEBMODELFILE")${NC}"
-    # v2.14: connectivity + update availability (informational, never counted as failures)
-    net_update_status
-    case $? in
-        0) echo -e "  ${GREEN}✓${NC} $(t doc_net)"
-           echo -e "  ${GREEN}✓${NC} $(t doc_update_no)" ;;
-        1) echo -e "  ${GREEN}✓${NC} $(t doc_net)"
-           echo -e "  ${YELLOW}↑${NC} $(t doc_update_yes) ${GREEN}$NEWVER${NC}   ->   ${GREEN}$ASSIST_NAME --update glia${NC}" ;;
-        *) echo -e "  ${YELLOW}i${NC} $(t doc_offline)" ;;
-    esac
+    # --- release channel / self-update (Part E, v2.17) ---
+    # Informational only: never counted as failures. The repo probe below is
+    # the ONLY network touch in doctor.
+    local dsrc blist nback=0 cc age
+    dsrc="$(realpath "$0" 2>/dev/null)"
+    echo -e "  ${BLUE}i${NC} $(t doc_rc_version) ${GREEN}$VERSION${NC}   ($(t rc_channel): $(chan_get))"
+    echo -e "  ${BLUE}i${NC} $(t doc_rc_source) ${dsrc/#$HOME/\~}"
+    if [ -d "$GLIA_VERSIONS_DIR" ]; then
+        blist="$(for d in "$GLIA_VERSIONS_DIR"/*/; do [ -f "$d/glia" ] && basename "$d"; done \
+                 | rc_sort_versions | tac | paste -sd' ' -)"
+        nback="$(printf '%s' "$blist" | wc -w)"
+    fi
+    if [ "$nback" -gt 0 ]; then
+        echo -e "  ${GREEN}✓${NC} $(t doc_rc_backups) $blist"
+    else
+        echo -e "  ${BLUE}i${NC} $(t doc_rc_nobackups)"
+    fi
+    if ! net_online; then
+        echo -e "  ${YELLOW}i${NC} $(t doc_offline)"
+    else
+        echo -e "  ${GREEN}✓${NC} $(t doc_net)"
+        net_update_status
+        case $? in
+            0) echo -e "  ${GREEN}✓${NC} $(t doc_update_no)   (${NEWTAG:-?})" ;;
+            1) echo -e "  ${YELLOW}↑${NC} $(t doc_update_yes) ${GREEN}$NEWVER${NC}   ->   ${GREEN}$ASSIST_NAME --update${NC}" ;;
+            *) echo -e "  ${YELLOW}i${NC} $(t rc_notags)" ;;
+        esac
+    fi
+    if cc="$(rc_cached)"; then
+        age="${cc##*|}"
+        echo -e "  ${BLUE}i${NC} $(t rc_lastcheck): ${age}d"
+    else
+        echo -e "  ${BLUE}i${NC} $(t rc_lastcheck): $(t rc_never)"
+    fi
     echo
     if [ "$fails" -eq 0 ]; then
         echo -e "${GREEN}$(t doc_all_ok)${NC}"
