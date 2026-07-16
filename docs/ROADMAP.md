@@ -2,6 +2,10 @@
 
 Updated: 2026-07-16
 
+Where things are heading: **[Direction — the next moves](#direction-the-next-moves-noted-2026-07-16)**
+(shared Ollama · one console for the AIs · phase 5 · the teaching audit ·
+configurable safety). Below that, the running TODO list.
+
 ## Assistant intelligence mechanisms
 
 Inspired by how large AI agents work, scaled down to stay lean on a 7B model.
@@ -69,6 +73,112 @@ Implemented in glia v1.6:
   - model choice proposed from `glia-hardware -j`
   - writes `/etc/glia/model` on the target system
   - model download: during install if online, else first-boot service
+
+## Direction: the next moves (noted 2026-07-16)
+
+Five threads to open, in no particular order. Written down before they are
+built, so the reasons survive the enthusiasm.
+
+### D1. A shared Ollama — use an AI that lives on another machine
+
+The idea: point GLIA at the Ollama on your server (or on the beefy desktop in
+the other room) instead of the local one, and let a weak laptop drive a 30B
+model. `OLLAMA_URL` is already a single variable (one line, 17 uses), so the
+*plumbing* is nearly free. Everything around it is not:
+
+- **The hardware logic becomes a lie.** `ram_free_mb`, `check_ai` and the
+  low-RAM warning all read the LOCAL `/proc/meminfo` (4 call sites), and
+  `glia-hardware -l` recommends models for the LOCAL machine. Against a remote
+  Ollama they measure the wrong computer: `-m pull` would refuse a 30B on a
+  laptop that isn't the one running it, and the tier table would advise a 4B
+  for a server with 128 GB.
+- **`-m` stops being personal and becomes shared surgery.** On a shared
+  server, `-m rm` deletes a model for *everyone*, `-m pull` fills someone
+  else's disk, and `-m stop` unloads an AI another person is using right now.
+  This is the existing TODO below ("An AI in RAM that GLIA did not load")
+  turned from a politeness problem into a real one: on a shared engine
+  *every* loaded model is probably someone's work.
+- **The single-model-in-RAM promise doesn't apply.** `swap_in`/`swap_out`
+  exist to keep exactly one AI resident on YOUR machine. On a server with
+  RAM to spare that rotation is pointless churn, and on a shared one it is
+  actively rude. Remote mode probably means: never swap, never stop.
+- **`--update-engine` has no meaning** when the engine is not here.
+- **A claim on the home page needs revisiting.** We say "no cloud, nothing
+  leaves your machine". With a remote Ollama, prompts leave the machine — to
+  a machine you own, over your LAN, but they leave. The honest wording is
+  something like "your machine, or one you own", plus plain-language warning
+  that `OLLAMA_URL` over a network is HTTP in the clear.
+
+Shape to consider: `glia --engine <url>` (and `--engine local` to come back),
+with the whole hardware/RAM/rotation layer switching off and saying so, rather
+than pretending to measure a computer it cannot see. Doctor should report
+which engine it is talking to, and refuse to give RAM advice about a machine
+that isn't there.
+
+### D2. One console for the AIs — refactor `-m` and its satellites
+
+Today the roles are scattered across four commands: `-m`, `--web-model`,
+`--project-model` (plus `--code-model` alias), `--translate-model`. That is
+how `--translate-model` was born, and it is the pattern: **every new role adds
+a new top-level flag**, its own help page, its own completions, its own line
+in README and on the site. Adding `translate` touched five surfaces and the
+role still went missing on four of them.
+
+The ask: a single console under `-m` where you SEE every role, WHO holds it,
+and can move them — instead of four commands each holding one truth. The
+`-m` sheet already shows the role tags; this is the other half, the assigning.
+
+Constraints that must survive:
+- The old flags keep working. "We never invent bespoke syntax when a standard
+  one exists" cuts both ways: we don't break what people already type.
+- It must degrade to non-interactive use (scripts, `--yes`), not become a
+  menu-only feature.
+- Whatever the shape, adding role #5 must not mean touching five surfaces
+  again. If it does, the refactor missed the point.
+
+### D3. Phase 5 — Btrfs snapshots, branding, polish (and what we claim about it)
+
+The site's Status table says phase 5 is "⏳ in progress". It is not: nothing
+has been built. **Decide and align**: either start it, or mark it honestly as
+not started. A status table that flatters the project is the same bug as an
+`-m` sheet that hides a role — the shop window lying about the shop.
+
+Contents, when it starts: Btrfs snapshots as a safety net before destructive
+operations; the Calamares `logo.png` still says "IA" and must be regenerated
+(see Branding below); docs polish.
+
+### D4. Audit: does every command actually TEACH?
+
+The first pillar is "you always see the command before it runs — you read it,
+you approve it, you learn it". `show_equiv` is the mechanism (26 call sites:
+`--rename`, `--lang`, `-m`, `--remember`, `--forget`, `--new`, `--web-model`,
+w3m install…). But nobody has ever checked it **systematically**: which
+commands change your system, and of those, which ones show you the equivalent
+you could have typed yourself?
+
+This is not cosmetics. A command that silently edits a config file teaches
+nothing, and a project whose whole point is teaching cannot leave that to
+chance. Method: list every action that writes a file, creates a link or calls
+an external tool; check each one against `show_equiv`; fix the gaps. The same
+`--doctor`-style treatment we gave to shadowed nicknames, applied to the
+teaching promise itself.
+
+### D5. Safety first, but configurable
+
+`EXTRA_CONFIRM_PATTERNS` is a hardcoded array (`rm -[rf]`, `dd`, `mkfs`,
+`shred`, …) and `ROOT_BINS` is a hardcoded pipe-list. They are good defaults,
+but they are *our* defaults on *your* machine. People have their own things
+worth protecting: a company deploy script, `terraform destroy`, a `kubectl
+delete` against production.
+
+The ask: let the user add patterns of their own — and, carefully, consider
+whether any can be removed. Open questions: a config file or `--danger add`?
+Do user patterns extend the built-ins or replace them (only extend, surely)?
+Can a pattern be disabled at all, or is the built-in list, like
+`RENAME_FORBIDDEN`, the part that never bends? Whatever is chosen, the danger
+self-explanation (mechanism 5 above) should work for user patterns too — a
+custom rule that just says "are you sure?" without explaining is a lesser
+tool than the ones we ship.
 
 ## TODO
 

@@ -451,6 +451,23 @@ GLIA is actively evolving. Planned and in-progress work:
   path instead of pacman/apt/dnf, `ollama serve`/launchd instead of systemd, and
   a modern bash. I won't be building this one myself — looking for a contributor
   to own and maintain the macOS port.
+- **A shared Ollama.** Point GLIA at the engine on another machine you own —
+  the server, or the desktop in the other room — so a thin laptop can drive a
+  30B model. The plumbing is one variable; the honesty is the work: every
+  RAM check and hardware tier would be measuring the wrong computer, `-m rm`
+  on a shared engine deletes a model for everyone, and "nothing leaves your
+  machine" would have to become "nothing leaves a machine you own".
+- **One console for the AIs.** Roles live in four commands today (`-m`,
+  `--web-model`, `--project-model`, `--translate-model`) and each new role
+  adds a flag, a help page, completions and two doc entries. One place under
+  `-m` to see who holds what and move it — the old flags keep working.
+- **Does every command teach?** An audit, not a feature: `show_equiv` shows
+  you the command you could have typed yourself, but no one has ever checked
+  systematically which actions change your system *without* showing it. A
+  project about teaching the terminal can't leave that to chance.
+- **Configurable safety.** The dangerous-command list is ours, hardcoded, on
+  your machine. Let people add their own — a deploy script, a `terraform
+  destroy` — with the same plain-language explanation the built-ins get.
 - **Btrfs snapshots** as a safety net, plus branding and polish (phase 5).
 - **Lightweight memory retrieval** if the stored facts outgrow the prompt.
 - **A terminal-first desktop — the long-term vision.** The most ambitious idea:
