@@ -508,6 +508,12 @@ t() {
         it:rc_notags)       echo "nessun tag di release ancora presente sul remoto" ;;
         de:rc_notags)       echo "noch keine Release-Tags im Remote vorhanden" ;;
         *:rc_notags)        echo "no release tags on the remote yet" ;;
+        it:rc_backupwarn)   echo "avviso: backup della versione corrente non riuscito (procedo comunque)" ;;
+        de:rc_backupwarn)   echo "Warnung: Backup der aktuellen Version fehlgeschlagen (fahre trotzdem fort)" ;;
+        *:rc_backupwarn)    echo "warning: backup of the current version failed (continuing anyway)" ;;
+        it:rc_rollhint)     echo "Per tornare indietro:" ;;
+        de:rc_rollhint)     echo "Zum Zuruecksetzen:" ;;
+        *:rc_rollhint)      echo "To roll back:" ;;
         it:no_command)      echo "Nessun comando generato." ;;
         de:no_command)      echo "Kein Befehl erzeugt." ;;
         *:no_command)       echo "No command generated." ;;
@@ -1673,41 +1679,111 @@ engine_update() {
     fi
 }
 
-# ---- self-update (v2.12): update the GLIA program itself ----
-self_update() {
-    # Update the GLIA PROGRAM (this script), distinct from the engine.
-    # Download bin/glia from GitHub main, compare VERSION, syntax-check, ask,
-    # then install over the running command in place (sudo only if needed).
-    # Rename symlinks survive: they point to 'glia', replaced on disk.
-    # glia-hardware and the shell completions are refreshed too (best effort,
-    # only where they already exist).
-    local base="https://raw.githubusercontent.com/micheleperani76/GLIA/main"
-    local self dir tmp newver answer sudo=""
-    self="$(realpath "$0" 2>/dev/null)"; dir="$(dirname "$self")"
-    echo -e "${BLUE}$(t su_current)${NC} $VERSION"
-    tmp="$(mktemp)" || return 1
-    curl -fsSL "$base/bin/glia" -o "$tmp" || { echo -e "${RED}$(t su_dlfail)${NC}" >&2; rm -f "$tmp"; return 1; }
-    bash -n "$tmp" 2>/dev/null            || { echo -e "${RED}$(t su_badfile)${NC}" >&2; rm -f "$tmp"; return 1; }
-    newver="$(grep -m1 -oE 'VERSION="[0-9.]+"' "$tmp" | grep -oE '[0-9.]+')"
-    if [ "$newver" = "$VERSION" ]; then
-        echo -e "${GREEN}$(t su_uptodate)${NC}"; rm -f "$tmp"; return 0
+# ---- self-update (v2.17, Part E): channel + tag based, with rollback ----
+# Fetch a TAGGED copy of the repo via ONE shallow clone, validate it, back up
+# the current install, then swap the script atomically and refresh companions
+# from the SAME tag. Rename symlinks survive (they point to 'glia' on disk).
+
+core_fetch_tag() {
+    # $1 = tag. Shallow-clones that tag into a fresh temp dir and validates
+    # bin/glia (syntax + internal VERSION == tag base). On success prints the
+    # checkout dir on stdout (return 0); the CALLER must rm -rf it when done.
+    local tag="$1" tmpd base intver
+    [ -n "$tag" ] || return 1
+    tmpd="$(mktemp -d)" || return 1
+    if ! git clone --quiet --depth 1 --branch "$tag" "$GLIA_REPO_URL" "$tmpd/repo" 2>/dev/null; then
+        rm -rf "$tmpd"; return 2
     fi
-    echo -e "$(t su_new) ${GREEN}${newver:-?}${NC}"
-    (exec 3</dev/tty) 2>/dev/null || { echo "$(t cancelled)"; rm -f "$tmp"; return 1; }
-    read -r -p "$(t su_confirm)" answer < /dev/tty || { rm -f "$tmp"; return 1; }
-    case "${answer,,}" in ""|"$YES_KEY") : ;; *) echo "$(t su_denied)"; rm -f "$tmp"; return 0 ;; esac
+    [ -s "$tmpd/repo/bin/glia" ] || { rm -rf "$tmpd"; return 3; }
+    bash -n "$tmpd/repo/bin/glia" 2>/dev/null || { rm -rf "$tmpd"; return 4; }
+    intver="$(grep -m1 -oE 'VERSION="[0-9.]+"' "$tmpd/repo/bin/glia" | grep -oE '[0-9.]+')"
+    base="${tag#v}"; base="${base%%-*}"
+    [ "$intver" = "$base" ] || { rm -rf "$tmpd"; return 5; }
+    printf '%s' "$tmpd/repo"
+}
+
+rc_backup_current() {
+    # copy the CURRENTLY installed script (+ companion) into versions/<ver>/
+    local self dir vdir
+    self="$(realpath "$0" 2>/dev/null)"; dir="$(dirname "$self")"
+    vdir="$GLIA_VERSIONS_DIR/$VERSION"
+    mkdir -p "$vdir" 2>/dev/null || return 1
+    cp -f "$self" "$vdir/glia" 2>/dev/null || return 1
+    [ -e "$dir/glia-hardware" ] && cp -f "$dir/glia-hardware" "$vdir/glia-hardware" 2>/dev/null
+    return 0
+}
+
+rc_sort_versions() {
+    # read version strings on stdin, print them ASCENDING (oldest first) by ver_cmp
+    local -a a=(); local x i j tmp n
+    while IFS= read -r x; do [ -n "$x" ] && a+=("$x"); done
+    n=${#a[@]}
+    for ((i=0; i<n; i++)); do
+        for ((j=0; j<n-1-i; j++)); do
+            if [ "$(ver_cmp "${a[j]}" "${a[j+1]}")" = 1 ]; then
+                tmp="${a[j]}"; a[j]="${a[j+1]}"; a[j+1]="$tmp"
+            fi
+        done
+    done
+    [ "$n" -gt 0 ] && printf '%s\n' "${a[@]}"
+}
+
+rc_prune() {
+    # keep the newest GLIA_KEEP_VERSIONS backups, delete older ones
+    [ -d "$GLIA_VERSIONS_DIR" ] || return 0
+    local -a vers=(); local d v sorted total keep_from i=0
+    for d in "$GLIA_VERSIONS_DIR"/*/; do [ -d "$d" ] && vers+=("$(basename "$d")"); done
+    [ "${#vers[@]}" -le "$GLIA_KEEP_VERSIONS" ] && return 0
+    sorted="$(printf '%s\n' "${vers[@]}" | rc_sort_versions)"      # oldest first
+    total="$(printf '%s\n' "$sorted" | grep -c .)"
+    keep_from=$(( total - GLIA_KEEP_VERSIONS ))
+    while IFS= read -r v; do
+        [ -n "$v" ] || continue
+        i=$((i+1))
+        [ "$i" -le "$keep_from" ] && rm -rf "$GLIA_VERSIONS_DIR/$v" 2>/dev/null
+    done <<< "$sorted"
+}
+
+glia_self_update() {
+    # Update the GLIA PROGRAM. $1 = "--check" -> query only, do not install.
+    local self dir chan tag cmp check_only=0 repodir sudo=""
+    [ "${1:-}" = "--check" ] && check_only=1
+    self="$(realpath "$0" 2>/dev/null)"; dir="$(dirname "$self")"
+    chan="$(chan_get)"
+    echo -e "${BLUE}$(t su_current)${NC} $VERSION   ($(t rc_channel): $chan)"
+    if ! net_online; then echo -e "${YELLOW}$(t doc_offline)${NC}"; return 2; fi
+    tag="$(rc_latest_tag "$chan")"
+    [ -n "$tag" ] || { echo -e "${YELLOW}$(t rc_notags)${NC}"; return 2; }
+    rc_check >/dev/null 2>&1                       # refresh cache for -V / --doctor
+    cmp="$(ver_cmp "$tag" "$VERSION")"
+    if [ "$cmp" != 1 ]; then
+        echo -e "${GREEN}$(t su_uptodate)${NC}   ($tag)"; return 0
+    fi
+    echo -e "$(t su_new) ${GREEN}${tag#v}${NC}   [$tag]"
+    if [ "$check_only" = 1 ]; then
+        echo -e "  ${GREEN}$ASSIST_NAME --update${NC}"; return 1
+    fi
+    core_confirm "$(t su_confirm)" || { echo "$(t su_denied)"; return 0; }
+    repodir="$(core_fetch_tag "$tag")" || { echo -e "${RED}$(t su_dlfail)${NC}" >&2; return 1; }
+    rc_backup_current || echo -e "${YELLOW}$(t rc_backupwarn)${NC}"
+    rc_prune
     [ -w "$dir" ] || sudo="sudo"
-    $sudo install -m755 "$tmp" "$dir/glia" || { echo -e "${RED}$(t su_dlfail)${NC}" >&2; rm -f "$tmp"; return 1; }
-    write_log "self update" "$VERSION -> $newver"; rm -f "$tmp"
-    # companion files, best effort, only where they already exist
-    _su_get() { [ -e "$2" ] || return 0; local f s=""; f="$(mktemp)" || return 0
-        curl -fsSL "$base/$1" -o "$f" && { [ -w "$(dirname "$2")" ] || s="sudo"; $s install -m"$3" "$f" "$2"; }; rm -f "$f"; }
-    _su_get bin/glia-hardware "$dir/glia-hardware" 755
-    _su_get completions/glia.bash "$HOME/.local/share/bash-completion/completions/glia" 644
-    _su_get completions/glia.fish "$HOME/.config/fish/completions/glia.fish" 644
-    unset -f _su_get
+    if ! $sudo install -m755 "$repodir/bin/glia" "$dir/glia.new" \
+         || ! $sudo mv -f "$dir/glia.new" "$dir/glia"; then
+        rm -rf "$repodir"; echo -e "${RED}$(t su_dlfail)${NC}" >&2; return 1
+    fi
+    core_log "self update" "$VERSION -> ${tag#v} ($chan)"
+    # companions from the SAME tag, best effort, only where they already exist
+    _rc_put() { { [ -e "$2" ] && [ -f "$1" ]; } || return 0
+        local s=""; [ -w "$(dirname "$2")" ] || s="sudo"; $s install -m"$3" "$1" "$2"; }
+    _rc_put "$repodir/bin/glia-hardware" "$dir/glia-hardware" 755
+    _rc_put "$repodir/completions/glia.bash" "$HOME/.local/share/bash-completion/completions/glia" 644
+    _rc_put "$repodir/completions/glia.fish" "$HOME/.config/fish/completions/glia.fish" 644
+    unset -f _rc_put
+    rm -rf "$repodir"
     echo -e "${GREEN}$(t su_done)${NC}"
-    show_equiv "curl -fsSL $base/bin/glia -o /tmp/glia && install -m755 /tmp/glia $dir/glia"
+    core_show_cmd "git clone --depth 1 --branch $tag $GLIA_REPO_URL /tmp/glia && install -m755 /tmp/glia/bin/glia $dir/glia"
+    echo -e "$(t rc_rollhint) ${GREEN}$ASSIST_NAME --rollback${NC}"
     "$dir/glia" -V
 }
 
@@ -3655,13 +3731,18 @@ case "$1" in
         shift
         set_channel "${1:-}"
         ;;
-    --update)
+    -U|--update)
         shift
         case "${1:-}" in
             help|-h|--help)      page update_help ;;
-            glia|"$ASSIST_NAME") self_update ;;
-            *)                   engine_update ;;
+            --check|check)       glia_self_update --check ;;
+            engine|ollama)       engine_update ;;            # hidden aliases (old behaviour)
+            glia|"$ASSIST_NAME") glia_self_update ;;         # hidden alias (anchor name)
+            ""|*)                glia_self_update ;;          # bare = GLIA (Q1), anything else too
         esac
+        ;;
+    --update-engine)
+        engine_update
         ;;
     --kaboom)
         kaboom
