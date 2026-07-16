@@ -468,6 +468,18 @@ GLIA is actively evolving. Planned and in-progress work:
 - **Configurable safety.** The dangerous-command list is ours, hardcoded, on
   your machine. Let people add their own — a deploy script, a `terraform
   destroy` — with the same plain-language explanation the built-ins get.
+- **The GPU nobody uses.** The plain `ollama` package ships CPU backends only:
+  install it with an RTX in the machine and you silently get CPU speed, with a
+  10-20x gain sitting idle and nothing ever saying so — `ollama-cuda` /
+  `-rocm` / `-vulkan` are add-ons you have to know about. `--doctor` should
+  spot it. For weak iGPUs the honest answer is the opposite: measured here,
+  Vulkan on an Intel UHD GT1 was **4.5x slower** than the CPU (8.8 → 1.9
+  tok/s), so the plan is `glia -m bench` — measure on your machine, don't ship
+  a table of guesses.
+- **`make check-docs`.** Five hand-kept copies of the same truth (help,
+  README, site, completions, the code itself) and none knows about the
+  others — so they drift. One command that reads the parser as the source of
+  truth and fails when a surface disagrees.
 - **Btrfs snapshots** as a safety net, plus branding and polish (phase 5).
 - **Lightweight memory retrieval** if the stored facts outgrow the prompt.
 - **A terminal-first desktop — the long-term vision.** The most ambitious idea:

@@ -4,8 +4,8 @@ Updated: 2026-07-16
 
 Where things are heading: **[Direction — the next moves](#direction-the-next-moves-noted-2026-07-16)**
 (shared Ollama · one console for the AIs · phase 5 · the teaching audit ·
-configurable safety · the GPU nobody uses — with real numbers). Below that,
-the running TODO list.
+configurable safety · the GPU nobody uses, with real numbers · check-docs
+against drift). Below that, the running TODO list.
 
 ## Assistant intelligence mechanisms
 
@@ -164,6 +164,28 @@ an external tool; check each one against `show_equiv`; fix the gaps. The same
 `--doctor`-style treatment we gave to shadowed nicknames, applied to the
 teaching promise itself.
 
+**The other half of teaching: reading someone else's error.** A real one, hit
+on 2026-07-17 while installing a package:
+
+    errore: impossibile scaricare il pacchetto '...pkg.tar.zst.sig'
+            da mirror.krfoss.org : The requested URL returned error: 404
+    attenzione: impossibile scaricare alcuni file
+
+Nothing here tells a newcomer that `.sig` is a signature, that the PACKAGE
+downloaded fine, that the guilty party is *one mirror* and not the package —
+and that pacman refusing is pacman doing its job. The fix is one line: get the
+file from another mirror. But the answer the forums give, and the one a
+frustrated person reaches for, is `SigLevel = Never`: "solving" it by turning
+off signature checking for the whole system, forever.
+
+This is squarely GLIA's job and we do nothing about it today. An assistant
+that teaches the terminal should be able to say: *"the package is there, its
+signature is missing on that mirror — the mirror is broken, not the package.
+Take it from another one; don't switch the check off."* Worth collecting a
+handful of these (mirror 404, keyring out of date, partial upgrade, disk
+full): the errors where the popular workaround is worse than the problem.
+That is where an assistant earns the word "assistant".
+
 ### D5. Safety first, but configurable
 
 `EXTRA_CONFIRM_PATTERNS` is a hardcoded array (`rm -[rf]`, `dd`, `mkfs`,
@@ -241,8 +263,14 @@ nothing in the system ever mentions it. That is a `--doctor` check:
 `glia -m bench` (name TBD): run the real thing both ways on THIS machine and
 print tok/s, the way we did tonight. A number beats a heuristic, it survives
 new hardware without maintenance, and it is the pillar applied to ourselves —
-the AI proposes, the measurement decides. The bench in `scripts/eval-web.sh`
-already does the timing half; this is its sibling.
+the AI proposes, the measurement decides.
+
+**It already exists as a prototype**: `scripts/eval-backend.sh` is exactly the
+script that produced the table above (raw run kept in
+`docs/design/bench-gpu-2026-07-17.txt`). What it still needs to become a real
+command: flip the backend itself instead of asking the user to edit a systemd
+override, refuse to run when there is no GPU to compare against, and print a
+verdict rather than two numbers to interpret.
 
 One more thing seen while measuring: with the iGPU enabled Ollama reported
 `type=iGPU total="23.3 GiB" available="21.0 GiB"` — it believes system RAM is
@@ -253,6 +281,41 @@ recommend an iGPU to someone, we own that warning.
 Supersedes the old TODO line "glia-hardware: detect capable AMD/Intel GPUs and
 consider OLLAMA_VULKAN=1" — which guessed right ("weak iGPUs are usually not
 worth it vs CPU") and now has the receipt.
+
+### D7. `make check-docs` — the duplicated surfaces keep drifting
+
+Evidence from one evening (2026-07-16/17), all of it the same bug wearing
+different clothes:
+
+- the `translate` role went missing on FOUR surfaces (the `-m` sheet, the
+  README, the home page, commands.html), found at four different moments;
+- commands.html still described the pre-2.18 `-p` and a project path that the
+  code had changed months earlier;
+- the two site navs disagreed on both entries AND mobile breakpoint, so menu
+  items vanished walking between pages;
+- the header of `bin/glia` claimed "Version: 2.17.2" while `VERSION=2.18.0`,
+  with no v2.18 changelog at all;
+- README promised `--kaboom` "type YES" when it asks for CONFIRM_WORD.
+
+None of this is carelessness: **there are five hand-kept copies of the same
+truth and none of them knows about the others**. The completions were the only
+surface already right — because someone once wired them to the code by habit.
+
+The ask: one command that reads the parser in `bin/glia` as the source of
+truth and fails loudly when a surface disagrees. Cheap checks that would have
+caught every item above:
+
+- every flag handled in the case statement appears in README, commands.html
+  and both completions (aliases excepted, deliberately);
+- `VERSION=` matches the header's `Version:` line and the newest tag;
+- the two navs in `docs/*.html` have identical entries, order and breakpoint;
+- no page hardcodes a localized string (`YES`, `s/y/j`) that is really
+  `CONFIRM_WORD` / `$YES_KEY`.
+
+It is the `--doctor` idea turned on the project instead of the user's machine
+— and it is the only one of these threads that makes the OTHER threads cheaper:
+D2 says adding role #5 must not cost five surfaces. This is how you find out
+whether it did.
 
 ## TODO
 
