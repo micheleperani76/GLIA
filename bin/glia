@@ -383,8 +383,12 @@ CACHEMAX=200
 # Web search (v2.13): DuckDuckGo via the w3m text browser. No API key, no
 # token juggling - w3m looks like a real browser so it is not rate-blocked.
 # Everything below is meant to be easy to change (or point at SearXNG).
-WEB_URL="https://lite.duckduckgo.com/lite/?q="   # engine endpoint (?kl= region)
-WEB_REGION="it-it"        # result region/language bias (it-it, us-en, de-de, wt-wt)
+WEB_URL="https://lite.duckduckgo.com/lite/?q="   # ddg endpoint (?kl= region)
+WEB_URL_BING="https://www.bing.com/search?q="    # bing endpoint
+WEB_ENGINE_DEFAULT="ddg"  # engine when nothing is configured: ddg | bing | searx
+WEBENGINEFILE="$HOME/.config/glia/web_engine"    # persistent engine choice (--web-engine)
+SEARXURLFILE="$HOME/.config/glia/searx_url"      # SearXNG instance URL (searx engine only)
+WEB_REGION="it-it"        # ddg result region/language bias (it-it, us-en, de-de, wt-wt)
 WEB_RESULTS=5             # how many results feed the answer as sources
 WEB_PAGES=0              # pages read IN FULL by default (0 = snippet-first, fast)
 WEB_PAGES_DEEP=2          # pages read in full in deep mode (-w+)
@@ -1156,9 +1160,24 @@ t() {
         it:web_today)       echo "Oggi è:" ;;
         de:web_today)       echo "Heute ist:" ;;
         *:web_today)        echo "Today is:" ;;
-        it:web_cmd_expl)    echo "Interrogo DuckDuckGo con il browser testuale w3m (senza chiavi), leggo i risultati e li faccio riassumere al modello:" ;;
-        de:web_cmd_expl)    echo "Ich frage DuckDuckGo mit dem Textbrowser w3m ab (ohne Schlüssel), lese die Ergebnisse und lasse sie vom Modell zusammenfassen:" ;;
-        *:web_cmd_expl)     echo "I query DuckDuckGo with the w3m text browser (no keys), read the results and have the model summarize them:" ;;
+        it:web_cmd_expl)    echo "Interrogo il motore di ricerca con il browser testuale w3m (senza chiavi), leggo i risultati e li faccio riassumere al modello:" ;;
+        de:web_cmd_expl)    echo "Ich frage die Suchmaschine mit dem Textbrowser w3m ab (ohne Schlüssel), lese die Ergebnisse und lasse sie vom Modell zusammenfassen:" ;;
+        *:web_cmd_expl)     echo "I query the search engine with the w3m text browser (no keys), read the results and have the model summarize them:" ;;
+        it:we_engine)       echo "motore" ;;
+        de:we_engine)       echo "Suchmaschine" ;;
+        *:we_engine)        echo "engine" ;;
+        it:we_current)      echo "Motore di ricerca per -w:" ;;
+        de:we_current)      echo "Suchmaschine für -w:" ;;
+        *:we_current)       echo "Search engine for -w:" ;;
+        it:we_set)          echo "Motore impostato:" ;;
+        de:we_set)          echo "Suchmaschine gesetzt:" ;;
+        *:we_set)           echo "Engine set:" ;;
+        it:we_bad)          echo "Motore non valido. Usa: ddg | bing | searx" ;;
+        de:we_bad)          echo "Ungültige Suchmaschine. Nutze: ddg | bing | searx" ;;
+        *:we_bad)           echo "Invalid engine. Use: ddg | bing | searx" ;;
+        it:web_searx_nourl) echo "manca l'istanza SearXNG:  $ASSIST_NAME --web-engine searx <URL>" ;;
+        de:web_searx_nourl) echo "SearXNG-Instanz fehlt:  $ASSIST_NAME --web-engine searx <URL>" ;;
+        *:web_searx_nourl)  echo "SearXNG instance missing:  $ASSIST_NAME --web-engine searx <URL>" ;;
         # ---- model swap (v2.14) ----
         it:ms_reload)       echo "Ricarico la tua IA di default:" ;;
         de:ms_reload)       echo "Lade deine Standard-KI wieder:" ;;
@@ -4170,16 +4189,85 @@ web_deps_ok() {
     return 1
 }
 
-# web_search <query> -> lines:  URL <TAB> TITLE <TAB> SNIPPET
-web_search() {
-    local q; q="$(web_urlenc "$*")"
-    w3m -dump -cols "$WEB_COLS" "${WEB_URL}${q}&kl=${WEB_REGION}" 2>/dev/null | awk -v n="$WEB_RESULTS" '
+# --- engine selection (v2.18): ddg | bing | searx -------------------
+# One-off choice comes from the "engine:" prefix ("-w bing: query"), the
+# persistent one from --web-engine; anything else falls back to the default.
+web_engine() {
+    local e="${WEB_ENGINE_ONEOFF:-}"
+    [ -z "$e" ] && [ -s "$WEBENGINEFILE" ] && e="$(head -n1 "$WEBENGINEFILE")"
+    case "$e" in ddg|bing|searx) ;; *) e="$WEB_ENGINE_DEFAULT" ;; esac
+    printf '%s' "$e"
+}
+
+# web_engine_url <engine> <urlencoded query> -> full search URL.
+# Fails (return 1) only for searx without a configured instance.
+web_engine_url() {
+    local u
+    case "$1" in
+        bing)  printf '%s%s' "$WEB_URL_BING" "$2" ;;
+        searx) u="$(head -n1 "$SEARXURLFILE" 2>/dev/null)"
+               [ -n "$u" ] || return 1
+               printf '%s/search?q=%s' "${u%/}" "$2" ;;
+        *)     printf '%s%s&kl=%s' "$WEB_URL" "$2" "$WEB_REGION" ;;
+    esac
+}
+
+# Parsers: one per engine, each written against a REAL w3m dump of that
+# engine (2026-07-16), not guessed. All emit: URL <TAB> TITLE <TAB> SNIPPET.
+
+# ddg lite layout:  "N.  title" line, then URL text below.
+web_parse_ddg() {
+    awk -v n="$WEB_RESULTS" '
         function emit(){ if(title!="" && c<n){ c++; printf "https://%s\t%s\t%s\n", url, title, snip } }
         /^ *[0-9]+\.  / { emit(); line=$0; sub(/^ *[0-9]+\.  */,"",line); title=line; url=""; snip=""; next }
         { if(title=="") next; t=$0; gsub(/^[ \t]+|[ \t]+$/,"",t); if(t=="") next;
           if(url!=""){ snip=snip (snip==""?"":" ") url } url=t }
         END{ emit() }
     '
+}
+
+# bing layout: " N." alone, then domain, then a breadcrumb URL
+# ("https://host › seg › seg..."), blank, title, blank, snippet.
+# The breadcrumb is rebuilt into a URL; a truncated last segment is dropped
+# (better a valid parent page than a broken link).
+web_parse_bing() {
+    awk -v n="$WEB_RESULTS" '
+        function fixurl(u){ gsub(/ › /,"/",u); if (u ~ /(\.\.\.|…)$/) sub(/\/[^\/]*$/,"",u); return u }
+        function emit(){ if(url!="" && title!="" && c<n){ c++; printf "%s\t%s\t%s\n", url, title, snip } }
+        /^ *[0-9]+\.[ \t]*$/ { emit(); st=1; url=""; title=""; snip=""; next }
+        st==0 { next }
+        { t=$0; gsub(/^[ \t]+|[ \t]+$/,"",t); if(t=="") next }
+        st==1 { st=2; next }
+        st==2 { if (t ~ /^https?:\/\//) { url=fixurl(t); st=3 } else st=0; next }
+        st==3 { title=t; st=4; next }
+        st==4 { snip=t; st=0; next }
+        END{ emit() }
+    '
+}
+
+# SearXNG (simple theme) layout: breadcrumb URL line, blank, title, blank,
+# snippet, then a line naming the upstream engines. The instance echoes the
+# search URL itself once ("/search?q=..."): that line is skipped.
+web_parse_searx() {
+    awk -v n="$WEB_RESULTS" '
+        function fixurl(u){ gsub(/ › /,"/",u); if (u ~ /(\.\.\.|…)$/) sub(/\/[^\/]*$/,"",u); return u }
+        function emit(){ if(url!="" && title!="" && c<n){ c++; printf "%s\t%s\t%s\n", url, title, snip } }
+        { t=$0; gsub(/^[ \t]+|[ \t]+$/,"",t) }
+        t ~ /\/search\?q=/ { next }
+        t ~ /^https?:\/\// { emit(); url=fixurl(t); title=""; snip=""; st=1; next }
+        st==0 || t=="" { next }
+        st==1 { title=t; st=2; next }
+        st==2 { snip=t; st=0; next }
+        END{ emit() }
+    '
+}
+
+# web_search <query> -> lines:  URL <TAB> TITLE <TAB> SNIPPET
+web_search() {
+    local eng q url
+    eng="$(web_engine)"; q="$(web_urlenc "$*")"
+    url="$(web_engine_url "$eng" "$q")" || { echo -e "${RED}$(t web_searx_nourl)${NC}" >&2; return 1; }
+    w3m -dump -cols "$WEB_COLS" "$url" 2>/dev/null | "web_parse_$eng"
 }
 
 # web_fetch <url> -> clean readable text, capped at WEB_MAXCHARS
@@ -4362,16 +4450,27 @@ project_model_cmd() {
 
 # web_answer <query> <deep 0|1>
 web_answer() {
-    local q="$1" deep="${2:-0}" pages ctx sys prompt body target def keep
+    local q="$1" deep="${2:-0}" pages ctx sys prompt body target def keep eng wurl
+    # v2.18: an "engine:" prefix picks the search engine for THIS search only
+    # ("-w bing: query" or "-w bing:query"); --web-engine sets the default.
+    case "$q" in
+        ddg:*|bing:*|searx:*)
+            WEB_ENGINE_ONEOFF="${q%%:*}"
+            q="${q#*:}"; q="${q# }"
+            ;;
+    esac
     web_deps_ok || exit 1
     net_online || { echo -e "${RED}$(t web_noweb)${NC}" >&2; exit 1; }   # v2.14.2: no net, no point
     check_ai
+    eng="$(web_engine)"
+    wurl="$(web_engine_url "$eng" "$(web_urlenc "$q")")" \
+        || { echo -e "${RED}$(t web_searx_nourl)${NC}" >&2; exit 1; }
     def="${MODEL#ollama:}"; target="$(web_target)"
     pages="$WEB_PAGES"; [ "$deep" = 1 ] && pages="$WEB_PAGES_DEEP"
-    echo -e "${BLUE}$(t web_searching)${NC} ${GREEN}$q${NC}" >&2
+    echo -e "${BLUE}$(t web_searching)${NC} ${GREEN}$q${NC}   ($(t we_engine): ${GREEN}$eng${NC})" >&2
     [ "$target" != "$def" ] && echo -e "$(t web_using) ${GREEN}$target${NC}" >&2
     echo -e "$(t web_cmd_expl)" >&2
-    show_equiv "w3m -dump -cols $WEB_COLS '${WEB_URL}$(web_urlenc "$q")&kl=${WEB_REGION}'" >&2
+    show_equiv "w3m -dump -cols $WEB_COLS '$wurl'" >&2
     ctx="$(build_web_context "$q" "$pages")"
     if [ -z "$ctx" ]; then echo -e "${RED}$(t web_noresult)${NC}" >&2; exit 1; fi
     swap_in "$target" "$def"      # v2.14: free RAM only if the web model differs and won't fit
@@ -4392,6 +4491,33 @@ web_answer() {
     write_log "WEB" "$q"
 }
 
+# --web-engine [engine] [searx-url]: show or set the default -w engine.
+web_engine_cmd() {
+    local e="${1:-}" u="${2:-}"
+    if [ -z "$e" ]; then
+        echo -e "$(t we_current) ${GREEN}$(web_engine)${NC}   (ddg | bing | searx)"
+        [ -s "$SEARXURLFILE" ] && echo -e "  searx: $(head -n1 "$SEARXURLFILE")"
+        return 0
+    fi
+    case "$e" in
+        ddg|bing|searx) ;;
+        *) echo -e "${RED}$(t we_bad)${NC}" >&2; return 1 ;;
+    esac
+    if [ "$e" = searx ]; then
+        if [ -n "$u" ]; then
+            mkdir -p "$(dirname "$SEARXURLFILE")"
+            printf '%s\n' "${u%/}" > "$SEARXURLFILE"
+            show_equiv "echo '${u%/}' > ${SEARXURLFILE/#$HOME/\~}"
+        fi
+        # refuse to set a default that cannot work: searx needs an instance
+        [ -s "$SEARXURLFILE" ] || { echo -e "${RED}$(t web_searx_nourl)${NC}" >&2; return 1; }
+    fi
+    mkdir -p "$(dirname "$WEBENGINEFILE")"
+    printf '%s\n' "$e" > "$WEBENGINEFILE"
+    echo -e "${GREEN}$(t we_set) $e${NC}"
+    show_equiv "echo '$e' > ${WEBENGINEFILE/#$HOME/\~}"
+}
+
 web_help() {
     case "$UILANG" in
     it) cat <<EOF
@@ -4399,9 +4525,15 @@ $ASSIST_NAME -w — ricerca sul web con fonti
 
   $ASSIST_NAME -w <domanda>    cerca sul web e risponde citando le fonti
   $ASSIST_NAME -w+ <domanda>   come sopra, ma legge anche le prime pagine (più lento, più dettaglio)
+  $ASSIST_NAME -w bing: <domanda>   questa sola ricerca con Bing (prefissi: ddg: bing: searx:)
+
+Motore di ricerca:
+  $ASSIST_NAME --web-engine             mostra il motore attuale
+  $ASSIST_NAME --web-engine bing        cambia il motore di default (ddg | bing | searx)
+  $ASSIST_NAME --web-engine searx <URL> imposta l'istanza SearXNG (necessaria per searx)
 
 Come funziona:
-  - usa il browser testuale w3m per interrogare DuckDuckGo (nessuna chiave API)
+  - usa il browser testuale w3m per interrogare il motore scelto (nessuna chiave API)
   - il modello riassume i risultati e chiude sempre con l'elenco 'Fonti:'
   - di default legge solo gli estratti (veloce); -w+ apre le pagine intere
 
@@ -4428,9 +4560,15 @@ $ASSIST_NAME -w — Websuche mit Quellen
 
   $ASSIST_NAME -w <Frage>     sucht im Web und antwortet mit Quellenangabe
   $ASSIST_NAME -w+ <Frage>    wie oben, liest zusätzlich die ersten Seiten (langsamer, mehr Detail)
+  $ASSIST_NAME -w bing: <Frage>    nur diese Suche mit Bing (Präfixe: ddg: bing: searx:)
+
+Suchmaschine:
+  $ASSIST_NAME --web-engine             zeigt die aktuelle Suchmaschine
+  $ASSIST_NAME --web-engine bing        wechselt den Standard (ddg | bing | searx)
+  $ASSIST_NAME --web-engine searx <URL> setzt die SearXNG-Instanz (für searx nötig)
 
 So funktioniert es:
-  - nutzt den Textbrowser w3m für DuckDuckGo (kein API-Schlüssel)
+  - nutzt den Textbrowser w3m für die gewählte Suchmaschine (kein API-Schlüssel)
   - das Modell fasst die Ergebnisse zusammen und endet immer mit 'Quellen:'
   - standardmäßig nur Auszüge (schnell); -w+ öffnet die ganzen Seiten
 
@@ -4457,9 +4595,15 @@ $ASSIST_NAME -w — web search with sources
 
   $ASSIST_NAME -w <question>    search the web and answer, citing the sources
   $ASSIST_NAME -w+ <question>   same, but also reads the top pages (slower, more detail)
+  $ASSIST_NAME -w bing: <question>   this one search with Bing (prefixes: ddg: bing: searx:)
+
+Search engine:
+  $ASSIST_NAME --web-engine             show the current engine
+  $ASSIST_NAME --web-engine bing        change the default engine (ddg | bing | searx)
+  $ASSIST_NAME --web-engine searx <URL> set the SearXNG instance (required for searx)
 
 How it works:
-  - uses the w3m text browser to query DuckDuckGo (no API key)
+  - uses the w3m text browser to query the chosen engine (no API key)
   - the model summarizes the results and always ends with a 'Sources:' list
   - snippets only by default (fast); -w+ opens the full pages
 
@@ -5188,6 +5332,10 @@ case "$1" in
             "")             echo -e "${YELLOW}$(t web_usage)${NC}" >&2; exit 1 ;;
             *)              web_answer "$*" 1 ;;
         esac
+        ;;
+    --web-engine|--webengine)
+        shift
+        web_engine_cmd "$@"
         ;;
     --web-model|--webmodel)
         shift
