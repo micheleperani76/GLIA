@@ -356,7 +356,17 @@ PROG="$(basename "$0")"                 # how the command was invoked (glia, mya
 # 'glia' is the permanent anchor: config, logs and the safety command live under it.
 # The preferred/friendly name (shown in -h) is stored here by --rename.
 NAMEFILE="$HOME/.config/glia/name"
-if [ -r "$NAMEFILE" ]; then ASSIST_NAME="$(head -n1 "$NAMEFILE")"; else ASSIST_NAME="glia"; fi
+# The assistant answers to the name it was CALLED with: a rename symlink
+# (e.g. arx -> glia) makes $PROG the user's name, so help and examples mutate
+# with it ('arx -h' talks about arx). Fallbacks: the name recorded by
+# --rename, then the anchor 'glia' itself.
+if [ -n "$PROG" ] && [ "$PROG" != "glia" ] && command -v "$PROG" >/dev/null 2>&1; then
+    ASSIST_NAME="$PROG"
+elif [ -r "$NAMEFILE" ]; then
+    ASSIST_NAME="$(head -n1 "$NAMEFILE")"
+else
+    ASSIST_NAME="glia"
+fi
 [ -z "$ASSIST_NAME" ] && ASSIST_NAME="glia"
 LOGDIR="$HOME/.local/share/glia"
 LOGFILE="$LOGDIR/glia.log"
@@ -1328,6 +1338,7 @@ show_help() {
     case "$UILANG" in
     it) cat <<EOF
 $ASSIST_NAME v$VERSION - assistente IA da terminale (IA in uso: ${MODEL#ollama:})
+Parola di sicurezza sempre attiva: glia (funziona con qualsiasi nome tu gli dia)
 
 L'essenziale:
   $ASSIST_NAME --rename <nome>     dai IL TUO nome all'assistente (glia resta sempre)
@@ -1355,6 +1366,7 @@ EOF
         ;;
     de) cat <<EOF
 $ASSIST_NAME v$VERSION - KI-Terminal-Assistent (aktive KI: ${MODEL#ollama:})
+Sicherheitswort, immer aktiv: glia (funktioniert bei jedem Namen, den du ihm gibst)
 
 Das Wesentliche:
   $ASSIST_NAME --rename <Name>    gib dem Assistenten DEINEN Namen (glia bleibt immer)
@@ -1382,6 +1394,7 @@ EOF
         ;;
     *) cat <<EOF
 $ASSIST_NAME v$VERSION - AI terminal assistant (AI in use: ${MODEL#ollama:})
+Safety word, always on: glia (works whatever name you give it)
 
 The essentials:
   $ASSIST_NAME --rename <name>    give the assistant YOUR name (glia always stays)
