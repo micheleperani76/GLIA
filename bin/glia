@@ -484,6 +484,30 @@ t() {
         it:rc_confirm_generic) echo "Invio o n = annulla | $YES_KEY = conferma: " ;;
         de:rc_confirm_generic) echo "Enter oder n = abbrechen | $YES_KEY = bestaetigen: " ;;
         *:rc_confirm_generic)  echo "Enter or n = cancel | $YES_KEY = confirm: " ;;
+        it:rc_channel)      echo "canale" ;;
+        de:rc_channel)      echo "Kanal" ;;
+        *:rc_channel)       echo "channel" ;;
+        it:rc_chan_expl)    echo "stable = solo versioni definitive (vX.Y.Z); beta = anche le anteprime (-beta/-rc). Cambia con: --channel beta|stable" ;;
+        de:rc_chan_expl)    echo "stable = nur finale Versionen (vX.Y.Z); beta = auch Vorabversionen (-beta/-rc). Wechseln: --channel beta|stable" ;;
+        *:rc_chan_expl)     echo "stable = final versions only (vX.Y.Z); beta = also previews (-beta/-rc). Switch with: --channel beta|stable" ;;
+        it:rc_chan_set)     echo "canale impostato su:" ;;
+        de:rc_chan_set)     echo "Kanal gesetzt auf:" ;;
+        *:rc_chan_set)      echo "channel set to:" ;;
+        it:rc_chan_beta_warn) echo "Sei sul canale beta: riceverai anteprime (-beta/-rc), meno testate." ;;
+        de:rc_chan_beta_warn) echo "Du bist im Beta-Kanal: du erhaeltst Vorabversionen (-beta/-rc), weniger getestet." ;;
+        *:rc_chan_beta_warn)  echo "You are on the beta channel: you will get previews (-beta/-rc), less tested." ;;
+        it:rc_chan_bad)     echo "Canale non valido. Usa: stable | beta" ;;
+        de:rc_chan_bad)     echo "Ungueltiger Kanal. Nutze: stable | beta" ;;
+        *:rc_chan_bad)      echo "Invalid channel. Use: stable | beta" ;;
+        it:rc_lastcheck)    echo "ultimo controllo" ;;
+        de:rc_lastcheck)    echo "letzte Pruefung" ;;
+        *:rc_lastcheck)     echo "last check" ;;
+        it:rc_never)        echo "mai (esegui: --update --check)" ;;
+        de:rc_never)        echo "nie (fuehre aus: --update --check)" ;;
+        *:rc_never)         echo "never (run: --update --check)" ;;
+        it:rc_notags)       echo "nessun tag di release ancora presente sul remoto" ;;
+        de:rc_notags)       echo "noch keine Release-Tags im Remote vorhanden" ;;
+        *:rc_notags)        echo "no release tags on the remote yet" ;;
         it:no_command)      echo "Nessun comando generato." ;;
         de:no_command)      echo "Kein Befehl erzeugt." ;;
         *:no_command)       echo "No command generated." ;;
@@ -2672,19 +2696,129 @@ EOF
 # when offline). Shared by -w (protection), -V and --doctor.
 net_online() { curl -fsS --max-time 3 -o /dev/null -I "https://github.com" 2>/dev/null; }
 
-NEWVER=""
-net_update_status() {
-    NEWVER=""
+NEWVER=""; NEWTAG=""
+
+# ================= Release channels / update check (Part E, v2.17) =================
+
+# --- CORE cache (reused later by Parts B/C/D and MOTD) ---
+core_cache_get() {
+    # $1=key  $2=max_age_sec ; prints payload (lines after the 1st) if fresh.
+    local f="$GLIA_CACHE_DIR/$1" maxage="$2" ts now
+    [ -r "$f" ] || return 1
+    ts="$(sed -n 1p "$f" 2>/dev/null)"
+    [[ "$ts" =~ ^[0-9]+$ ]] || return 1
+    now="$(date +%s)"
+    [ $(( now - ts )) -le "$maxage" ] || return 1
+    tail -n +2 "$f"
+}
+core_cache_put() {
+    # $1=key ; payload read from stdin. First stored line = epoch timestamp.
+    local f="$GLIA_CACHE_DIR/$1"
+    mkdir -p "$GLIA_CACHE_DIR" 2>/dev/null || return 1
+    { date +%s; cat; } > "$f"
+}
+
+# --- channel persistence (stable|beta, default stable) ---
+chan_get() {
+    local c="stable"
+    [ -r "$GLIA_CHANNEL_FILE" ] && c="$(sed -n 1p "$GLIA_CHANNEL_FILE" 2>/dev/null)"
+    case "$c" in beta) echo beta ;; *) echo stable ;; esac
+}
+chan_set() {
+    mkdir -p "$(dirname "$GLIA_CHANNEL_FILE")" 2>/dev/null
+    printf '%s\n' "$1" > "$GLIA_CHANNEL_FILE"
+}
+
+# --- tag discovery: pure git, no API, no jq ---
+rc_list_tags() {
+    git ls-remote --tags "$GLIA_REPO_URL" 2>/dev/null \
+        | sed 's#.*refs/tags/##; s#\^{}##' | sort -u
+}
+rc_latest_tag() {
+    # $1 = channel. stable -> only vX.Y.Z ; beta -> highest tag overall.
+    local chan="${1:-stable}" t best=""
+    while IFS= read -r t; do
+        [ -n "$t" ] || continue
+        if [ "$chan" = stable ]; then
+            [[ "$t" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || continue
+        else
+            [[ "$t" =~ ^v[0-9]+\.[0-9]+\.[0-9]+ ]] || continue
+        fi
+        if [ -z "$best" ] || [ "$(ver_cmp "$t" "$best")" = 1 ]; then best="$t"; fi
+    done < <(rc_list_tags)
+    printf '%s' "$best"
+}
+
+# --- online check: sets NEWVER/NEWTAG, caches the result ---
+rc_check() {
+    # return: 0 up-to-date, 1 newer available, 2 offline/failed.
+    NEWVER=""; NEWTAG=""
     net_online || return 2
-    local nv
-    nv=$(curl -fsSL --max-time 5 "https://raw.githubusercontent.com/micheleperani76/GLIA/main/bin/glia" 2>/dev/null \
-         | grep -m1 -oE 'VERSION="[0-9.]+"' | grep -oE '[0-9.]+')
-    [ -n "$nv" ] || return 2
-    if [ "$nv" != "$VERSION" ] && [ "$(printf '%s\n%s\n' "$VERSION" "$nv" | sort -V | tail -n1)" = "$nv" ]; then
-        NEWVER="$nv"; return 1
-    fi
+    local chan tag cmp
+    chan="$(chan_get)"
+    tag="$(rc_latest_tag "$chan")"
+    [ -n "$tag" ] || return 2
+    NEWTAG="$tag"
+    cmp="$(ver_cmp "$tag" "$VERSION")"
+    printf '%s\n%s\n%s\n' "$chan" "$tag" "$cmp" | core_cache_put "$RC_CHECK_KEY"
+    if [ "$cmp" = 1 ]; then NEWVER="${tag#v}"; return 1; fi
     return 0
 }
+
+# --- cached read (offline), for -V / --doctor: "chan|tag|cmp|age_days" ---
+rc_cached() {
+    local f="$GLIA_CACHE_DIR/$RC_CHECK_KEY" ts now age chan tag cmp
+    [ -r "$f" ] || return 1
+    ts="$(sed -n 1p "$f")"; [[ "$ts" =~ ^[0-9]+$ ]] || return 1
+    chan="$(sed -n 2p "$f")"; tag="$(sed -n 3p "$f")"; cmp="$(sed -n 4p "$f")"
+    now="$(date +%s)"; age=$(( (now - ts) / 86400 ))
+    printf '%s|%s|%s|%s' "$chan" "$tag" "$cmp" "$age"
+}
+
+# --- offline version line for -V (never touches the network) ---
+version_line() {
+    echo "$ASSIST_NAME $VERSION (GLIA)"
+    echo -e "$(t rc_channel): $(chan_get)"
+    local c chan tag cmp age
+    if c="$(rc_cached)"; then
+        chan="${c%%|*}"; c="${c#*|}"
+        tag="${c%%|*}"; c="${c#*|}"
+        cmp="${c%%|*}"; age="${c##*|}"
+        if [ "$cmp" = 1 ]; then
+            echo -e "$(t rc_lastcheck) (${age}d): $(t doc_update_yes) ${GREEN}${tag#v}${NC} [$chan]"
+        else
+            echo -e "$(t rc_lastcheck) (${age}d): $(t doc_update_no)"
+        fi
+    else
+        echo -e "$(t rc_lastcheck): $(t rc_never)"
+    fi
+}
+
+# --- --channel command ---
+set_channel() {
+    case "${1:-}" in
+        ""|show|status)
+            echo -e "${BLUE}$(t rc_channel):${NC} $(chan_get)"
+            echo "$(t rc_chan_expl)" ;;
+        stable)
+            chan_set stable
+            echo -e "${GREEN}$(t rc_chan_set) stable${NC}" ;;
+        beta)
+            chan_set beta
+            echo -e "${YELLOW}$(t rc_chan_beta_warn)${NC}"
+            echo -e "${GREEN}$(t rc_chan_set) beta${NC}" ;;
+        *)
+            echo -e "${RED}$(t rc_chan_bad)${NC}" >&2; return 1 ;;
+    esac
+}
+
+# --- update-availability probe (kept name; now tag/channel based) ---
+net_update_status() {
+    # ONLINE. Sets NEWVER; returns 0 up-to-date / 1 newer / 2 offline.
+    NEWVER=""
+    rc_check
+}
+# ================= end Release channels (Part E) =================
 
 doctor() {
     local fails=0 mname avail need
@@ -3512,13 +3646,14 @@ case "$1" in
         interactive_mode
         ;;
     -V|--version)
-        echo "$ASSIST_NAME $VERSION (GLIA)"
-        # v2.14.1: silent update check; speak ONLY if online AND newer exists
-        net_update_status || { [ -n "$NEWVER" ] && \
-            echo -e "${YELLOW}↑${NC} $(t doc_update_yes) ${GREEN}$NEWVER${NC}   ->   ${GREEN}$ASSIST_NAME --update glia${NC}"; }
+        version_line
         ;;
     --doctor)
         doctor
+        ;;
+    --channel)
+        shift
+        set_channel "${1:-}"
         ;;
     --update)
         shift
