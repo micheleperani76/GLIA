@@ -4,7 +4,8 @@ Updated: 2026-07-16
 
 Where things are heading: **[Direction — the next moves](#direction-the-next-moves-noted-2026-07-16)**
 (shared Ollama · one console for the AIs · phase 5 · the teaching audit ·
-configurable safety). Below that, the running TODO list.
+configurable safety · the GPU nobody uses — with real numbers). Below that,
+the running TODO list.
 
 ## Assistant intelligence mechanisms
 
@@ -180,6 +181,79 @@ self-explanation (mechanism 5 above) should work for user patterns too — a
 custom rule that just says "are you sure?" without explaining is a lesser
 tool than the ones we ship.
 
+### D6. The GPU nobody uses — backend packages, and telling who should care
+
+**Measured on 2026-07-17**, not guessed. Dell XPS17, i7 TigerLake-H, Intel UHD
+GT1 (32 EU), 31 GiB DDR, `qwen2.5-coder:7b` q4, same prompt, seed 42, temp 0,
+3 runs each, same Ollama 0.32.0:
+
+| backend | generation | prefill | output |
+|---|---|---|---|
+| CPU (AVX512 + VNNI + REPACK) | **8.8 tok/s** | ~460 tok/s | correct |
+| Vulkan on the iGPU (`offloaded 29/29 layers`) | **1.94 tok/s** | ~98 tok/s | correct |
+
+The iGPU is **4.5x SLOWER**, and it worked perfectly while being slower — this
+is not a misconfiguration, it is the hardware. No gibberish either (upstream
+issue #13086 did not reproduce): the failure mode here is speed, not
+correctness. Reason: an iGPU reads from the SAME DDR as the CPU, so it brings
+no memory-bandwidth advantage — and bandwidth is the bottleneck in inference —
+while a GT1's 32 EUs lose badly to AVX512_VNNI, which exists precisely for
+int8 inference.
+
+**What the machine had to say for itself** (worth copying, it is our own
+philosophy done by someone else):
+
+    msg="dropping integrated GPU; to enable, set OLLAMA_IGPU_ENABLE=1"
+        library=Vulkan description="Intel(R) UHD Graphics (TGL GT1)"
+
+Ollama found the GPU, refused it, said why, and handed over the lever. That is
+`'jar': that name is already a command` in another program's voice.
+
+**The three facts that make this diagnosable** (all cheap, all local):
+
+1. `pacman -Q ollama` → the plain `ollama` package is **CPU-only**.
+2. `ls /usr/lib/ollama/` → 20 × `libggml-cpu-*.so` and nothing else: no
+   `libggml-vulkan.so`, no cuda, no hip. The backend is not merely disabled,
+   it **is not there**.
+3. The backends are ADD-ONS, not alternatives — no conflicts, install
+   alongside: `ollama-vulkan` (6.5 MiB), `ollama-cuda` (773 MiB),
+   `ollama-rocm` (974 MiB).
+
+A trap to avoid: `OLLAMA_VULKAN:true` appears in the server config even with
+no Vulkan backend installed. It is a *preference*, not a capability — reading
+it as "Vulkan is on" is exactly the kind of output that lies. The truthful
+line is `inference compute id=... library=...`: that one lists what really
+exists.
+
+**Who this is actually for.** Not this laptop. The case that matters is the
+person with an RTX who installed `ollama` instead of `ollama-cuda`, is getting
+CPU speed, and has no idea: their GPU is a 10-20x gain sitting idle, and
+nothing in the system ever mentions it. That is a `--doctor` check:
+
+- **dedicated GPU + matching backend missing** → say so, name the package.
+  This is the big win and the safe advice.
+- **iGPU + backend missing** → do NOT recommend it. We have the number: 4.5x
+  slower. Mention it exists, say it measured worse here, let them choose.
+- **backend present but the iGPU is being dropped** → explain
+  `OLLAMA_IGPU_ENABLE=1` and the trade-off, do not just print the lever.
+
+**Do not ship a table of EU counts.** The honest version of this feature is
+`glia -m bench` (name TBD): run the real thing both ways on THIS machine and
+print tok/s, the way we did tonight. A number beats a heuristic, it survives
+new hardware without maintenance, and it is the pillar applied to ourselves —
+the AI proposes, the measurement decides. The bench in `scripts/eval-web.sh`
+already does the timing half; this is its sibling.
+
+One more thing seen while measuring: with the iGPU enabled Ollama reported
+`type=iGPU total="23.3 GiB" available="21.0 GiB"` — it believes system RAM is
+VRAM, and sized the context at 32768 instead of 4096 because of it. That is
+upstream issue #14953 (OOM risk under memory pressure). If we ever do
+recommend an iGPU to someone, we own that warning.
+
+Supersedes the old TODO line "glia-hardware: detect capable AMD/Intel GPUs and
+consider OLLAMA_VULKAN=1" — which guessed right ("weak iGPUs are usually not
+worth it vs CPU") and now has the receipt.
+
 ## TODO
 
 - **An AI in RAM that GLIA did not load** (decided 2026-07-16, not yet built).
@@ -206,9 +280,14 @@ tool than the ones we ship.
 - **glia v1.3**: show the real aichat/ollama error instead of "empty answer"
   (drop `2>/dev/null`, log stderr); check available RAM in `check_ai`
   before loading the model (7B needs ~6 GB free).
-- **glia-hardware**: detect capable AMD/Intel GPUs and consider
+- ~~**glia-hardware**: detect capable AMD/Intel GPUs and consider
   `OLLAMA_VULKAN=1` (experimental; known garbage-output issues on Intel
-  iGPUs; weak iGPUs are usually not worth it vs CPU).
+  iGPUs; weak iGPUs are usually not worth it vs CPU).~~
+  → **superseded by D6**, and measured on 2026-07-17. The hunch was right
+  about the conclusion (4.5x slower on a UHD GT1) and wrong about the
+  reason: no garbage output at all, and `OLLAMA_VULKAN=1` is not the lever
+  — the `ollama` package simply has no Vulkan backend in it, and iGPUs are
+  dropped on purpose unless `OLLAMA_IGPU_ENABLE=1`.
 - Btrfs snapshots as safety net (phase 5), branding, docs.
 - **Branding**: naming is "GLIA — GNU/Linux + AI" (AI in English) everywhere;
   texts updated 2026-07-12, the Calamares logo.png still says "IA" and must
