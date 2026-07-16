@@ -56,6 +56,7 @@ complete -c glia -n __glia_first -a '--new'       -d 'new project from scratch (
 complete -c glia -n __glia_first -a '-n'          -d 'new project from scratch (short for --new)'
 complete -c glia -n __glia_first -a '-w'          -d 'web search with sources'
 complete -c glia -n __glia_first -a '-ws'         -d 'direct web results, no AI (also opens a URL)'
+complete -c glia -n __glia_first -a '-T'          -d 'translate a file into a new file next to it'
 complete -c glia -n __glia_first -a '--web-model' -d 'pin the AI used by -w'
 complete -c glia -n __glia_first -a '--web-engine' -d 'show/switch the -w search engine (ddg|bing|searx)'
 complete -c glia -n __glia_first -a '--project-model' -d 'pin the AI used by -p and --new'
@@ -102,6 +103,10 @@ complete -c glia -n 'contains -- (__glia_prev) --update --memory -p --project -n
 
 # -p <file>: v2.18 edits an EXISTING file, so complete real paths
 complete -c glia -n 'contains -- (__glia_prev) -p --project' -F
+
+# -T <file> [lang]: translate an existing file
+complete -c glia -n 'contains -- (__glia_prev) -T --translate' -F
+complete -c glia -n 'contains -- (__glia_prev2) -T --translate' -a 'it en de'
 
 # --update --check: ask only, install nothing. Bare --update already updates
 # GLIA itself; 'glia'/'ollama' remain hidden aliases and are not offered here.

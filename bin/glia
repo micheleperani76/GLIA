@@ -1187,6 +1187,19 @@ t() {
         it:web_open_hint)   echo "Per navigarla in modo interattivo:" ;;
         de:web_open_hint)   echo "Zum interaktiven Navigieren:" ;;
         *:web_open_hint)    echo "To browse it interactively:" ;;
+        # ---- -T translate (v2.18) ----
+        it:tr_usage)        echo "Uso: $ASSIST_NAME -T <file> [it|en|de|...]   traduce in un file NUOVO accanto (l'originale resta intatto); lingua di default: quella dell'interfaccia" ;;
+        de:tr_usage)        echo "Verwendung: $ASSIST_NAME -T <Datei> [it|en|de|...]   übersetzt in eine NEUE Datei daneben (Original bleibt unberührt); Standardsprache: die der Oberfläche" ;;
+        *:tr_usage)         echo "Usage: $ASSIST_NAME -T <file> [it|en|de|...]   translates into a NEW file next to it (the original is untouched); default language: the interface one" ;;
+        it:tr_doing)        echo "Traduco:" ;;
+        de:tr_doing)        echo "Übersetze:" ;;
+        *:tr_doing)         echo "Translating:" ;;
+        it:tr_fail)         echo "Il modello non ha risposto." ;;
+        de:tr_fail)         echo "Das Modell hat nicht geantwortet." ;;
+        *:tr_fail)          echo "The model did not reply." ;;
+        it:tr_notafile)     echo "Non è un file leggibile:" ;;
+        de:tr_notafile)     echo "Keine lesbare Datei:" ;;
+        *:tr_notafile)      echo "Not a readable file:" ;;
         # ---- model swap (v2.14) ----
         it:ms_reload)       echo "Ricarico la tua IA di default:" ;;
         de:ms_reload)       echo "Lade deine Standard-KI wieder:" ;;
@@ -1441,7 +1454,7 @@ Aiuto per area — ogni help elenca TUTTI i suoi sotto-comandi:
   --update help  aggiorna: -U · --check · --channel · --rollback · engine
 
 Comandi secchi (una cosa sola, nessun sotto-menù):
-  --rename <nome> · --lang <it|en|de> · -l (log) · --clear-cache · -V
+  --rename <nome> · --lang <it|en|de> · -T <file> [lingua] (traduci) · -l (log) · --clear-cache · -V
   --kaboom  disinstallazione GUIDATA: chiede cosa togliere e mostra ogni comando
 
 Esempio:   $ASSIST_NAME trova i file più grandi in /home
@@ -1473,7 +1486,7 @@ Hilfe pro Bereich — jede Hilfe listet ALLE ihre Unterbefehle:
   --update help  aktualisieren: -U · --check · --channel · --rollback · Engine
 
 Einfache Befehle (eine Sache, kein Untermenü):
-  --rename <Name> · --lang <it|en|de> · -l (Log) · --clear-cache · -V
+  --rename <Name> · --lang <it|en|de> · -T <Datei> [Sprache] (übersetzen) · -l (Log) · --clear-cache · -V
   --kaboom  GEFÜHRTE Deinstallation: fragt, was entfernt wird, zeigt jeden Befehl
 
 Beispiel:   $ASSIST_NAME finde die größten Dateien in /home
@@ -1505,7 +1518,7 @@ Help per area — each help lists ALL of its subcommands:
   --update help  updating: -U · --check · --channel · --rollback · engine
 
 Plain commands (one job, no submenu):
-  --rename <name> · --lang <it|en|de> · -l (log) · --clear-cache · -V
+  --rename <name> · --lang <it|en|de> · -T <file> [lang] (translate) · -l (log) · --clear-cache · -V
   --kaboom  GUIDED uninstall: asks what to remove and shows every command
 
 Example:   $ASSIST_NAME find the largest files in /home
@@ -4174,6 +4187,118 @@ $CONTENT
     write_log "PROJECT END" "$NAME"
 }
 
+# ============================================================
+#  -T: translate a file (v2.18). The original is NEVER touched:
+#  the translation lands in a NEW file next to it (README.md ->
+#  README.it.md). Same preview/hint/save procedure as --new and
+#  the same objective checks: a translated .md must still be
+#  Markdown, a translated .sh must still pass bash -n (comments
+#  and messages get translated, never the code).
+# ============================================================
+translate_lang_name() {
+    case "$1" in
+        it) printf 'Italian' ;;
+        en) printf 'English' ;;
+        de) printf 'German' ;;
+        *)  printf '%s' "$1" ;;   # anything else goes to the model as-is
+    esac
+}
+
+translate_out_path() {
+    # $1 = source, $2 = lang code -> NEW path next to the original, never an
+    # existing one (name-2, name-3, ... like --new does for folders)
+    local dir base ext cand n=2
+    dir="$(dirname "$1")"; base="$(basename "$1")"
+    if [ "${base%.*}" != "$base" ]; then
+        ext="${base##*.}"; base="${base%.*}"
+        cand="$dir/$base.$2.$ext"
+        while [ -e "$cand" ]; do cand="$dir/$base.$2-$n.$ext"; n=$((n+1)); done
+    else
+        cand="$dir/$base.$2"
+        while [ -e "$cand" ]; do cand="$dir/$base.$2-$n"; n=$((n+1)); done
+    fi
+    printf '%s' "$cand"
+}
+
+translate_file() {
+    local f="$1" lang="${2:-$UILANG}" txt tokens out lname CONTENT LINES A
+    local HINTS="" tries=0 fb="" warn=""
+    command -v jq >/dev/null || { echo "$(t need_jq)" >&2; exit 1; }
+    [ -f "$f" ] && [ -r "$f" ] || { echo -e "${RED}$(t tr_notafile) ${f:-}${NC}" >&2; exit 1; }
+    # same binary refusal as -p: translating a binary can only destroy it
+    if [ -s "$f" ] && { LC_ALL=C grep -qP '\x00' "$f" 2>/dev/null \
+         || [ "$(file --mime-encoding -b "$f" 2>/dev/null)" = "binary" ]; }; then
+        echo -e "${RED}$(t pmv_binary)${NC}" >&2
+        exit 1
+    fi
+    check_ai
+    txt="$(cat "$f"; printf x)"; txt="${txt%x}"
+    # the model must read the file AND write it back: half budget, like the
+    # -p whole-file fallback. Refused, not truncated (a mutilated input
+    # produces a mutilated translation).
+    tokens=$(( $(wc -c < "$f") / 4 ))
+    if [ "$tokens" -gt $(( PMODE_NUM_CTX / 2 )) ]; then
+        echo -e "${RED}$(t pmv_toobig)${NC}" >&2
+        echo -e "  ~$tokens $(t pmv_tokens) > $(( PMODE_NUM_CTX / 2 )) $(t pmv_tokens)" >&2
+        exit 1
+    fi
+    lname="$(translate_lang_name "$lang")"
+    out="$(translate_out_path "$f" "$lang")"
+    echo -e "${BLUE}$(t tr_doing)${NC} ${GREEN}${f/#$HOME/\~}${NC} -> ${GREEN}${out/#$HOME/\~}${NC}   ($lname)"
+    write_log "TRANSLATE START" "$f -> $out ($lname)"
+    while true; do
+        MSGS='[]'
+        add_msg system "You are a careful translator of files. Reply ONLY with the complete translated file content: no explanations, no markdown fences, nothing else. Preserve the structure and formatting EXACTLY. In code or scripts, translate ONLY comments and user-visible message strings: never translate code, commands, variable names, file paths or URLs."
+        add_msg user "Translate the following file into ${lname}.${HINTS:+ The user adds this guidance (follow it closely): $HINTS.}${fb:+ Your previous attempt was rejected by an automatic check: $fb. Translate again and fix exactly this.}
+File: $(basename "$f")
+--- file content start ---
+$txt
+--- file content end ---
+Reply ONLY with the COMPLETE translated file content."
+        CONTENT=$(chat) || { echo -e "${RED}$(t tr_fail)${NC}" >&2; exit 1; }
+        CONTENT=$(strip_fences <<< "$CONTENT")
+        # same objective checks and retry ladder as --new: the OUTPUT file
+        # has the same extension, so the same facts must hold
+        if ! newmode_check_content "$out" "$CONTENT"; then
+            tries=$((tries+1))
+            if [ "$tries" -le "$PMODE_MAX_RETRIES" ]; then
+                echo -e "${YELLOW}$(t new_check_retry) $tries/$PMODE_MAX_RETRIES: $NEW_CHECK_ERR${NC}"
+                write_log "CHECK RETRY $tries" "$out | $NEW_CHECK_ERR"
+                fb="$NEW_CHECK_ERR"
+                continue
+            fi
+            warn="$NEW_CHECK_ERR"
+        else
+            warn="" fb=""
+        fi
+        echo -e "${BLUE}$(t preview)${NC}"
+        head -n 20 <<< "$CONTENT"
+        LINES=$(wc -l <<< "$CONTENT")
+        echo -e "${BLUE}--- ($LINES lines) ---${NC}"
+        [ -n "$warn" ] && echo -e "${RED}$(t new_check_warn) $warn${NC}"
+        read -r -p "$(t save)" A < /dev/tty || A="s"
+        if [ "$A" = "v" ] || [ "$A" = "V" ]; then
+            echo "$CONTENT" | less
+            read -r -p "$(t save)" A < /dev/tty || A="s"
+        fi
+        case "$A" in
+            "")
+                printf '%s\n' "$CONTENT" > "$out"
+                echo -e "${GREEN}$(t saved) $out${NC}"
+                if [ -n "$warn" ]; then
+                    echo -e "${RED}$(t new_check_saved)${NC}"
+                    write_log "TRANSLATED WITH WARNING" "$f -> $out | $warn"
+                else
+                    write_log "TRANSLATED" "$f -> $out ($lname)"
+                fi
+                return 0 ;;
+            r|R) continue ;;
+            s|S) echo "$(t skipped)"; write_log "TRANSLATE SKIPPED" "$f"; return 0 ;;
+            *)   HINTS="${HINTS:+$HINTS; }$A"; continue ;;
+        esac
+    done
+}
+
 # --------------------- MAIN ------------------------
 # Once a custom name exists, 'glia' itself becomes only the recovery command:
 # it may run just -h / --help (or no args). Any real request points back to the
@@ -5402,6 +5527,14 @@ case "$1" in
     --web-engine|--webengine)
         shift
         web_engine_cmd "$@"
+        ;;
+    -T|--translate)
+        shift
+        case "${1:-}" in
+            help|-h|--help) echo -e "$(t tr_usage)" ;;
+            "")             echo -e "${YELLOW}$(t tr_usage)${NC}" >&2; exit 1 ;;
+            *)              translate_file "$1" "${2:-}" ;;
+        esac
         ;;
     --web-model|--webmodel)
         shift
