@@ -1,7 +1,13 @@
 #!/usr/bin/env bash
 # ============================================================
 #  install-assistant.sh - GLIA assistant installer (any distro)
-#  Version: 1.4 - 2026-07-14
+#  Version: 1.5 - 2026-07-16
+#
+#  What's new in v1.5:
+#   - records the installed tag in ~/.config/glia/installed-tag, like
+#     --update and --rollback already do: without it glia fell back to
+#     v$VERSION and the beta channel could not iterate on the same version.
+#     No tag on HEAD (or no git) = no record: the fallback is correct there.
 #
 #  What's new in v1.4:
 #   - step 2/8 does NOT re-enable Ollama if the service is already
@@ -44,6 +50,8 @@ set -u
 ASSIST_NAME="glia"                    # installed command name (rename later: glia --rename jarvis)
 INSTALL_DIR="$HOME/.local/bin"        # where the command goes (no root needed)
 AICHAT_CONFIG_DIR="$HOME/.config/aichat"
+GLIA_CONFIG_DIR="$HOME/.config/glia"  # glia's own config (model, installed-tag)
+INSTALLED_TAG_FILE="$GLIA_CONFIG_DIR/installed-tag"   # exact tag installed; read by glia_effective_tag()
 DEFAULT_MODEL="qwen2.5-coder:7b"      # model offered if you accept the download
 OLLAMA_INSTALL_URL="https://ollama.com/install.sh"
 AICHAT_REPO="sigoden/aichat"          # GitHub repo for the aichat release binary
@@ -120,6 +128,12 @@ L() {
         it:s_files)   echo "4/8  Comando glia e glia-hardware in $INSTALL_DIR" ;;
         de:s_files)   echo "4/8  Befehl glia und glia-hardware nach $INSTALL_DIR" ;;
         *:s_files)    echo "4/8  glia and glia-hardware into $INSTALL_DIR" ;;
+        it:tag_rec)   echo "registro il tag installato:" ;;
+        de:tag_rec)   echo "installierten Tag aufzeichnen:" ;;
+        *:tag_rec)    echo "Recording installed tag:" ;;
+        it:tag_none)  echo "nessun tag su questo commit: nessun record scritto (glia usa v\$VERSION)." ;;
+        de:tag_none)  echo "kein Tag auf diesem Commit: kein Record geschrieben (glia nutzt v\$VERSION)." ;;
+        *:tag_none)   echo "no tag on this commit: no record written (glia falls back to v\$VERSION)." ;;
         it:s_conf)    echo "5/8  Configurazione di aichat" ;;
         de:s_conf)    echo "5/8  aichat-Konfiguration" ;;
         *:s_conf)     echo "5/8  aichat configuration" ;;
@@ -349,6 +363,44 @@ step_files() {
     run install -m 755 "$REPO/bin/glia-hardware" "$INSTALL_DIR/glia-hardware"
 }
 
+# Record WHICH TAG of the code step_files just installed. --update and
+# --rollback already do this (bin/glia: tag_set); the installer did not, so a
+# hand/installer install left no record and glia_effective_tag() fell back to
+# "v$VERSION". On the beta channel that fallback (v2.17.0) beats every
+# v2.17.0-beta.N, so later betas of the same version were never offered.
+# Same file, same single-line format as tag_set(): printf '%s\n'.
+record_installed_tag() {
+    local tags cands tag
+    # not a git work tree (tarball, copied folder) -> nothing truthful to say
+    git -C "$REPO" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 0
+    tags="$(git -C "$REPO" tag --points-at HEAD 2>/dev/null)"
+    # version-shaped tags only: vX.Y.Z or vX.Y.Z-pre. Junk tags are not a version.
+    cands="$(printf '%s\n' "$tags" | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$')"
+    if [ -z "$cands" ]; then
+        # No tag on HEAD: the v$VERSION fallback is ALREADY the right answer.
+        # Writing it would add nothing and could lie later. Leave the file absent.
+        echo -e "   ${DIM}$(L tag_none)${NC}"
+        log "TAG record: skipped (no version tag on HEAD)"
+        return 0
+    fi
+    # Stable wins: promotion re-tags the SAME commit, so HEAD can carry both
+    # v2.17.0-beta.2 and v2.17.0 -- v2.17.0 is the promoted truth.
+    # Deliberately NOT sort -V: it orders v2.17.0 BEFORE v2.17.0-beta.2 (it does
+    # not know SemVer pre-release rules) and would record the beta. That is the
+    # class of bug ver_cmp exists to avoid; the pattern sidesteps the compare.
+    tag="$(printf '%s\n' "$cands" | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n1)"
+    [ -n "$tag" ] || tag="$(printf '%s\n' "$cands" | head -n1)"
+
+    echo -e "   ${DIM}$(L tag_rec)${NC} ${GREEN}$tag${NC} ${DIM}-> ${INSTALLED_TAG_FILE/#$HOME/\~}${NC}"
+    log "TAG record: $tag -> $INSTALLED_TAG_FILE"
+    if [ "$DRY_RUN" -eq 1 ]; then
+        printf '   %s[dry-run]%s printf %s > %s\n' "$DIM" "$NC" "'$tag\\n'" "$INSTALLED_TAG_FILE"
+        return 0
+    fi
+    mkdir -p "$GLIA_CONFIG_DIR" || return 0
+    printf '%s\n' "$tag" > "$INSTALLED_TAG_FILE"
+}
+
 step_config() {
     echo -e "${BLUE}$(L s_conf)${NC}"
     run mkdir -p "$AICHAT_CONFIG_DIR"
@@ -517,6 +569,7 @@ step_deps
 step_ollama
 step_aichat
 step_files
+record_installed_tag   # right after the code lands: step_check's --doctor then reads a true record
 step_config
 step_completions
 step_path
