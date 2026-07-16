@@ -514,6 +514,9 @@ t() {
         it:rc_rollhint)     echo "Per tornare indietro:" ;;
         de:rc_rollhint)     echo "Zum Zuruecksetzen:" ;;
         *:rc_rollhint)      echo "To roll back:" ;;
+        it:rc_updconfirm)   echo "$YES_KEY = aggiorna | Invio o n = annulla: " ;;
+        de:rc_updconfirm)   echo "$YES_KEY = aktualisieren | Enter oder n = abbrechen: " ;;
+        *:rc_updconfirm)    echo "$YES_KEY = update | Enter or n = cancel: " ;;
         it:no_command)      echo "Nessun comando generato." ;;
         de:no_command)      echo "Kein Befehl erzeugt." ;;
         *:no_command)       echo "No command generated." ;;
@@ -1763,7 +1766,7 @@ glia_self_update() {
     if [ "$check_only" = 1 ]; then
         echo -e "  ${GREEN}$ASSIST_NAME --update${NC}"; return 1
     fi
-    core_confirm "$(t su_confirm)" || { echo "$(t su_denied)"; return 0; }
+    core_confirm "$(t rc_updconfirm)" || { echo "$(t su_denied)"; return 0; }
     repodir="$(core_fetch_tag "$tag")" || { echo -e "${RED}$(t su_dlfail)${NC}" >&2; return 1; }
     rc_backup_current || echo -e "${YELLOW}$(t rc_backupwarn)${NC}"
     rc_prune
