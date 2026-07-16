@@ -170,7 +170,7 @@
 #     qwen3:8b), single VERSION variable instead of 5 hardcoded spots
 #
 #  What's new in v2.6 ("interactive input, special chars safe"):
-#   - the assistant with NO arguments (just `arx`) now opens an interactive
+#   - the assistant with NO arguments (just `myai`) now opens an interactive
 #     prompt: type the request there and it is read with `read -r`, so the
 #     interactive shell (fish, zsh, bash...) never parses it. You can type
 #     ' " $ | ; & * literally, with no quoting. Empty line = quit.
@@ -315,7 +315,7 @@ else
 fi
 case "$UILANG" in it|de|en) : ;; *) UILANG="en" ;; esac
 
-PROG="$(basename "$0")"                 # how the command was invoked (glia, arx, ...)
+PROG="$(basename "$0")"                 # how the command was invoked (glia, myai, ...)
 # 'glia' is the permanent anchor: config, logs and the safety command live under it.
 # The preferred/friendly name (shown in -h) is stored here by --rename.
 NAMEFILE="$HOME/.config/glia/name"

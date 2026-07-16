@@ -12,7 +12,7 @@
 #  (fish loads it automatically; no config change needed)
 #
 #  Renamed assistant? Make the new name reuse these completions,
-#  e.g.:  complete -c arx --wraps glia
+#  e.g.:  complete -c myai --wraps glia
 # ============================================================
 
 # ------------------- helpers -----------------------
@@ -94,4 +94,4 @@ complete -c glia -n 'contains -- (__glia_prev) --update --memory -p --project -i
 complete -c glia -n 'contains -- (__glia_prev) --update' -a 'glia' -d 'update GLIA itself'
 
 # renamed assistant? add its name too, e.g.:
-# complete -c arx --wraps glia
+# complete -c myai --wraps glia

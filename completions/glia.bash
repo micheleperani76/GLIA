@@ -13,7 +13,7 @@
 #    /usr/share/bash-completion/completions/glia
 #
 #  Renamed assistant? Register the extra name at the bottom,
-#  e.g.:  complete -F _glia arx
+#  e.g.:  complete -F _glia myai
 # ============================================================
 
 # ----------------- CONFIGURATION -----------------
@@ -86,4 +86,4 @@ _glia() {
 
 complete -F _glia glia
 # renamed assistant? add its name too, e.g.:
-# complete -F _glia arx
+# complete -F _glia myai
