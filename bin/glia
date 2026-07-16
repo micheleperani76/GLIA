@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ============================================================
 #  glia - AI terminal assistant (Ollama + aichat)
-#  Version: 2.18.2 - 2026-07-16
+#  Version: 2.18.3 - 2026-07-16
 #  Author: Michele (with Claude)
 #  Project: GLIA (GNU Linux IA)
 #
@@ -9,6 +9,17 @@
 #  what you learn here you can reuse in other programs (and vice versa).
 #
 #  What's new in v2.18 ("-p edits, --new creates, -T translates"):
+#   - v2.18.3: `--doctor` closes the shadowing case BACKWARDS. v2.18.2 stops
+#     --rename from burying a command, but a nickname made before it is
+#     still sitting there, and whoever has one is exactly the person who
+#     will never find out. Doctor now walks the whole PATH for every
+#     nickname of ours and reports any that covers a real command, with the
+#     path it covers and the rm that fixes it. (command -v is no use for
+#     this: it finds our own symlink first and reports success.)
+#   - v2.18.3: scripts/eval-web.sh - a bench for -w. Web answers can't be
+#     unit tested (the right answer changes with the world), but a -w that
+#     silently stopped searching CAN be caught: half the questions have
+#     answers that move, half don't.
 #   - v2.18.2: `--rename` no longer lets a nickname bury a command. The old
 #     check only looked inside ~/.local/bin, so a name living anywhere else
 #     in PATH was invisible to it: `--rename jar` said "Done" and quietly
@@ -375,7 +386,7 @@
 # ============================================================
 
 # ----------------- CONFIGURATION -----------------
-VERSION="2.18.2"
+VERSION="2.18.3"
 DEFAULT_MODEL="qwen2.5-coder:7b"
 if [ -r "$HOME/.config/glia/model" ]; then
     MODEL="ollama:$(head -n1 "$HOME/.config/glia/model")"
@@ -1180,6 +1191,15 @@ t() {
         it:doc_name)        echo "comando '$ASSIST_NAME' presente nel PATH" ;;
         de:doc_name)        echo "Befehl '$ASSIST_NAME' im PATH vorhanden" ;;
         *:doc_name)         echo "command '$ASSIST_NAME' found in PATH" ;;
+        it:doc_shadow_ok)   echo "nessun nome dell'assistente copre un altro comando" ;;
+        de:doc_shadow_ok)   echo "kein Assistentenname ueberdeckt einen anderen Befehl" ;;
+        *:doc_shadow_ok)    echo "no assistant name is shadowing another command" ;;
+        it:doc_shadow_bad)  echo "un nome dell'assistente COPRE un comando vero:" ;;
+        de:doc_shadow_bad)  echo "ein Assistentenname UEBERDECKT einen echten Befehl:" ;;
+        *:doc_shadow_bad)   echo "an assistant name is SHADOWING a real command:" ;;
+        it:doc_shadow_exp)  echo "scrivendo quel comando parte GLIA al posto suo. Da v2.18.2 --rename non lo permette piu', ma questo nome e' anteriore." ;;
+        de:doc_shadow_exp)  echo "dieser Befehl startet GLIA statt des echten. Seit v2.18.2 laesst --rename das nicht mehr zu, dieser Name ist aelter." ;;
+        *:doc_shadow_exp)   echo "typing that command starts GLIA instead of the real one. Since v2.18.2 --rename refuses this, but this name predates it." ;;
         it:doc_dirs)        echo "cartelle di config e log scrivibili" ;;
         de:doc_dirs)        echo "Config- und Log-Ordner beschreibbar" ;;
         *:doc_dirs)         echo "config and log folders writable" ;;
@@ -1787,6 +1807,32 @@ check_ai() {
             echo -e "${YELLOW}$(t low_ram) (${avail} MB / ~${need} MB)${NC}" >&2
         fi
     fi
+}
+
+rename_shadow_scan() {
+    # v2.18.3 - look BACKWARDS: --rename now refuses to bury a command, but a
+    # nickname created before v2.18.2 is still sitting there, and the person who
+    # has it is exactly the one who will never find out. For every symlink of
+    # ours, walk the WHOLE PATH looking for a real command with the same name
+    # (command -v is no use here: it would just find our own symlink first).
+    # Prints one "name<TAB>shadowed-path<TAB>our-symlink" per problem found.
+    local dir f name d cand ours
+    ours="$(dirname "$(realpath "$0" 2>/dev/null)" 2>/dev/null)"
+    [ -d "$ours" ] || return 0
+    for f in "$ours"/*; do
+        [ -L "$f" ] || continue
+        [ "$(readlink "$f")" = "glia" ] || continue
+        name="$(basename "$f")"
+        while IFS=: read -r -d: d || [ -n "$d" ]; do
+            [ -n "$d" ] || continue
+            cand="$d/$name"
+            [ "$cand" = "$f" ] && continue                 # ourselves
+            [ -f "$cand" ] && [ -x "$cand" ] || continue
+            [ -L "$cand" ] && [ "$(readlink "$cand")" = "glia" ] && continue
+            printf '%s\t%s\t%s\n' "$name" "$cand" "$f"
+            break
+        done <<< "$PATH:"
+    done
 }
 
 rename_suggest() {
@@ -3799,6 +3845,20 @@ doctor() {
     echo -e "${YELLOW}$(t doc_sec_paths)${NC}"
     command -v "$ASSIST_NAME" >/dev/null 2>&1
     doc_line $? "$(t doc_name)" "cp bin/glia ~/.local/bin/  (+ echo \$PATH)"
+    # v2.18.3: a nickname from before v2.18.2 may still be burying a real
+    # command. --rename blocks this going forward; doctor is what closes the
+    # case backwards, for the installs that already have one.
+    local shadows sname spath slink
+    shadows="$(rename_shadow_scan)"
+    if [ -z "$shadows" ]; then
+        doc_line 0 "$(t doc_shadow_ok)"
+    else
+        while IFS=$'\t' read -r sname spath slink; do
+            [ -n "$sname" ] || continue
+            doc_line 1 "$(t doc_shadow_bad) '$sname' -> $spath" "rm -f ${slink/#$HOME/\~}"
+        done <<< "$shadows"
+        echo -e "    ${YELLOW}$(t doc_shadow_exp)${NC}"
+    fi
     mkdir -p "$LOGDIR" "$HOME/.config/glia" 2>/dev/null \
         && [ -w "$LOGDIR" ] && [ -w "$HOME/.config/glia" ]
     doc_line $? "$(t doc_dirs)" "ls -ld $LOGDIR ~/.config/glia"
