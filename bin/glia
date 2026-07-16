@@ -713,6 +713,9 @@ t() {
         it:files)           echo "File da creare:" ;;
         de:files)           echo "Zu erstellende Dateien:" ;;
         *:files)            echo "Files to create:" ;;
+        it:step_create)     echo "Creo" ;;
+        de:step_create)     echo "Ich erstelle" ;;
+        *:step_create)      echo "I create" ;;
         it:go)              echo "Invio = procedi | scrivi un indizio per rifare il piano | n = annulla: " ;;
         de:go)              echo "Enter = weiter | schreibe einen Hinweis für einen neuen Plan | n = abbrechen: " ;;
         *:go)               echo "Enter = proceed | type a hint to redo the plan | n = cancel: " ;;
@@ -3941,8 +3944,8 @@ project_mode() {
     while true; do
         echo -e "${YELLOW}$(t planning)${NC}"
         MSGS='[]'
-        add_msg system "You are the GLIA project agent. You plan small software or document projects and then write their files. Always reply in the exact format requested. Keep projects small and practical. The steps describe what YOU will do to produce the files, never manual instructions for the user. Target machine: ${OS_NAME:-Linux}${PKGMGR:+, package manager: $PKGMGR (use it in any install command, never one from other distros)}."
-        add_msg user "Project request: ${REQUEST}. ${PREV_PLAN:+You already proposed this plan: $PREV_PLAN. }${PLAN_HINTS:+The user refines it with this extra context (follow it closely, but KEEP satisfying the original request IN FULL: never drop files or parts the request asks for): $PLAN_HINTS. }Reply ONLY with JSON in this exact shape: {\"project_name\":\"short-kebab-case-name\",\"steps\":[\"step 1\",\"step 2\"],\"files\":[{\"path\":\"relative/path.ext\",\"description\":\"what this file contains\"}]}. Between 1 and 8 files. File paths are relative to the project root: NEVER wrap them in a top-level folder named after the project (write \"backup.sh\", not \"my-project/backup.sh\"). Write the steps and descriptions in ${PLAN_LANG}. No other text."
+        add_msg system "You are the GLIA project agent. You plan small software or document projects and then write their files. Always reply in the exact format requested. Keep projects small and practical. Target machine: ${OS_NAME:-Linux}${PKGMGR:+, package manager: $PKGMGR (use it in any install command, never one from other distros)}."
+        add_msg user "Project request: ${REQUEST}. ${PREV_PLAN:+You already proposed this plan: $PREV_PLAN. }${PLAN_HINTS:+The user refines it with this extra context (follow it closely, but KEEP satisfying the original request IN FULL: never drop files or parts the request asks for): $PLAN_HINTS. }Reply ONLY with JSON in this exact shape: {\"project_name\":\"short-kebab-case-name\",\"files\":[{\"path\":\"relative/path.ext\",\"description\":\"what this file contains\"}]}. Between 1 and 8 files. File paths are relative to the project root: NEVER wrap them in a top-level folder named after the project (write \"backup.sh\", not \"my-project/backup.sh\"). Write the descriptions in ${PLAN_LANG}. No other text."
 
         PLAN=$(chat json) || { echo -e "${RED}$(t plan_fail)${NC}"; exit 1; }
         NAME=$(jq -r '.project_name // empty' <<< "$PLAN" 2>/dev/null | tr -cd 'a-zA-Z0-9_-' | cut -c1-40)
@@ -3954,7 +3957,9 @@ project_mode() {
         echo
         echo -e "${BLUE}=== $(t plan): $NAME ===${NC}"
         echo -e "${YELLOW}$(t steps)${NC}"
-        jq -r '.steps[]' <<< "$PLAN" | nl -w2 -s'. '
+        # v2.18: steps are derived mechanically from the file list, never asked
+        # to the model. What the model does not invent, it cannot get wrong.
+        jq -r --arg c "$(t step_create)" '.files[] | "\($c) \(.path) - \(.description)"' <<< "$PLAN" | nl -w2 -s'. '
         echo -e "${YELLOW}$(t files)${NC}"
         jq -r '.files[] | "  \(.path)  -  \(.description)"' <<< "$PLAN"
         echo
