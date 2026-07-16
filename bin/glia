@@ -872,6 +872,34 @@ t() {
         it:mp_default_q)    echo "La imposto come IA predefinita? [$YES_KEY/N]: " ;;
         de:mp_default_q)    echo "Als Standard-KI setzen? [$YES_KEY/N]: " ;;
         *:mp_default_q)     echo "Set it as the default AI? [$YES_KEY/N]: " ;;
+        # ---- pull already in flight (v2.18) ----
+        it:mp_busy)         echo "C'è già un download di questo modello:" ;;
+        de:mp_busy)         echo "Ein Download dieses Modells läuft bereits:" ;;
+        *:mp_busy)          echo "A download of this model is already going on:" ;;
+        it:mp_busy_sus)     echo "sospeso con Ctrl+Z" ;;
+        de:mp_busy_sus)     echo "mit Ctrl+Z angehalten" ;;
+        *:mp_busy_sus)      echo "suspended with Ctrl+Z" ;;
+        it:mp_busy_why)     echo "Ollama serve un modello alla volta: finché quello resta lì, un secondo download si pianta su 'pulling manifest'." ;;
+        de:mp_busy_why)     echo "Ollama bedient ein Modell nach dem anderen: solange der dort haengt, bleibt ein zweiter Download bei 'pulling manifest' stehen." ;;
+        *:mp_busy_why)      echo "Ollama serves one model at a time: while that one sits there, a second download hangs at 'pulling manifest'." ;;
+        it:mp_busy_fg)      echo "Un download sospeso riparte solo dal terminale che l'ha lanciato, con:  fg" ;;
+        de:mp_busy_fg)      echo "Ein angehaltener Download laeuft nur im Terminal weiter, das ihn gestartet hat, mit:  fg" ;;
+        *:mp_busy_fg)       echo "A suspended download only resumes in the terminal that started it, with:  fg" ;;
+        it:mp_busy_kill)    echo "Lo termino e riparto da qui? [$YES_KEY/N]: " ;;
+        de:mp_busy_kill)    echo "Soll ich ihn beenden und hier neu starten? [$YES_KEY/N]: " ;;
+        *:mp_busy_kill)     echo "Shall I end it and start over from here? [$YES_KEY/N]: " ;;
+        it:mp_busy_left)    echo "Lascio in pace il download esistente." ;;
+        de:mp_busy_left)    echo "Ich lasse den laufenden Download in Ruhe." ;;
+        *:mp_busy_left)     echo "Leaving the existing download alone." ;;
+        it:mp_busy_alive)   echo "Non è morto: provaci a mano con  kill -9" ;;
+        de:mp_busy_alive)   echo "Er ist nicht beendet: versuch es von Hand mit  kill -9" ;;
+        *:mp_busy_alive)    echo "It did not die: try by hand with  kill -9" ;;
+        it:mp_resume)       echo "Ollama tiene i pezzi già scaricati: il download riprende da dov'era, non riparte da zero." ;;
+        de:mp_resume)       echo "Ollama behaelt die geladenen Teile: der Download macht dort weiter, wo er war." ;;
+        *:mp_resume)        echo "Ollama keeps the parts already fetched: the download picks up where it left off." ;;
+        it:mp_keys)         echo "Ctrl+C annulla · Ctrl+Z sospende (poi riprendi con: fg)" ;;
+        de:mp_keys)         echo "Ctrl+C bricht ab · Ctrl+Z haelt an (weiter mit: fg)" ;;
+        *:mp_keys)          echo "Ctrl+C cancels · Ctrl+Z suspends (resume with: fg)" ;;
         it:mu_doing)        echo "Aggiorno" ;;
         de:mu_doing)        echo "Aktualisiere" ;;
         *:mu_doing)         echo "Updating" ;;
@@ -1762,17 +1790,65 @@ model_menu() {
 }
 
 # ---- model management (v2.10): pull / update / rm + engine update ----
+pull_running() {
+    # $1 = model name -> echo "PID STATE" of an `ollama pull <name>` that is
+    # ALREADY alive, and return 0; return 1 when there is none.
+    # STATE is the first ps field: T = stopped (Ctrl+Z), R/S = running.
+    # Why this exists: ollama serializes pulls of the SAME model. A client
+    # suspended with Ctrl+Z stops reading its stream, the server keeps the
+    # slot, and every later `ollama pull <same model>` hangs at "pulling
+    # manifest" forever. We must see it BEFORE proposing a second download.
+    local name="$1" pid st
+    command -v pgrep >/dev/null 2>&1 || return 1
+    for pid in $(pgrep -x -f "ollama pull $name" 2>/dev/null); do
+        [ "$pid" = "$$" ] && continue
+        st=$(ps -o stat= -p "$pid" 2>/dev/null | cut -c1)
+        [ -n "$st" ] && { printf '%s %s\n' "$pid" "$st"; return 0; }
+    done
+    return 1
+}
+
 model_pull() {
     # $1 = model name -> download it with ollama (checks free RAM first);
     # on success, offers to make it the default (only with a real terminal)
-    local name="$1" need_mb free_mb answer
+    local name="$1" need_mb free_mb answer busy bpid bstate
     [ -z "$name" ] && { echo "$(t mp_usage)"; return 1; }
+    # v2.18: a pull of this very model may already be in flight - most often
+    # sitting suspended after a Ctrl+Z. Starting a second one would just hang
+    # at "pulling manifest". Say so, and offer to clear it.
+    if busy=$(pull_running "$name"); then
+        bpid=${busy%% *}; bstate=${busy##* }
+        echo -e "${YELLOW}$(t mp_busy)${NC} $name  (PID $bpid$( [ "$bstate" = T ] && echo ", $(t mp_busy_sus)" ))"
+        echo "$(t mp_busy_why)"
+        [ "$bstate" = T ] && echo "$(t mp_busy_fg)"
+        if core_confirm "$(t mp_busy_kill)"; then
+            # A STOPPED process cannot act on TERM until it runs again, so we
+            # always follow with CONT - otherwise the signal just sits pending
+            # and the download stays exactly where it was.
+            show_equiv "kill $bpid && kill -CONT $bpid"
+            kill "$bpid" 2>/dev/null
+            kill -CONT "$bpid" 2>/dev/null
+            sleep 1
+            if kill -0 "$bpid" 2>/dev/null; then
+                echo -e "${RED}$(t mp_busy_alive) $bpid${NC}" >&2
+                return 1
+            fi
+            write_log "model pull: cleared stale pull" "$name (pid $bpid)"
+            echo "$(t mp_resume)"
+        else
+            echo "$(t mp_busy_left)"
+            return 1
+        fi
+    fi
     need_mb=$(ram_needed_mb "$name")
     free_mb=$(awk '/MemAvailable/ {print int($2/1024)}' /proc/meminfo 2>/dev/null)
     if [ -n "$free_mb" ] && [ "$free_mb" -lt "$need_mb" ]; then
         echo -e "${YELLOW}$(t low_ram)${NC} (~$((need_mb/1000)) GB)"
     fi
     echo -e "${BLUE}$(t proposed)${NC}${GREEN}ollama pull $name${NC}"
+    # A GB-sized download is the one place where the user WILL reach for the
+    # keyboard. Say what the two keys do before, not after (teaching pillar).
+    [ -t 1 ] && echo -e "${YELLOW}$(t mp_keys)${NC}"
     if ollama pull "$name"; then
         echo -e "${GREEN}$(t mp_done) $name${NC}"
         write_log "model pull" "$name"
