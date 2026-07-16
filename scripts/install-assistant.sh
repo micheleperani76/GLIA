@@ -498,8 +498,8 @@ step_model() {
                  sel=$(printf '%s\n' "$models" | sed -n "${choice}p")
                  [ -z "$sel" ] && sel=$(printf '%s\n' "$models" | head -n1) ;;
         esac
-        mkdir -p "$HOME/.config/glia"
-        printf '%s\n' "$sel" > "$HOME/.config/glia/model"
+        mkdir -p "$GLIA_CONFIG_DIR"
+        printf '%s\n' "$sel" > "$GLIA_CONFIG_DIR/model"
         echo -e "   ${GREEN}$(L model_set) $sel${NC}   ${DIM}(echo '$sel' > ~/.config/glia/model)${NC}"
         log "MODEL default: $sel"
         return
@@ -509,8 +509,8 @@ step_model() {
     "$REPO/bin/glia-hardware" 2>/dev/null || true
     if ask_yn "$(L model_ask)" n; then
         run_sh "ollama pull $REC_MODEL"
-        mkdir -p "$HOME/.config/glia"
-        printf '%s\n' "$REC_MODEL" > "$HOME/.config/glia/model"
+        mkdir -p "$GLIA_CONFIG_DIR"
+        printf '%s\n' "$REC_MODEL" > "$GLIA_CONFIG_DIR/model"
         log "MODEL default: $REC_MODEL"
     else
         echo -e "   ${DIM}$(L model_skip)${NC}"

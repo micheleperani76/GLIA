@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ============================================================
 #  glia - AI terminal assistant (Ollama + aichat)
-#  Version: 2.17.0 - 2026-07-16
+#  Version: 2.17.1 - 2026-07-16
 #  Author: Michele (with Claude)
 #  Project: GLIA (GNU Linux IA)
 #
@@ -9,6 +9,10 @@
 #  what you learn here you can reuse in other programs (and vice versa).
 #
 #  What's new in v2.17 ("release channels: beta, and a way back"):
+#   - v2.17.1: the installer now records the installed tag in
+#     ~/.config/glia/installed-tag, exactly as `--update` already did. An
+#     install done by hand no longer falls back to v$VERSION, so later betas
+#     of the same version are offered correctly on the beta channel.
 #   - GLIA updates itself from git TAGS now, not from the tip of main. Two
 #     channels: stable (only vX.Y.Z) and beta (also previews, -beta/-rc).
 #     `--channel [stable|beta]` shows or switches it; the default is stable.
@@ -320,7 +324,7 @@
 # ============================================================
 
 # ----------------- CONFIGURATION -----------------
-VERSION="2.17.0"
+VERSION="2.17.1"
 DEFAULT_MODEL="qwen2.5-coder:7b"
 if [ -r "$HOME/.config/glia/model" ]; then
     MODEL="ollama:$(head -n1 "$HOME/.config/glia/model")"
