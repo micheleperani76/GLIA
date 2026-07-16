@@ -1,7 +1,15 @@
 # GLIA — `-p` Project Mode v2 — Design Draft
 
-Version: 0.2
-Status: PHASE 1 SHIPPED (v2.18.0) — Phases 2–5 still planned
+Version: 0.3
+Status: PHASES 1+2+3 SHIPPED (v2.18.0-beta.2) — Phases 4–5 still planned
+
+> **TODO for the Phase 4 session (do this FIRST, own commit):** split the
+> pmode code out of bin/glia into lib/pmode.sh — the module is at ~521 lines,
+> past the ~400 threshold of the master plan §2. The split is mechanical but
+> MUST teach three consumers about the new file: the installer
+> (scripts/install-assistant.sh), `--doctor`, and the Part E `--update`
+> companion fetch (a tagged release must ship lib/ too, or updates install a
+> broken glia). Deferred on 2026-07-16 to avoid rushing the update pipeline.
 Scope: rework of the `-p` project-coding mode. Bash only. Fully in-house.
 
 > **Superseded where they disagree.** The authoritative spec is
