@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # ============================================================
 #  glia-build.sh - Build the GLIA live ISO
-#  Version: 1.1 - 2026-07-13 (sync bin/ into airootfs: the ISO always ships the current assistant)
+#  Version: 1.2 - 2026-07-16 (bin/ is the ONLY source: the ISO copies are generated, not tracked)
 #  Author: Michele (with Claude)
 #  Project: GLIA (GNU Linux IA)
 #
 #  What it does:
-#   1. syncs bin/* into the ISO tree (so the ISO never ships stale copies)
+#   1. generates bin/* into the ISO tree (the ISO can never ship a stale copy)
 #   2. embeds the AI model into the ISO tree (if not already there)
 #   3. builds the ISO with mkarchiso
 #   4. cleans up the work directory
@@ -33,10 +33,15 @@ fi
 PROJECT="$(cd "$(dirname "$0")/.." && pwd)"
 [ -d "$PROJECT/iso" ] || { echo -e "${RED}iso/ profile not found in $PROJECT${NC}" >&2; exit 1; }
 
-# ---------- 1. SYNC THE ASSISTANT INTO THE ISO ----------
-# The copies in iso/airootfs/usr/local/bin are what the live system runs:
-# refresh them from bin/ so the ISO never ships an outdated assistant.
-step "Syncing bin/ into the ISO tree..."
+# ---------- 1. GENERATE THE ASSISTANT INTO THE ISO ----------
+# The copies in iso/airootfs/usr/local/bin are what the live system runs. They
+# are GENERATED here and git-ignored on purpose: bin/ is the single source of
+# truth, so the ISO cannot drift from it (it once shipped v2.9.1 while bin/ was
+# at v2.17.0, and a chore commit even "maintained" that stale copy).
+# mkdir -p because git cannot track an empty directory: on a fresh clone the
+# target dir may not exist yet.
+step "Generating bin/ into the ISO tree..."
+mkdir -p "$PROJECT/iso/airootfs/usr/local/bin"
 for f in glia glia-hardware glia-firstboot glia-install; do
     install -m 755 "$PROJECT/bin/$f" "$PROJECT/iso/airootfs/usr/local/bin/$f"
 done
