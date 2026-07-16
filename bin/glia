@@ -3052,7 +3052,13 @@ decidi tu se applicarlo. Per creare un progetto nuovo da zero: $ASSIST_NAME --ne
 
 Comandi:
   $ASSIST_NAME -p <file> "<cosa cambiare>"   proponi la modifica, mostra il diff, chiedi
+  $ASSIST_NAME -p <f1> <f2> "<cosa>"         stessa cosa su PIÙ file: UN solo diff,
+                                             una conferma, un commit (v2.18)
+  $ASSIST_NAME -p --undo   annulla l'ultimo commit di -p (git revert, mai reset)
   $ASSIST_NAME -p help     questo aiuto
+
+Dopo l'applicazione ti propone un commit locale (mai pushato): è quello che
+rende possibile -p --undo.
 
 Come funziona:
   1. legge il file e lo manda all'IA del codice
@@ -3096,7 +3102,13 @@ angefasst wird: du entscheidest. Neues Projekt von Null: $ASSIST_NAME --new help
 
 Befehle:
   $ASSIST_NAME -p <Datei> "<was ändern>"   Änderung vorschlagen, Diff zeigen, fragen
+  $ASSIST_NAME -p <D1> <D2> "<was>"        dasselbe für MEHRERE Dateien: EIN Diff,
+                                           eine Bestätigung, ein Commit (v2.18)
+  $ASSIST_NAME -p --undo   letzten -p-Commit rückgängig machen (git revert, nie reset)
   $ASSIST_NAME -p help     diese Hilfe
+
+Nach dem Anwenden wird ein lokaler Commit angeboten (nie gepusht): er macht
+-p --undo möglich.
 
 So funktioniert es:
   1. liest die Datei und schickt sie an die Code-KI
@@ -3140,7 +3152,13 @@ anything: you decide. To create a new project from scratch: $ASSIST_NAME --new h
 
 Commands:
   $ASSIST_NAME -p <file> "<what to change>"   propose the change, show the diff, ask
+  $ASSIST_NAME -p <f1> <f2> "<what>"          same, on SEVERAL files: ONE diff,
+                                              one confirm, one commit (v2.18)
+  $ASSIST_NAME -p --undo   undo the last -p commit (git revert, never reset)
   $ASSIST_NAME -p help     this help
+
+After applying, an optional local commit is offered (never pushed): it is what
+makes -p --undo possible.
 
 How it works:
   1. reads the file and sends it to the code AI
