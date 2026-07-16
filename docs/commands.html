@@ -277,7 +277,7 @@ footer .fbrand{font-weight:800;color:var(--white);font-size:1.05rem;margin-botto
       <tr><td class="c">glia --lang &lt;it|en|de&gt;</td><td class="d">Change the interface language.</td></tr>
       <tr><td class="c">glia --doctor</td><td class="d">One-shot health check, grouped in clear sections (v2.18): tools · engine and model · command and folders · version and updates — with a fix hint for anything wrong. Checks that pass stay visible; the model check speaks only when the model is missing.</td></tr>
       <tr><td class="c">glia --clear-cache</td><td class="d">Empty the answer cache. The old spelling <code style="font-family:var(--mono);color:var(--teal)">--cache-clear</code> still works.</td></tr>
-      <tr><td class="c">glia --kaboom</td><td class="d">Guided uninstall, two levels: <b>1</b> = only the program (engine and AIs stay), <b>2</b> = everything. Every command is shown first, then it asks you to type <code>YES</code> to proceed. Shared tools (curl, jq) are never touched.</td></tr>
+      <tr><td class="c">glia --kaboom</td><td class="d">Guided uninstall, two levels: <b>1</b> = only the program (engine and AIs stay), <b>2</b> = everything. Every command is shown first, then it asks you to <b>type the confirm word in your language</b> (en <code>YES</code> · it <code>SI</code> · de <code>JA</code>) — Enter alone cancels. Shared tools (curl, jq) are never touched.</td></tr>
       <tr><td class="c">glia -V · --version</td><td class="d">Show the version.</td></tr>
       <tr><td class="c">glia -h</td><td class="d">Show the built-in help.</td></tr>
     </table>

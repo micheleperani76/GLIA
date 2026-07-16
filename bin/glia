@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ============================================================
 #  glia - AI terminal assistant (Ollama + aichat)
-#  Version: 2.18.1 - 2026-07-16
+#  Version: 2.18.2 - 2026-07-16
 #  Author: Michele (with Claude)
 #  Project: GLIA (GNU Linux IA)
 #
@@ -9,6 +9,22 @@
 #  what you learn here you can reuse in other programs (and vice versa).
 #
 #  What's new in v2.18 ("-p edits, --new creates, -T translates"):
+#   - v2.18.2: `--rename` no longer lets a nickname bury a command. The old
+#     check only looked inside ~/.local/bin, so a name living anywhere else
+#     in PATH was invisible to it: `--rename jar` said "Done" and quietly
+#     buried /usr/bin/jar. Now there are two guards. A reserved list
+#     (RENAME_FORBIDDEN: coreutils, shells, sudo/systemctl, package
+#     managers, glia/ollama itself) is refused outright - no confirmation
+#     offered, because a machine you can't type 'ls' on is not yours any
+#     more. Any OTHER name already in PATH is refused too, but SHOWING what
+#     would have been buried (the real path) and offering free variants to
+#     type instead. A name that is already our own symlink is a no-op, not
+#     a collision.
+#   - v2.18.2: one rename, one name. The previous nickname used to stay
+#     behind for ever - nicknames piled up in ~/.local/bin unnoticed. It is
+#     removed now, and SAID with the command that did it (scripts calling
+#     the old name will stop: you must hear it now, not find out later).
+#     'glia' answers no matter what.
 #   - v2.18.1: `-T <file> [lang]` translates a file into a NEW file next to
 #     it (README.md -> README.en.md); the original is NEVER touched and the
 #     target name is shown before anything is written. The text streams as
@@ -359,7 +375,7 @@
 # ============================================================
 
 # ----------------- CONFIGURATION -----------------
-VERSION="2.18.1"
+VERSION="2.18.2"
 DEFAULT_MODEL="qwen2.5-coder:7b"
 if [ -r "$HOME/.config/glia/model" ]; then
     MODEL="ollama:$(head -n1 "$HOME/.config/glia/model")"
@@ -384,6 +400,22 @@ case "$UILANG" in it|de|en) : ;; *) UILANG="en" ;; esac
 
 PROG="$(basename "$0")"                 # how the command was invoked (glia, myai, ...)
 # 'glia' is the permanent anchor: config, logs and the safety command live under it.
+# Names --rename must never accept: taking one of these would shadow a command
+# you need (or GLIA itself), and a shadowed command fails in the worst way -
+# silently, doing something else entirely. There is no confirmation for these:
+# a machine you can't type 'ls' or 'sudo' on is not yours any more.
+# Any OTHER name already in PATH is refused too (see rename_assistant), but
+# that one is a plain "pick another": this list is the part that never bends.
+RENAME_FORBIDDEN=" ls cd cp mv rm cat echo test pwd mkdir rmdir ln chmod chown \
+find grep sed awk sort head tail less more kill ps top df du tar gzip gunzip \
+touch which whereis file link unlink sync date time env export alias unalias \
+sh bash zsh fish dash csh ksh python python2 python3 perl ruby node deno \
+sudo su doas systemctl service mount umount dd mkfs fdisk parted passwd \
+useradd userdel usermod shutdown reboot halt poweroff init exec eval source \
+apt apt-get aptitude dnf yum pacman zypper emerge snap flatpak brew pip pip3 \
+git ssh scp rsync curl wget make gcc cc vi vim nano emacs man info help \
+glia glia-hardware glia-firstboot glia-install ollama aichat "
+
 # The preferred/friendly name (shown in -h) is stored here by --rename.
 NAMEFILE="$HOME/.config/glia/name"
 # The assistant answers to the name it was CALLED with: a rename symlink
@@ -717,6 +749,24 @@ t() {
         it:rename_anchor)   echo "'glia' resta sempre disponibile" ;;
         de:rename_anchor)   echo "'glia' bleibt immer verfuegbar" ;;
         *:rename_anchor)    echo "'glia' stays available too" ;;
+        it:rename_forbid)   echo "Nome riservato: e' un comando essenziale del sistema (o di GLIA stesso). Chiamare cosi' l'assistente te lo coprirebbe, e non e' un rischio che ti lascio correre." ;;
+        de:rename_forbid)   echo "Reservierter Name: ein essenzieller Systembefehl (oder GLIA selbst). Ihn zu ueberdecken ist kein Risiko, das ich dich eingehen lasse." ;;
+        *:rename_forbid)    echo "Reserved name: it is an essential system command (or GLIA itself). Naming the assistant that would shadow it, and that is not a risk I will let you take." ;;
+        it:rename_shadow)   echo "Questo nome e' gia' un comando sulla tua macchina:" ;;
+        de:rename_shadow)   echo "Dieser Name ist auf deinem Rechner bereits ein Befehl:" ;;
+        *:rename_shadow)    echo "That name is already a command on your machine:" ;;
+        it:rename_shadow_w) echo "Chiamare cosi' l'assistente lo coprirebbe: scrivendo il comando partirebbe GLIA al suo posto." ;;
+        de:rename_shadow_w) echo "Den Assistenten so zu nennen wuerde ihn ueberdecken: der Befehl wuerde GLIA starten." ;;
+        *:rename_shadow_w)  echo "Naming the assistant that would shadow it: typing the command would start GLIA instead." ;;
+        it:rename_try)      echo "Liberi, se ti piacciono:" ;;
+        de:rename_try)      echo "Frei, falls sie dir gefallen:" ;;
+        *:rename_try)       echo "Free, if you like them:" ;;
+        it:rename_try2)     echo "oppure scegline un altro:" ;;
+        de:rename_try2)     echo "oder waehle einen anderen:" ;;
+        *:rename_try2)      echo "or pick another one:" ;;
+        it:rename_oldgone)  echo "Il nome precedente non risponde piu':" ;;
+        de:rename_oldgone)  echo "Der vorherige Name antwortet nicht mehr:" ;;
+        *:rename_oldgone)   echo "The previous name does not answer any more:" ;;
         it:proj_ask)        echo "Esiste già la cartella progetti col vecchio nome. La rinomino al nuovo nome?" ;;
         de:proj_ask)        echo "Es gibt bereits den Projektordner mit dem alten Namen. Auf den neuen Namen umbenennen?" ;;
         *:proj_ask)         echo "A projects folder with the old name exists. Rename it to the new name?" ;;
@@ -1739,8 +1789,20 @@ check_ai() {
     fi
 }
 
+rename_suggest() {
+    # Free variants of a name the user clearly liked, so a refusal still ends
+    # with something to type. Only names that are free EVERYWHERE are offered.
+    local base="$1" c out=""
+    for c in "${base}-ai" "my${base}" "${base}y" "${base}2"; do
+        case "$RENAME_FORBIDDEN" in *" $c "*) continue ;; esac
+        command -v "$c" >/dev/null 2>&1 && continue
+        out="${out:+$out · }$c"
+    done
+    printf '%s' "$out"
+}
+
 rename_assistant() {
-    local newname="$1" self dir canon dest old="$ASSIST_NAME"
+    local newname="$1" self dir canon dest old="$ASSIST_NAME" hit sug
     if [ -z "$newname" ]; then
         echo "Usage: $PROG --rename <newname>" >&2; exit 1
     fi
@@ -1749,6 +1811,33 @@ rename_assistant() {
     fi
     if [ "$newname" = "glia" ]; then
         echo "$(t rename_isglia)" >&2; exit 1
+    fi
+    # v2.18.2 - a name is not just a label: it is a command in your PATH. Two
+    # guards, because until now BOTH of these went through silently (the old
+    # check only looked inside ~/.local/bin, so /usr/bin/jar was invisible to it
+    # and 'glia --rename jar' happily buried the Java tool).
+    # 1) the reserved list: never, no confirmation offered.
+    case "$RENAME_FORBIDDEN" in
+        *" $newname "*)
+            echo -e "${RED}'$newname': $(t rename_forbid)${NC}" >&2
+            sug="$(rename_suggest "$newname")"
+            [ -n "$sug" ] && echo -e "${GREEN}$(t rename_try) $sug${NC}" >&2
+            exit 1 ;;
+    esac
+    # 2) any other existing command: refuse, but SHOW what would be buried.
+    #    A name already ours is fine - renaming to the current name is a no-op,
+    #    not a collision.
+    hit="$(command -v "$newname" 2>/dev/null)"
+    if [ -n "$hit" ] && ! { [ -L "$hit" ] && [ "$(readlink "$hit")" = "glia" ]; }; then
+        echo -e "${RED}'$newname': $(t rename_shadow) ${YELLOW}$hit${NC}" >&2
+        echo -e "${RED}$(t rename_shadow_w)${NC}" >&2
+        sug="$(rename_suggest "$newname")"
+        if [ -n "$sug" ]; then
+            echo -e "${GREEN}$(t rename_try) $sug${NC}" >&2
+        else
+            echo -e "${GREEN}$(t rename_try2) $PROG --rename <nome>${NC}" >&2
+        fi
+        exit 1
     fi
     self="$(realpath "$0")"
     dir="$(dirname "$self")"
@@ -1768,6 +1857,20 @@ rename_assistant() {
     echo -e "${GREEN}$(t renamed) $newname${NC}"
     echo "  $newname -h        ($(t rename_anchor))"
     show_equiv "ln -sf glia ${dest/#$HOME/\~}  ·  echo $newname > ~/.config/glia/name"
+    # v2.18.2 - one rename, one name. The old symlink used to stay behind
+    # forever, so nicknames piled up in ~/.local/bin without anyone noticing.
+    # It is removed, but SAID out loud with the command that did it: scripts
+    # calling the old name will stop working, and you must hear that now
+    # rather than discover it later. 'glia' always answers, whatever happens.
+    if [ -n "$old" ] && [ "$old" != "glia" ] && [ "$old" != "$newname" ]; then
+        local oldlink="$dir/$old"
+        if [ -L "$oldlink" ] && [ "$(readlink "$oldlink")" = "glia" ]; then
+            rm -f "$oldlink" 2>/dev/null && {
+                echo -e "${YELLOW}$(t rename_oldgone) $old${NC}"
+                show_equiv "rm -f ${oldlink/#$HOME/\~}"
+            }
+        fi
+    fi
     # v2.12.3: the assistant has a dedicated home folder ~/<name>. 'glia' is the
     # permanent anchor: ~/glia (the repo) is NEVER touched. On the FIRST rename
     # (old = glia) we simply CREATE the new folder ~/<newname>. On later renames
