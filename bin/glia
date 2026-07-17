@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ============================================================
 #  glia - AI terminal assistant (Ollama + aichat)
-#  Version: 2.19.1 - 2026-07-17
+#  Version: 2.19.2 - 2026-07-17
 #  Author: Michele (with Claude)
 #  Project: GLIA (GNU Linux IA)
 #
@@ -9,6 +9,19 @@
 #  what you learn here you can reuse in other programs (and vice versa).
 #
 #  What's new in v2.19 ("your machine, your dangers"):
+#   - v2.19.2: `--doctor` stops ignoring OLLAMA_HOST in silence. GLIA talks to
+#     the LOCAL engine by decision, not by accident (D1 - a shared Ollama -
+#     was dropped on purpose: it costs the half of GLIA that measures your
+#     machine and buys the half that worked anyway). But whoever exports
+#     OLLAMA_HOST is exactly the person who owns a server, and for them
+#     `ollama list` and `glia -m` answer from different machines in the SAME
+#     shell, with nothing saying why. Deciding against remote makes that
+#     silence worse, not better: doctor now names the variable, says it is
+#     being ignored and why. A diagnostic, not a failure - nothing is broken.
+#     Only fires when the value really points elsewhere: localhost, 127.*,
+#     ::1, a bare ":11434" and 0.0.0.0 are all still this machine, and a
+#     warning on those would be crying wolf (the lesson from v2.19.0's rm/
+#     terraform false positive).
 #   - v2.19.1: the D2 tail - wm_/pm_/tm_ folded into ONE parametric set. They
 #     were filed as "triplicated strings"; they were not. They had DRIFTED:
 #     tm_default announced a RESULT ("translations go back to following the
@@ -501,7 +514,7 @@
 # ============================================================
 
 # ----------------- CONFIGURATION -----------------
-VERSION="2.19.1"
+VERSION="2.19.2"
 DEFAULT_MODEL="qwen2.5-coder:7b"
 # -m bench (D6b): CPU vs iGPU on THIS machine, config up top on purpose.
 BENCH_OVERRIDE_DIR="/etc/systemd/system/ollama.service.d"
@@ -1394,6 +1407,12 @@ t() {
         it:doc_sec_engine)  echo "Motore e modello:" ;;
         de:doc_sec_engine)  echo "Engine und Modell:" ;;
         *:doc_sec_engine)   echo "Engine and model:" ;;
+        it:doc_ohost)       echo "OLLAMA_HOST punta altrove:" ;;
+        de:doc_ohost)       echo "OLLAMA_HOST zeigt woanders hin:" ;;
+        *:doc_ohost)        echo "OLLAMA_HOST points elsewhere:" ;;
+        it:doc_ohost_why)   echo "la sto ignorando: $ASSIST_NAME lavora solo col motore locale ($OLLAMA_URL), per scelta. Attenzione: in questa shell 'ollama list' ti risponde da lì, io da qui." ;;
+        de:doc_ohost_why)   echo "ich ignoriere sie: $ASSIST_NAME arbeitet nur mit der lokalen Engine ($OLLAMA_URL), so gewollt. Achtung: in dieser Shell antwortet 'ollama list' von dort, ich von hier." ;;
+        *:doc_ohost_why)    echo "I am ignoring it: $ASSIST_NAME only works with the local engine ($OLLAMA_URL), by design. Careful: in this shell 'ollama list' answers from there, I answer from here." ;;
         it:doc_sec_gpu)     echo "GPU e backend:" ;;
         de:doc_sec_gpu)     echo "GPU und Backend:" ;;
         *:doc_sec_gpu)      echo "GPU and backend:" ;;
@@ -4418,6 +4437,25 @@ net_update_status() {
 }
 # ================= end Release channels (Part E) =================
 
+# ollama_host_is_local <value> - true if OLLAMA_HOST still means "this machine".
+# Ollama accepts it in several shapes: "host", "host:port", "http://host:port",
+# and a bare ":11434" (port only = local). Strip the scheme, drop the port, and
+# judge the host. 0.0.0.0 is in the local list on purpose: it is what you set
+# to make the SERVER listen on every interface, and as a client target it still
+# means this machine - warning about it would be crying wolf (see D5).
+ollama_host_is_local() {
+    local h="${1#*://}"      # drop scheme, if any
+    h="${h%%/*}"             # drop any path
+    case "$h" in
+        \[*\]*) h="${h%%]*}"; h="${h#[}" ;;   # [::1]:11434 -> ::1
+        *:*)    h="${h%%:*}" ;;               # host:port    -> host
+    esac
+    case "$h" in
+        ""|localhost|127.0.0.1|127.*|::1|0.0.0.0) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
 # gpu_backend_probe - shared by --doctor (D6a) and `-m bench` (D6b): sets
 # BP_GTYPE (nvidia|amd|intel|none), BP_GNAME, BP_HWFOUND (1 if glia-hardware
 # ran), BP_VULKAN/BP_CUDA/BP_ROCM (0/1). Backend presence is checked on the
@@ -4492,6 +4530,16 @@ doctor() {
     need=$(ram_needed_mb)
     [ -n "$avail" ] && [ "$avail" -ge "$need" ]
     doc_line $? "$(t doc_ram) (${avail:-?} MB / ~${need} MB)" "glia-hardware"
+    # D1's residue, inverted (v2.19.2). GLIA is a local-engine program by
+    # decision, not by accident (see docs/ROADMAP.md, D1: DROPPED) - so it
+    # ignores OLLAMA_HOST. Ignoring it SILENTLY is the bug: in one shell,
+    # `ollama list` answers from the server and `glia -m` from localhost, and
+    # neither says why. Not a failure - nothing is broken, this is by design -
+    # so it is a diagnostic line, like the tag-fallback one.
+    if [ -n "${OLLAMA_HOST:-}" ] && ! ollama_host_is_local "$OLLAMA_HOST"; then
+        echo -e "  ${YELLOW}i${NC} $(t doc_ohost) ${GREEN}$OLLAMA_HOST${NC}"
+        echo -e "    $(t doc_ohost_why)"
+    fi
     echo
     echo -e "${YELLOW}$(t doc_sec_gpu)${NC}"
     # D6a (2026-07-17): the --doctor half of D6 - read-only, no backend is

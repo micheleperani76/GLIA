@@ -9,7 +9,7 @@ night. Of the seven: **five landed, one dropped on purpose, one is half done**
 
 | | thread | outcome |
 |---|---|---|
-| D1 | shared Ollama (`--engine`) | **dropped 2026-07-17** — costs the half of GLIA that measures your machine, buys the half that worked anyway |
+| D1 | shared Ollama (`--engine`) | **dropped 2026-07-17** — costs the half of GLIA that measures your machine, buys the half that worked anyway; its one residue landed inverted in v2.19.2 (doctor says it's ignoring `OLLAMA_HOST`) |
 | D2 | one console for the AIs | landed v2.18.5 · tail (one parametric message set) v2.19.1 |
 | D3 | phase 5 + what we claim about it | landed 2026-07-17 — marked honestly **not started**; logo regenerated |
 | D4 | does every command teach? | audit half landed v2.18.9 · **open:** reading someone else's error |
@@ -19,10 +19,9 @@ night. Of the seven: **five landed, one dropped on purpose, one is half done**
 
 Still open, and worth writing down before the enthusiasm returns: **D4's other
 half** (explaining the errors where the popular workaround is worse than the
-problem — mirror 404, stale keyring, partial upgrade), the **`OLLAMA_HOST`
-silence** (see D1), and **phase 5 itself** (Btrfs snapshots), which is now
-honestly labelled rather than quietly "in progress". Below all that, the
-running TODO list.
+problem — mirror 404, stale keyring, partial upgrade), and **phase 5 itself**
+(Btrfs snapshots), which is now honestly labelled rather than quietly "in
+progress". Below all that, the running TODO list.
 
 ## Assistant intelligence mechanisms
 
@@ -187,9 +186,21 @@ against remote engines makes that silence *worse*, not better: if GLIA is a
 local-engine program by design, it should SAY so when it finds a variable
 claiming otherwise, not quietly disagree with `ollama list` under the user's
 nose. Same class as `-V` announcing "up to date" from four-hour-old facts
-(fixed in v2.18.8). Open, small, and not about supporting remote at all:
-a `--doctor` line — *"OLLAMA_HOST points at X: GLIA only works with the local
-engine and is ignoring it."*
+(fixed in v2.18.8). Not about supporting remote at all: a `--doctor` line —
+*"OLLAMA_HOST points at X: GLIA only works with the local engine and is
+ignoring it."*
+
+**Done 2026-07-17 (v2.19.2).** Doctor names the variable, says it is being
+ignored, why, and warns that `ollama list` in that same shell is answering from
+somewhere else. A diagnostic, not a failure: nothing is broken. It only fires
+when the value really points elsewhere — `localhost`, `127.*`, `::1`, a bare
+`:11434` and `0.0.0.0` are all still this machine (0.0.0.0 is what you set to
+make the *server* listen everywhere; as a client target it is still here).
+Thirteen shapes of the variable were run through the check before it shipped,
+because a rule that fires on innocents is how people learn to ignore rules —
+the lesson `rm`-vs-`terrafo(rm)` taught the same day, applied before rather
+than after. **This closes D1 entirely**: the thread is dropped, and the one
+thing that survived it is a sentence that says so out loud.
 
 ### D2. One console for the AIs — refactor `-m` and its satellites
 
