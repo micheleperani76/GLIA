@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ============================================================
 #  glia - AI terminal assistant (Ollama + aichat)
-#  Version: 2.19.2 - 2026-07-17
+#  Version: 2.19.3 - 2026-07-17
 #  Author: Michele (with Claude)
 #  Project: GLIA (GNU Linux IA)
 #
@@ -9,6 +9,28 @@
 #  what you learn here you can reuse in other programs (and vice versa).
 #
 #  What's new in v2.19 ("your machine, your dangers"):
+#   - v2.19.3: D4's other half - reading someone ELSE's error. When a command
+#     GLIA ran fails, the fix loop asks the AI for a correction. On a handful
+#     of errors that is the WRONG move, and this is the point: the model read
+#     the same forums the user would, so the answer it is most likely to
+#     produce is the popular one - and for these, the popular one is a
+#     permanent, system-wide security downgrade. Today GLIA would launder
+#     forum folklore through an assistant the user trusts, with our name on
+#     it. So: on the ground we KNOW, we don't ask. First case, the one hit for
+#     real on 2026-07-17 - pacman, a mirror 404 on a `.sig`: what actually
+#     happened (the SIGNATURE is missing, not the package; ONE mirror is
+#     broken; pacman refusing is pacman working), the fix (the mirror tool
+#     that is really on this machine - cachyos-rate-mirrors here, reflector on
+#     plain Arch), and the trap (`SigLevel = Never`, which turns signature
+#     checking off for the WHOLE system FOREVER because one mirror broke
+#     today). We explain and STILL offer the fix prompt: inform, don't decide.
+#     Matching only touches what does NOT translate - pacman speaks the user's
+#     language (verified: `LANG=it_IT pacman -Q nope` answers in Italian), so
+#     `.sig` and `404` are the anchors, never the prose. Rules lean tight: a
+#     miss costs nothing, a false positive lectures you about an error you
+#     don't have. Keyring, partial upgrade and disk full are NOT here on
+#     purpose - see docs/ROADMAP.md: writing them from memory is how you
+#     become the forum you're correcting.
 #   - v2.19.2: `--doctor` stops ignoring OLLAMA_HOST in silence. GLIA talks to
 #     the LOCAL engine by decision, not by accident (D1 - a shared Ollama -
 #     was dropped on purpose: it costs the half of GLIA that measures your
@@ -514,7 +536,7 @@
 # ============================================================
 
 # ----------------- CONFIGURATION -----------------
-VERSION="2.19.2"
+VERSION="2.19.3"
 DEFAULT_MODEL="qwen2.5-coder:7b"
 # -m bench (D6b): CPU vs iGPU on THIS machine, config up top on purpose.
 BENCH_OVERRIDE_DIR="/etc/systemd/system/ollama.service.d"
@@ -698,6 +720,36 @@ EXTRA_CONFIRM_PATTERNS=(
     '\bgit\b.*\breset\b.*--hard'
     '\bcrontab\b.*-r'
     '\buserdel\b'
+)
+
+# ============================================================
+#  D4 (v2.19.3): the errors where the popular fix is worse than the problem.
+#  The fix loop asks the AI for a corrected command. For a handful of errors
+#  that is exactly the wrong move: the model read the same forums the user
+#  would, and the top-voted answer to some of these is a permanent,
+#  system-wide security downgrade. On the ground we KNOW, we don't ask - we
+#  say what happened, what actually fixes it, and what not to do. Same rule as
+#  `-m bench` (a number beats a heuristic) and --danger's built-ins.
+#
+#  MATCH ONLY ON WHAT DOESN'T TRANSLATE. pacman speaks the user's language -
+#  verified on this machine: `LANG=it_IT pacman -Q nope` says "errore:
+#  impossibile trovare il pacchetto". A regex on its prose breaks on the next
+#  locale. File extensions, HTTP codes, exit codes and tool names don't move.
+#
+#    id | pkgmgr ('*' = any) | pattern | second pattern (both must match)
+#
+#  Lean TIGHT: a miss costs nothing (you get today's behaviour - the AI is
+#  asked), while a false positive lectures someone about an error they don't
+#  have, and that is how people learn to skip what we say. Plain `\.sig` also
+#  matched "config.sig.bak is 404 lines long"; the trailing class stops it
+#  eating into a longer name - the anchoring lesson from rm-vs-terrafo(rm).
+#
+#  '|' IS THE FIELD SEPARATOR, so a pattern must never contain one: write
+#  [abc] instead of (a|b|c). The first draft of the row below used an
+#  alternation, IFS split the regex in half, and the rule silently stopped
+#  matching anything at all - a guard that quietly guards nothing.
+KNOWN_ERRORS=(
+    "sig404|pacman|\.sig[^.[:alnum:]]|404"
 )
 
 # Binaries that need root to CHANGE the system (v1.8 auto-sudo).
@@ -1239,6 +1291,28 @@ t() {
         it:mp_which)        echo "Quale scarico? numero o nome (Invio = annulla): " ;;
         de:mp_which)        echo "Welche laden? Nummer oder Name (Enter = abbrechen): " ;;
         *:mp_which)         echo "Which one to download? number or name (Enter = cancel): " ;;
+        # ---- D4: errors where the popular fix is worse than the problem ----
+        it:ke_title)        echo "Questo errore lo conosco — e la risposta più diffusa è peggio del problema:" ;;
+        de:ke_title)        echo "Diesen Fehler kenne ich - und die verbreitetste Antwort ist schlimmer als das Problem:" ;;
+        *:ke_title)         echo "I know this error - and the most popular answer to it is worse than the problem:" ;;
+        it:ke_fix)          echo "Rimedio:" ;;
+        de:ke_fix)          echo "Loesung:" ;;
+        *:ke_fix)           echo "Fix:" ;;
+        it:ke_trap)         echo "NON farlo:" ;;
+        de:ke_trap)         echo "NICHT tun:" ;;
+        *:ke_trap)          echo "Do NOT:" ;;
+        it:ke_mirror_manual) echo "apri /etc/pacman.d/mirrorlist e commenta con # il mirror che dà errore" ;;
+        de:ke_mirror_manual) echo "oeffne /etc/pacman.d/mirrorlist und kommentiere den fehlerhaften Mirror mit # aus" ;;
+        *:ke_mirror_manual)  echo "open /etc/pacman.d/mirrorlist and comment out the failing mirror with #" ;;
+        it:ke_sig404_what)  echo "Il file che manca è la FIRMA (.sig), non il pacchetto: quel mirror è disallineato o rotto. pacman si ferma perché non può verificare quello che sta per installare — sta facendo il suo lavoro, non ti sta ostacolando. Il colpevole è UN mirror, non il pacchetto e non il tuo sistema." ;;
+        de:ke_sig404_what)  echo "Es fehlt die SIGNATUR (.sig), nicht das Paket: dieser Mirror ist nicht synchron oder defekt. pacman haelt an, weil es nicht pruefen kann, was es installieren wuerde - es macht seine Arbeit, es steht dir nicht im Weg. Schuld ist EIN Mirror, nicht das Paket und nicht dein System." ;;
+        *:ke_sig404_what)   echo "What is missing is the SIGNATURE (.sig), not the package: that mirror is out of sync or broken. pacman stops because it cannot verify what it is about to install - it is doing its job, not obstructing you. The guilty party is ONE mirror, not the package and not your system." ;;
+        it:ke_sig404_fix)   echo "$(mirror_refresh_cmd)   ·   poi ripeti l'installazione: il pacchetto arriva da un altro mirror, firma inclusa." ;;
+        de:ke_sig404_fix)   echo "$(mirror_refresh_cmd)   ·   dann die Installation wiederholen: das Paket kommt von einem anderen Mirror, samt Signatur." ;;
+        *:ke_sig404_fix)    echo "$(mirror_refresh_cmd)   ·   then run the install again: the package comes from another mirror, signature included." ;;
+        it:ke_sig404_trap)  echo "'SigLevel = Never' in /etc/pacman.conf. È la risposta che troverai sui forum, e spegne il controllo delle FIRME su TUTTO il sistema, PER SEMPRE, per colpa di un mirror rotto oggi. È togliere la serratura di casa perché una chiave non gira." ;;
+        de:ke_sig404_trap)  echo "'SigLevel = Never' in /etc/pacman.conf. Das ist die Antwort aus den Foren, und sie schaltet die SIGNATURPRUEFUNG fuer das GANZE System AUF DAUER ab - wegen eines Mirrors, der heute kaputt ist. Das ist, als baue man das Tuerschloss aus, weil ein Schluessel klemmt." ;;
+        *:ke_sig404_trap)   echo "'SigLevel = Never' in /etc/pacman.conf. That is the answer the forums give, and it turns SIGNATURE checking off for your WHOLE system, FOREVER, because one mirror is broken today. It is removing your front door lock because one key sticks." ;;
         it:equiv)           echo "equivale a:" ;;
         de:equiv)           echo "entspricht:" ;;
         *:equiv)            echo "same as:" ;;
@@ -4667,6 +4741,53 @@ explain_danger() {
     return 0
 }
 
+# ================= D4: reading someone else's error (v2.19.3) =================
+
+mirror_refresh_cmd() {
+    # The RIGHT command for THIS machine, not a generic one: CachyOS ships its
+    # own rater (and a timer for it), plain Arch has reflector. Same idea as
+    # pkg_install_cmd - name the tool that is actually here.
+    if command -v cachyos-rate-mirrors >/dev/null 2>&1; then
+        printf '%s' "sudo cachyos-rate-mirrors"
+    elif command -v reflector >/dev/null 2>&1; then
+        printf '%s' "sudo reflector --latest 20 --protocol https --sort rate --save /etc/pacman.d/mirrorlist"
+    else
+        printf '%s' "$(t ke_mirror_manual)"
+    fi
+}
+
+known_error() {
+    # Echoes the id of a known error found in $1, or returns 1. Both patterns
+    # of a row must match: an unordered AND is two greps, not one clever regex
+    # (and clever regexes are how `rm` matched terrafo(rm) - see v2.19.0).
+    local txt="$1" e id pm p1 p2 extra
+    [ -n "$txt" ] || return 1
+    for e in "${KNOWN_ERRORS[@]}"; do
+        IFS='|' read -r id pm p1 p2 extra <<< "$e"
+        # A 5th field means someone put a '|' inside a pattern and IFS cut the
+        # regex in half: the rule would then match nothing while looking armed.
+        # --danger validates its regexes at the door for the same reason; a
+        # broken guard is worse than none, so this one is loud, not silent.
+        [ -n "$extra" ] && { echo "glia: KNOWN_ERRORS row '$id': a pattern contains '|', the field separator" >&2; continue; }
+        [ "$pm" = "*" ] || [ "$pm" = "$PKGMGR" ] || continue
+        grep -qiE "$p1" <<< "$txt" 2>/dev/null || continue
+        if [ -n "$p2" ]; then grep -qiE "$p2" <<< "$txt" 2>/dev/null || continue; fi
+        printf '%s' "$id"; return 0
+    done
+    return 1
+}
+
+known_error_say() {
+    # Explain, don't decide: after this the usual fix prompt still runs, so the
+    # user can still ask the AI. They just aren't hearing the forum first.
+    local id="$1"
+    echo -e "${YELLOW}$(t ke_title)${NC}"
+    echo -e "  $(t "ke_${id}_what")"
+    echo -e "  ${GREEN}$(t ke_fix)${NC} $(t "ke_${id}_fix")"
+    echo -e "  ${RED}$(t ke_trap)${NC} $(t "ke_${id}_trap")"
+}
+# ================= end D4: reading someone else's error =================
+
 # ---- reboot / shutdown detection (v1.8) ----
 is_reboot_cmd() {
     # true if the command reboots, powers off or halts the whole machine
@@ -5046,6 +5167,16 @@ propose_and_run() {
             return "$status"
         fi
         echo -e "${RED}$(t cmd_failed) (exit $status).${NC}"
+        # D4 (v2.19.3): if this is one of the errors we KNOW, say the truth
+        # BEFORE the AI gets asked for a fix. On these, the model is not a
+        # neutral helper: it read the same forums, and the popular answer is a
+        # permanent security downgrade. We explain and still offer the fix
+        # prompt below - inform, don't decide.
+        local kid
+        if kid="$(known_error "${CMD_ERR:-}")"; then
+            known_error_say "$kid"
+            write_log "known error" "$kid"
+        fi
         read -r -p "$(t ask_fix)" answer < /dev/tty || return "$status"
         case "${answer,,}" in
             n|no) return "$status" ;;

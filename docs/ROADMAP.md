@@ -4,24 +4,24 @@ Updated: 2026-07-17
 
 Where things are heading: **[Direction — the next moves](#direction-the-next-moves-noted-2026-07-16)**
 — written 2026-07-16 as five threads, then D6 and D7 were added to it the same
-night. Of the seven: **five landed, one dropped on purpose, one is half done**
-(and says so):
+night. Of the seven: **six landed, one dropped on purpose**:
 
 | | thread | outcome |
 |---|---|---|
 | D1 | shared Ollama (`--engine`) | **dropped 2026-07-17** — costs the half of GLIA that measures your machine, buys the half that worked anyway; its one residue landed inverted in v2.19.2 (doctor says it's ignoring `OLLAMA_HOST`) |
 | D2 | one console for the AIs | landed v2.18.5 · tail (one parametric message set) v2.19.1 |
 | D3 | phase 5 + what we claim about it | landed 2026-07-17 — marked honestly **not started**; logo regenerated |
-| D4 | does every command teach? | audit half landed v2.18.9 · **open:** reading someone else's error |
+| D4 | does every command teach? | audit half landed v2.18.9 · error-reading landed v2.19.3 (1 case shipped, 3 held back for want of evidence) |
 | D5 | configurable safety | landed v2.19.0 (`--danger`) |
 | D6 | the GPU nobody uses | landed v2.18.6 (`--doctor`) + v2.18.7 (`-m bench`) |
 | D7 | check-docs against drift | landed v2.18.4 |
 
-Still open, and worth writing down before the enthusiasm returns: **D4's other
-half** (explaining the errors where the popular workaround is worse than the
-problem — mirror 404, stale keyring, partial upgrade), and **phase 5 itself**
-(Btrfs snapshots), which is now honestly labelled rather than quietly "in
-progress". Below all that, the running TODO list.
+Still open, and worth writing down before the enthusiasm returns: **three more
+known errors** (stale keyring, partial upgrade, disk full) — held back on
+purpose until there is real evidence for each, since D4's whole value is being
+right where the forums are wrong; and **phase 5 itself** (Btrfs snapshots),
+which is now honestly labelled rather than quietly "in progress". Below all
+that, the running TODO list.
 
 ## Assistant intelligence mechanisms
 
@@ -374,9 +374,46 @@ line shown (`grep -v` + atomic `mv` vs the `sed -i` we teach) the code says so
 in a comment: identical result, and the temp-file dance is why an interrupted
 write can't leave half an aliases file.
 
-**Still open: the other half**, and it is the bigger one — reading someone
-ELSE's error (mirror 404, stale keyring, partial upgrade, disk full). That is a
-feature, not an audit, so it gets its own change rather than riding along here.
+**Landed 2026-07-17 (v2.19.3, tag pending) — the other half, started.** The
+sharpest thing found building it wasn't in the ask: **today GLIA would hand you
+the forum answer itself.** When a command fails, the fix loop sends stderr to
+the model and asks for a corrected command. On exactly these errors, the model
+is not a neutral helper — it read the same threads, so the correction it is most
+likely to produce is the popular one, and the popular one here is
+`SigLevel = Never`. GLIA would launder forum folklore through an assistant the
+user trusts, with our name on it. That is the argument for a deterministic
+table: on ground we KNOW, we don't ask. Same shape as `-m bench` (a number beats
+a heuristic) and `--danger`'s built-ins.
+
+Shipped with **one** case — the one hit for real on 2026-07-17, pacman's mirror
+404 on a `.sig`: what actually happened (the SIGNATURE is missing, not the
+package; ONE mirror is out of sync; pacman refusing is pacman working), the fix
+(named with the tool really present — `cachyos-rate-mirrors` here, `reflector`
+on plain Arch, hand-editing the mirrorlist otherwise), and the trap spelled out.
+It explains and **still** offers the usual fix prompt: inform, don't decide.
+
+Two rules the code earned, both the hard way:
+
+- **Match only what doesn't translate.** pacman speaks the user's language —
+  verified, not assumed: `LANG=it_IT pacman -Q nope` answers *"errore:
+  impossibile trovare il pacchetto"*. A regex on its prose dies at the next
+  locale. `.sig`, `404`, exit codes and tool names don't move. (curl's *"The
+  requested URL returned error: 404"* rides along inside the Italian output —
+  that is why the 404 is anchorable at all.)
+- **`|` is the field separator, so a pattern can never contain one.** The first
+  draft used `\.sig([^.[:alnum:]]|$)`; `IFS` cut the regex in half and the rule
+  silently stopped matching **anything** — a guard that looked armed and guarded
+  nothing. It now refuses a malformed row loudly, the way `--danger` validates
+  its regexes at the door.
+
+**Deliberately NOT shipped: keyring, partial upgrade, disk full.** They are in
+the ask, and one row each would have been easy. But of the four only the `.sig`
+one is grounded in a real error with real text; the rest I would have written
+from memory — and on a feature whose entire value is *being right where the
+forums are wrong*, writing from memory is how you become the forum you are
+correcting. If GLIA says "don't do X, do Y" and Y is wrong, that is worse than
+silence. Each is one row + three strings **once there is evidence**: a real
+error text hit on a real machine, or the distro's own documentation.
 
 ### D5. Safety first, but configurable
 
