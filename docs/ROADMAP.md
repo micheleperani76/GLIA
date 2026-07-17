@@ -297,6 +297,24 @@ Supersedes the old TODO line "glia-hardware: detect capable AMD/Intel GPUs and
 consider OLLAMA_VULKAN=1" — which guessed right ("weak iGPUs are usually not
 worth it vs CPU") and now has the receipt.
 
+**Landed 2026-07-17 (v2.18.6, tag pending)** — the `--doctor` half shipped.
+A dedicated GPU (NVIDIA/AMD) with no matching Ollama backend installed is a
+real failing check with the exact fix — `pacman -S ollama-cuda`/`ollama-rocm`,
+verified against the CachyOS/Arch repos; other package managers get an honest
+"check upstream" instead of an invented name, since they don't split GPU
+backends into packages the same way. An Intel iGPU is never a failing check
+and never a recommendation — only ever mentioned, with the measured 4.5x
+number, and doctor also reads whether `OLLAMA_IGPU_ENABLE=1` is already set
+and repeats the number either way. Detection walks the real `.so` files under
+`/usr/lib/ollama` recursively, not a flat listing: `ollama-vulkan` hides its
+library one folder down (`vulkan/libggml-vulkan.so`), a gap `eval-backend.sh`'s
+own flat `ls` still has today. Still open: the ROCm filename pattern
+(`libggml-hip*.so`) is the known ggml/llama.cpp convention but unverified on
+disk here (`ollama-rocm` isn't installed on this machine) — worth a quick
+check the first time this runs on AMD. **Still to come: D6b**, the `-m bench`
+command that actually flips the backend and measures on the machine it runs
+on, instead of quoting the one number we already have.
+
 ### D7. `make check-docs` — the duplicated surfaces keep drifting
 
 Evidence from one evening (2026-07-16/17), all of it the same bug wearing

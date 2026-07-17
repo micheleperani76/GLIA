@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ============================================================
 #  glia - AI terminal assistant (Ollama + aichat)
-#  Version: 2.18.5 - 2026-07-17
+#  Version: 2.18.6 - 2026-07-17
 #  Author: Michele (with Claude)
 #  Project: GLIA (GNU Linux IA)
 #
@@ -32,6 +32,19 @@
 #     very cost D7's check-docs measures. The three near-identical *_model_cmd
 #     and *_model_menu triplets collapsed into one generic body, and the
 #     numbered listing is shared with `-m` (model_list_tagged).
+#   - v2.18.6: `--doctor` gains a GPU/backend check (D6a). Read-only: a
+#     dedicated GPU (NVIDIA/AMD) with no matching Ollama backend installed
+#     is the safe advice, and pacman gets the exact package (ollama-cuda/
+#     -rocm, verified against the repos); other package managers get a
+#     "check upstream" nudge instead of an invented name. An Intel iGPU is
+#     the opposite case: only ever mentioned, never recommended - measured
+#     4.5x slower than CPU on ours (docs/design/bench-gpu-2026-07-17.txt),
+#     and if OLLAMA_IGPU_ENABLE=1 is already set, doctor says so and repeats
+#     the number. Detection walks /usr/lib/ollama for the real .so files
+#     (not the package DB), because ollama-vulkan puts its library in a
+#     vulkan/ subfolder a flat `ls` would miss - the same gap eval-backend.sh
+#     (the D6 prototype) has today. Flipping the backend itself is `-m bench`
+#     (D6b), still to come.
 #   - v2.18.3: `--doctor` closes the shadowing case BACKWARDS. v2.18.2 stops
 #     --rename from burying a command, but a nickname made before it is
 #     still sitting there, and whoever has one is exactly the person who
@@ -409,7 +422,7 @@
 # ============================================================
 
 # ----------------- CONFIGURATION -----------------
-VERSION="2.18.5"
+VERSION="2.18.6"
 DEFAULT_MODEL="qwen2.5-coder:7b"
 if [ -r "$HOME/.config/glia/model" ]; then
     MODEL="ollama:$(head -n1 "$HOME/.config/glia/model")"
@@ -1202,6 +1215,9 @@ t() {
         it:doc_sec_engine)  echo "Motore e modello:" ;;
         de:doc_sec_engine)  echo "Engine und Modell:" ;;
         *:doc_sec_engine)   echo "Engine and model:" ;;
+        it:doc_sec_gpu)     echo "GPU e backend:" ;;
+        de:doc_sec_gpu)     echo "GPU und Backend:" ;;
+        *:doc_sec_gpu)      echo "GPU and backend:" ;;
         it:doc_sec_paths)   echo "Comando e cartelle:" ;;
         de:doc_sec_paths)   echo "Befehl und Ordner:" ;;
         *:doc_sec_paths)    echo "Command and folders:" ;;
@@ -1211,6 +1227,30 @@ t() {
         it:doc_ram)         echo "RAM libera sufficiente per il modello" ;;
         de:doc_ram)         echo "genug freier RAM für das Modell" ;;
         *:doc_ram)          echo "enough free RAM for the model" ;;
+        it:doc_gpu_dedicated)   echo "backend GPU corretto installato" ;;
+        de:doc_gpu_dedicated)   echo "richtiges GPU-Backend installiert" ;;
+        *:doc_gpu_dedicated)    echo "correct GPU backend installed" ;;
+        it:doc_gpu_igpu_have)   echo "iGPU Intel rilevata, backend Vulkan presente:" ;;
+        de:doc_gpu_igpu_have)   echo "Intel-iGPU erkannt, Vulkan-Backend vorhanden:" ;;
+        *:doc_gpu_igpu_have)    echo "Intel iGPU detected, Vulkan backend present:" ;;
+        it:doc_gpu_igpu_dropped) echo "Ollama la scarta di default (OLLAMA_IGPU_ENABLE=1 per provarla) - su un iGPU simile abbiamo misurato ~4.5x più lenta della CPU: valutala, non darla per scontata." ;;
+        de:doc_gpu_igpu_dropped) echo "Ollama verwirft sie standardmäßig (OLLAMA_IGPU_ENABLE=1 zum Testen) - auf einer ähnlichen iGPU haben wir ~4,5x langsamer als CPU gemessen: abwägen, nicht voraussetzen." ;;
+        *:doc_gpu_igpu_dropped)  echo "Ollama drops it by default (OLLAMA_IGPU_ENABLE=1 to try it) - on a similar iGPU we measured ~4.5x slower than CPU: worth weighing, not assuming." ;;
+        it:doc_gpu_igpu_enabled) echo "OLLAMA_IGPU_ENABLE=1 è già impostata: la iGPU è in uso - ricorda, su hardware simile misurato ~4.5x più lento della CPU." ;;
+        de:doc_gpu_igpu_enabled) echo "OLLAMA_IGPU_ENABLE=1 ist bereits gesetzt: die iGPU wird genutzt - zur Erinnerung, auf ähnlicher Hardware ~4,5x langsamer als CPU gemessen." ;;
+        *:doc_gpu_igpu_enabled)  echo "OLLAMA_IGPU_ENABLE=1 is already set: the iGPU is in use - reminder, measured ~4.5x slower than CPU on similar hardware." ;;
+        it:doc_gpu_igpu_none)   echo "iGPU Intel rilevata, nessun backend installato (non consigliato: su hardware simile più lenta della CPU, banda RAM condivisa):" ;;
+        de:doc_gpu_igpu_none)   echo "Intel-iGPU erkannt, kein Backend installiert (nicht empfohlen: auf ähnlicher Hardware langsamer als CPU, geteilte RAM-Bandbreite):" ;;
+        *:doc_gpu_igpu_none)    echo "Intel iGPU detected, no backend installed (not recommended: slower than CPU on similar hardware, shared RAM bandwidth):" ;;
+        it:doc_gpu_none)        echo "nessuna GPU rilevata: inferenza solo CPU (normale)" ;;
+        de:doc_gpu_none)        echo "keine GPU erkannt: reine CPU-Inferenz (normal)" ;;
+        *:doc_gpu_none)         echo "no GPU detected: CPU-only inference (normal)" ;;
+        it:doc_gpu_nohw)        echo "glia-hardware non trovato: controllo GPU saltato" ;;
+        de:doc_gpu_nohw)        echo "glia-hardware nicht gefunden: GPU-Check übersprungen" ;;
+        *:doc_gpu_nohw)         echo "glia-hardware not found: GPU check skipped" ;;
+        it:doc_gpu_pkg_unknown) echo "verifica come il tuo pacchetto ollama gestisce CUDA/ROCm (ollama.com/download)" ;;
+        de:doc_gpu_pkg_unknown) echo "prüfe, wie dein ollama-Paket CUDA/ROCm behandelt (ollama.com/download)" ;;
+        *:doc_gpu_pkg_unknown)  echo "check how your distro's ollama package handles CUDA/ROCm (ollama.com/download)" ;;
         it:doc_name)        echo "comando '$ASSIST_NAME' presente nel PATH" ;;
         de:doc_name)        echo "Befehl '$ASSIST_NAME' im PATH vorhanden" ;;
         *:doc_name)         echo "command '$ASSIST_NAME' found in PATH" ;;
@@ -3859,6 +3899,25 @@ net_update_status() {
 }
 # ================= end Release channels (Part E) =================
 
+# gpu_backend_pkg_hint <cuda|rocm|vulkan> - D6a: install hint for --doctor's
+# GPU/backend check. pacman splits GPU backends into real packages
+# (ollama-vulkan/-cuda/-rocm, verified in the CachyOS/Arch repos); other
+# package managers do not split the same way (the official installer at
+# ollama.com auto-detects CUDA/ROCm at install time instead), so we do not
+# invent a package name for them there - the honest answer is "check upstream".
+gpu_backend_pkg_hint() {
+    local pkg
+    case "$1" in
+        cuda)   pkg="ollama-cuda" ;;
+        rocm)   pkg="ollama-rocm" ;;
+        vulkan) pkg="ollama-vulkan" ;;
+    esac
+    case "$PKGMGR" in
+        pacman) pkg_install_cmd "$pkg" ;;
+        *)      t doc_gpu_pkg_unknown ;;
+    esac
+}
+
 doctor() {
     local fails=0 mname avail need
     doc_line() {   # $1 = 0 ok / 1 fail, $2 = label, $3 = hint on failure
@@ -3893,6 +3952,51 @@ doctor() {
     need=$(ram_needed_mb)
     [ -n "$avail" ] && [ "$avail" -ge "$need" ]
     doc_line $? "$(t doc_ram) (${avail:-?} MB / ~${need} MB)" "glia-hardware"
+    echo
+    echo -e "${YELLOW}$(t doc_sec_gpu)${NC}"
+    # D6a (2026-07-17): the --doctor half of D6 - read-only, no backend is
+    # ever flipped here (that is `-m bench`, D6b, later). Dedicated GPU with
+    # no matching backend is the safe, worth-it advice; an Intel iGPU is the
+    # opposite (measured 4.5x slower on ours - see docs/design/bench-gpu-
+    # 2026-07-17.txt), so it is only ever mentioned, never recommended.
+    if command -v glia-hardware >/dev/null 2>&1; then
+        local hwjson gtype gname has_vulkan has_cuda has_rocm igpu_on want backend_label gok
+        hwjson=$(glia-hardware -j 2>/dev/null)
+        gtype=$(sed -n 's/.*"gpu_type":"\([^"]*\)".*/\1/p' <<< "$hwjson")
+        gname=$(sed -n 's/.*"gpu_name":"\([^"]*\)".*/\1/p'  <<< "$hwjson")
+        has_vulkan=0; find /usr/lib/ollama -iname 'libggml-vulkan.so' 2>/dev/null | grep -q . && has_vulkan=1
+        has_cuda=0;   find /usr/lib/ollama -iname 'libggml-cuda.so'   2>/dev/null | grep -q . && has_cuda=1
+        has_rocm=0;   find /usr/lib/ollama -iname 'libggml-hip*.so'   2>/dev/null | grep -q . && has_rocm=1
+        case "$gtype" in
+            nvidia|amd)
+                if [ "$gtype" = nvidia ]; then want=cuda; backend_label="CUDA"; gok=$has_cuda
+                else                            want=rocm; backend_label="ROCm"; gok=$has_rocm
+                fi
+                [ "$gok" -eq 1 ]
+                doc_line $? "$(t doc_gpu_dedicated) $gname ($backend_label)" "$(gpu_backend_pkg_hint "$want")"
+                ;;
+            intel)
+                if [ "$has_vulkan" -eq 1 ]; then
+                    igpu_on=0
+                    systemctl show ollama --property=Environment 2>/dev/null \
+                        | grep -q 'OLLAMA_IGPU_ENABLE=1' && igpu_on=1
+                    echo -e "  ${BLUE}i${NC} $(t doc_gpu_igpu_have) $gname"
+                    if [ "$igpu_on" -eq 1 ]; then
+                        echo -e "    $(t doc_gpu_igpu_enabled)"
+                    else
+                        echo -e "    $(t doc_gpu_igpu_dropped)"
+                    fi
+                else
+                    echo -e "  ${BLUE}i${NC} $(t doc_gpu_igpu_none) $gname"
+                fi
+                ;;
+            *)
+                echo -e "  ${BLUE}i${NC} $(t doc_gpu_none)"
+                ;;
+        esac
+    else
+        echo -e "  ${BLUE}i${NC} $(t doc_gpu_nohw)"
+    fi
     echo
     echo -e "${YELLOW}$(t doc_sec_paths)${NC}"
     command -v "$ASSIST_NAME" >/dev/null 2>&1
