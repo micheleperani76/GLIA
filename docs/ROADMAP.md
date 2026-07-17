@@ -137,7 +137,7 @@ Constraints that must survive:
 - Whatever the shape, adding role #5 must not mean touching five surfaces
   again. If it does, the refactor missed the point.
 
-**Landed 2026-07-17 (v2.18.4, tag pending)** — `-m role` is the console: bare
+**Landed 2026-07-17 (v2.18.5, tag pending)** — `-m role` is the console: bare
 lists the downloaded AIs NUMBERED (same as `-m`), each tagged with the job it
 holds; you assign BY NUMBER — `-m role <n> <role>` (role = full name or its
 initial, web/w · project/p · translate/t), `-m role 0 <role>` sends a job back

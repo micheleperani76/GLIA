@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ============================================================
 #  glia - AI terminal assistant (Ollama + aichat)
-#  Version: 2.18.4 - 2026-07-17
+#  Version: 2.18.5 - 2026-07-17
 #  Author: Michele (with Claude)
 #  Project: GLIA (GNU Linux IA)
 #
@@ -21,7 +21,7 @@
 #     $YES_KEY. It caught six real drifts on the first run, fixed here:
 #     README never listed --lang, --remember/--memory/--forget or
 #     --clear-cache, and the fish completion never offered -w+.
-#   - v2.18.4: `-m role` (D2) - one console for the AI roles. `-m role` lists
+#   - v2.18.5: `-m role` (D2) - one console for the AI roles. `-m role` lists
 #     the downloaded AIs NUMBERED (same as `-m`), each tagged with the job it
 #     holds (default/web/project/translate); you assign BY NUMBER with
 #     `-m role <n> <role>` (role = full name or its initial: web/w, project/p,
@@ -409,7 +409,7 @@
 # ============================================================
 
 # ----------------- CONFIGURATION -----------------
-VERSION="2.18.4"
+VERSION="2.18.5"
 DEFAULT_MODEL="qwen2.5-coder:7b"
 if [ -r "$HOME/.config/glia/model" ]; then
     MODEL="ollama:$(head -n1 "$HOME/.config/glia/model")"
