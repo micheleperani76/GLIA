@@ -619,7 +619,24 @@ treated as the normal pre-release state, not a failure), flag→surfaces,
 the two navs (section entries + breakpoint), and hardcoded confirm words.
 First run caught **six real drifts**, fixed in the same change: README never
 listed `--lang`, `--remember`/`--memory`/`--forget` or `--clear-cache`, and the
-fish completion never offered `-w+`. One deliberate carve-out to revisit:
+fish completion never offered `-w+`.
+
+**What it CANNOT catch, learned 2026-07-17 the embarrassing way.** check-docs
+verifies that every *flag* appears in README, commands.html and both
+completions. It says nothing about the **prose on the home page** — and it
+shouldn't: `index.html` is a shop window, not a flag list, and demanding every
+flag appear there would be wrong. But that leaves a real class of drift the
+tool cannot see. After a day of shipping `--danger`, `-m bench`, the GPU check
+and the error teaching, check-docs was **green all day** while the home page had
+not heard of any of them: its "Safety first" card still described only our
+built-in rules, and the single word "danger" on the whole page was the adjective
+*"Dangerous"*. Nobody noticed until Michele asked "did you update the site?".
+The lesson isn't about check-docs, it's about tools in general: **it covered
+what it covered, and attention went where it pointed.** A green check is not a
+finished job — it is a finished *check*. This one stays a human review item,
+because "does the shop window still describe the shop" is not mechanisable.
+
+One deliberate carve-out to revisit:
 `--kaboom` is exempted from the completion check on purpose (a destructive
 uninstall shouldn't be one `<TAB>` away) — flip `COMPLETION_EXEMPT` if that
 call is wrong. Still open for later: wire it into a pre-commit/CI step so the
