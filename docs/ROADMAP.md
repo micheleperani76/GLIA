@@ -642,6 +642,43 @@ uninstall shouldn't be one `<TAB>` away) — flip `COMPLETION_EXEMPT` if that
 call is wrong. Still open for later: wire it into a pre-commit/CI step so the
 check runs itself instead of relying on memory.
 
+### D8. A bench for the context — what FITS vs what is USABLE
+
+Opened 2026-07-17, while building the self-tuning chat window (v2.21).
+
+`chat_ctx_probe()` answers one question honestly: how much context **fits**.
+It asks the model its limit (`/api/show`) and the RAM its budget (the KV cache
+is linear in the window: `2 x layers x kv_heads x head_dim x 2 bytes`, every
+factor read from the engine). On the dev machine that gives 32768 — the model's
+own ceiling, with RAM to spare.
+
+**But fitting is not the same as being usable**, and today we only measure the
+first one. Every turn re-sends the whole conversation, so the prompt eval grows
+with the window: a 32k chat can sit comfortably in RAM and still be miserable
+to talk to, because turn 12 takes half a minute before the first token. Nothing
+in the current probe would ever notice — RAM says yes, and the user waits.
+
+That number needs measuring, not reasoning, and `-m bench` is the command whose
+whole job is measuring instead of guessing: `tok/s` on a short prompt vs `tok/s`
+with a full ~28k context, on this machine, with this model.
+
+What must NOT happen (the mistake almost made on 2026-07-17): moving the probe
+*into* bench. `bench_cmd` returns at its first case on any machine without an
+Intel iGPU — no GPU, nvidia, amd — so the Debian server and every nvidia laptop
+would have been stuck at the fallback forever, and a fresh install would need a
+command nobody knows exists. The probe is free (two curls, no sudo, no restart);
+bench costs sudo, two ollama restarts and minutes. Bench **reports** the window;
+it does not own it. Whatever D8 becomes, keep that shape.
+
+Open questions, none of them answerable from memory:
+- what does the verdict SAY? "your machine holds 32k but is pleasant up to 12k"
+  is useful; a table of tok/s is not.
+- would it *lower* CHAT_NUM_CTX by itself, or only advise? (glia's line has been
+  inform-don't-decide since D4 — probably advise, and let the config obey.)
+- it needs data from more than one machine before it has any right to a verdict.
+  One measurement is an anecdote; this repo already has
+  `docs/design/bench-gpu-2026-07-17.txt` as the shape to follow.
+
 ## TODO
 
 - **An AI in RAM that GLIA did not load** (decided 2026-07-16, not yet built).
