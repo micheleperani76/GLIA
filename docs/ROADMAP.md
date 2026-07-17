@@ -163,6 +163,38 @@ Contents, when it starts: Btrfs snapshots as a safety net before destructive
 operations; the Calamares `logo.png` still says "IA" and must be regenerated
 (see Branding below); docs polish.
 
+**Landed 2026-07-17 (site + branding asset; no code changed, so no version and
+no tag — VERSION identifies the CODE, and a v2.19.1 whose `bin/glia` is
+byte-identical to v2.19.0 would offer everyone an update that updates nothing).**
+Decided: **marked honestly as not started**, because it isn't. Phase 5 on the site said "⏳ in progress" while
+nothing had been built; it now reads "○ not started" and names what it actually
+is — *Btrfs snapshots as a safety net before destructive operations* — instead
+of the vague "snapshots, branding, polish". The status vocabulary gained the
+word it was missing: green ✓ done, amber ⏳ in progress, grey ○ not started. It
+had no way to say "not yet", so anything unstarted had to borrow "in progress",
+and a table that can only flatter isn't a status table.
+
+**The logo is regenerated** and now says *GNU/Linux + AI*, closing the branding
+half. It also gained a **source**: `logo.svg` lives next to it in the branding
+folder, with the one-line `rsvg-convert` that rebuilds the PNG in a comment at
+the top — the drift happened because the PNG was a rasterised dead end nobody
+could edit, and a fix that leaves the trap open isn't a fix. Colours and
+geometry were measured off the old PNG (`#1a1c2c`, `#4fd1c5`, border, baselines)
+and reproduced, so only the two letters changed.
+
+Worth writing down, because it cost real time: grepping `IA` matches the "IA"
+inside **GL·IA** — `docs/logo.svg` looked guilty and was innocent. Exactly the
+same unanchored-match bug as the `rm` inside *terrafo·rm* found on the same day
+(D5). Twice in one session, in opposite directions: once the tool cried wolf,
+once the reviewer did.
+
+**Still open, needs a decision (not swept):** 12 files carry the header comment
+`# Project: GLIA (GNU Linux IA)`, and `bin/glia-hardware` has a third variant,
+`GLIA / LinuxIA`. The Branding note below says the texts were updated on
+2026-07-12, so these were either deliberate or missed — they are developer-
+facing comments, invisible to users, and a 12-file sweep is a decision, not an
+obvious fix. Left alone pending that call.
+
 ### D4. Audit: does every command actually TEACH?
 
 The first pillar is "you always see the command before it runs — you read it,
@@ -469,5 +501,9 @@ check runs itself instead of relying on memory.
   dropped on purpose unless `OLLAMA_IGPU_ENABLE=1`.
 - Btrfs snapshots as safety net (phase 5), branding, docs.
 - **Branding**: naming is "GLIA — GNU/Linux + AI" (AI in English) everywhere;
-  texts updated 2026-07-12, the Calamares logo.png still says "IA" and must
-  be regenerated.
+  texts updated 2026-07-12. ~~the Calamares logo.png still says "IA" and must
+  be regenerated~~ → **done 2026-07-17** (site/asset change, no tag): regenerated from a new
+  `logo.svg` source kept beside it, so it can be rebuilt instead of redrawn.
+  Open: 12 files still carry `# Project: GLIA (GNU Linux IA)` in their header
+  comment (and `bin/glia-hardware` says `GLIA / LinuxIA`) — developer-facing,
+  never shown to a user; sweep or keep, needs a call. See D3.

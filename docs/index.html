@@ -106,6 +106,9 @@ nav{position:sticky;top:0;z-index:50;backdrop-filter:blur(12px);background:rgba(
 .phase .st{font-family:var(--mono);font-size:.8rem;padding:4px 12px;border-radius:20px;white-space:nowrap}
 .st.done{background:rgba(74,222,128,.12);color:var(--green);border:1px solid rgba(74,222,128,.3)}
 .st.wip{background:rgba(251,191,36,.1);color:var(--amber);border:1px solid rgba(251,191,36,.3)}
+/* a status table needs a word for "not yet", or every unstarted thing has to
+   borrow "in progress" and the table flatters the project (D3). */
+.st.todo{background:rgba(125,139,160,.1);color:var(--muted);border:1px solid rgba(125,139,160,.3)}
 /* table */
 .tbl{width:100%;border-collapse:collapse;font-size:.93rem;background:var(--panel);border:1px solid var(--border);border-radius:12px;overflow:hidden}
 .tbl th{text-align:left;padding:14px 18px;background:var(--panel2);color:var(--white);font-weight:600;font-size:.82rem;letter-spacing:.03em;text-transform:uppercase}
@@ -276,7 +279,7 @@ footer .fbrand{font-weight:800;color:var(--white);font-size:1.1rem;margin-bottom
       <div class="phase"><span class="n">2</span><span class="txt">Hardware detection → model recommendation</span><span class="st done">✓ glia-hardware v1.0</span></div>
       <div class="phase"><span class="n">3</span><span class="txt">Live ISO (archiso) with AI preinstalled</span><span class="st done">✓ 5.8 GB, tested in QEMU</span></div>
       <div class="phase"><span class="n">4</span><span class="txt">Calamares installer with AI setup step</span><span class="st done">✓ full install tested (UEFI)</span></div>
-      <div class="phase"><span class="n">5</span><span class="txt">Btrfs snapshots, branding, polish</span><span class="st wip">⏳ in progress</span></div>
+      <div class="phase"><span class="n">5</span><span class="txt">Btrfs snapshots as a safety net before destructive operations</span><span class="st todo">○ not started</span></div>
     </div>
   </div>
 </section>
@@ -347,7 +350,7 @@ footer .fbrand{font-weight:800;color:var(--white);font-size:1.1rem;margin-bottom
     <ul class="road">
       <li><b>Cross-distro testing — help wanted.</b><span>The assistant runs on Arch, Debian and Fedora, but the automated installer is tested on Arch/CachyOS only. Debian and Fedora need testers.</span></li>
       <li><b>macOS support — help wanted (contributor-led).</b><span>The assistant only, never a standalone distro — pure GLIA support for Mac users. Needs a Homebrew path, <code style="font-family:var(--mono);color:var(--teal)">ollama serve</code>/launchd instead of systemd, and a modern bash. Looking for a contributor to own and maintain it.</span></li>
-      <li><b>Btrfs snapshots as a safety net.</b><span>Plus branding and polish (phase 5).</span></li>
+      <li><b>Btrfs snapshots as a safety net.</b><span>A snapshot before destructive operations, so a wrong <code style="font-family:var(--mono);color:var(--teal)">YES</code> is survivable (phase 5, not started).</span></li>
       <li><b>Lightweight memory retrieval.</b><span>If the stored facts outgrow the prompt.</span></li>
       <li><b>A terminal-first desktop — the long-term vision.</b><span>The most ambitious idea: a minimal desktop where the terminal <i>is</i> the backdrop, in place of the wallpaper. GUI programs open as windows you can stash and reopen, on a lightweight window manager underneath. The shell + AI become how you run the machine — launch, hide, reopen and arrange programs, and interact with the graphics, all by talking to <code style="font-family:var(--mono);color:var(--teal)">glia</code>. A desktop grown outward from the command line, not bolted on top of it.</span></li>
     </ul>
