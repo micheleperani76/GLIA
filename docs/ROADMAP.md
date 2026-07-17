@@ -138,9 +138,11 @@ Constraints that must survive:
   again. If it does, the refactor missed the point.
 
 **Landed 2026-07-17 (v2.18.4, tag pending)** — `-m role` is the console: bare
-lists who holds each job, `-m role <role> <AI|default>` assigns (the grammar
-of `git remote` bare-lists + `git config` key-value), `roles` is a silent
-alias. The old `--web-model` / `--project-model` / `--translate-model` still
+lists the downloaded AIs NUMBERED (same as `-m`), each tagged with the job it
+holds; you assign BY NUMBER — `-m role <n> <role>` (role = full name or its
+initial, web/w · project/p · translate/t), `-m role 0 <role>` sends a job back
+to the default. `roles` is a silent alias. The old `--web-model` /
+`--project-model` / `--translate-model` still
 work — they, the console AND the `-m` sheet's role tags now all read ONE table
 (`ROLES`). The three near-identical `*_model_cmd` / `*_model_menu` triplets
 collapsed into one generic body, output verified **byte-identical** (12 cases,

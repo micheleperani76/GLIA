@@ -56,15 +56,9 @@ _glia() {
             COMPREPLY=( $(compgen -W "help list ls ps stop pull update rm role $(_glia_model_names)" -- "$cur") )
             return ;;
         role|roles)
-            # -m role <role>: the pinnable roles (D2)
+            # -m role <n|name|0>: the AI to assign, by number/name (0 = default)
             case "${COMP_WORDS[COMP_CWORD-2]}" in
-                -m|--model) COMPREPLY=( $(compgen -W "web project translate" -- "$cur") ) ;;
-            esac
-            return ;;
-        web|project|translate)
-            # -m role <role> <AI|default>: a downloaded model, or "default"
-            case "${COMP_WORDS[COMP_CWORD-2]}" in
-                role|roles) COMPREPLY=( $(compgen -W "default $(_glia_model_names)" -- "$cur") ) ;;
+                -m|--model) COMPREPLY=( $(compgen -W "0 $(_glia_model_names)" -- "$cur") ) ;;
             esac
             return ;;
         -U|--update)
@@ -104,6 +98,12 @@ _glia() {
             esac
             return ;;
     esac
+
+    # -m role <ai> <role>: after the AI (any token) comes the job (D2)
+    if [ "${COMP_WORDS[COMP_CWORD-2]:-}" = "role" ] || [ "${COMP_WORDS[COMP_CWORD-2]:-}" = "roles" ]; then
+        COMPREPLY=( $(compgen -W "web project translate w p t" -- "$cur") )
+        return
+    fi
 
     # flags only at the start; free text (the request) is never completed
     if [ "$COMP_CWORD" -eq 1 ] && [[ "$cur" == -* ]]; then

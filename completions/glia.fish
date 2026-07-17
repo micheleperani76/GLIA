@@ -79,10 +79,9 @@ complete -c glia -n __glia_first -a '--lang'      -d 'interface language'
 complete -c glia -n 'contains -- (__glia_prev) -m --model' -a 'help list ls ps stop pull update rm role'
 complete -c glia -n 'contains -- (__glia_prev) -m --model' -a '(__glia_models)'
 
-# -m role <role> (D2): the pinnable roles, then a model or "default"
-complete -c glia -n 'contains -- (__glia_prev) role roles; and contains -- (__glia_prev2) -m --model' -a 'web project translate'
-complete -c glia -n 'contains -- (__glia_prev2) role roles' -a 'default'
-complete -c glia -n 'contains -- (__glia_prev2) role roles' -a '(__glia_models)'
+# -m role <n|name|0> <role> (D2): first the AI (number/name, 0=default), then the job
+complete -c glia -n 'contains -- (__glia_prev) role roles; and contains -- (__glia_prev2) -m --model' -a '0 (__glia_models)'
+complete -c glia -n 'contains -- (__glia_prev2) role roles' -a 'web project translate w p t'
 
 # -m update <model> · -m rm <model> · -m stop <model>
 complete -c glia -n 'contains -- (__glia_prev2) -m --model; and contains -- (__glia_prev) update rm stop' -a '(__glia_models)'
