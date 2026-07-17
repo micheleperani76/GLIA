@@ -115,15 +115,16 @@ footer .fbrand{font-weight:800;color:var(--white);font-size:1.05rem;margin-botto
     <a href="#start">0 · Start here</a>
     <a href="#basics">1 · Basics</a>
     <a href="#ask">2 · Ask &amp; explain</a>
-    <a href="#alias">3 · Shortcuts</a>
-    <a href="#memory">4 · Memory</a>
-    <a href="#models">5 · Models</a>
-    <a href="#project">6 · Code (-p / --new)</a>
-    <a href="#translate">7 · Translate</a>
-    <a href="#interactive">8 · Interactive</a>
-    <a href="#log">9 · Log</a>
-    <a href="#settings">10 · Settings</a>
-    <a href="#hardware">11 · Hardware</a>
+    <a href="#chat">3 · Chat</a>
+    <a href="#alias">4 · Shortcuts</a>
+    <a href="#memory">5 · Memory</a>
+    <a href="#models">6 · Models</a>
+    <a href="#project">7 · Code (-p / --new)</a>
+    <a href="#translate">8 · Translate</a>
+    <a href="#interactive">9 · Interactive</a>
+    <a href="#log">10 · Log</a>
+    <a href="#settings">11 · Settings</a>
+    <a href="#hardware">12 · Hardware</a>
   </div>
 </div>
 
@@ -161,7 +162,7 @@ footer .fbrand{font-weight:800;color:var(--white);font-size:1.05rem;margin-botto
     <table class="cmds">
       <tr><td class="c">glia --ask &lt;question&gt;</td><td class="d">Explains in words, runs nothing. Follow-ups work — it remembers this terminal's recent conversation.</td></tr>
       <tr><td class="c">glia -d &lt;question&gt;</td><td class="d">Legacy short form of <code style="font-family:var(--mono);color:var(--teal)">--ask</code> — still works.</td></tr>
-      <tr><td class="c">glia -c</td><td class="d"><b>Chat mode</b> (new in v2.20, long form <code style="font-family:var(--mono);color:var(--teal)">--chat</code>): a real conversation — the whole dialogue is sent back at every turn, so follow-ups just work. Under each answer a bar shows how full the context window is, from the <b>real token counts</b> Ollama returns. In-chat commands: <code style="font-family:var(--mono);color:var(--teal)">/esci</code> quit · <code style="font-family:var(--mono);color:var(--teal)">/nuova</code> start over · <code style="font-family:var(--mono);color:var(--teal)">/salva</code> save to .md · <code style="font-family:var(--mono);color:var(--teal)">/modello</code> switch AI on the fly (this chat only — the default stays).</td></tr>
+      <tr><td class="c">glia -c</td><td class="d">One question and it's over? Then you want a <b>chat</b> instead — see <a href="#chat" style="color:var(--teal)">Chat mode</a> (new in v2.20).</td></tr>
       <tr><td class="c">glia -w &lt;question&gt;</td><td class="d"><b>Search the web and answer, with sources.</b> Uses the <code style="font-family:var(--mono);color:var(--teal)">w3m</code> text browser to query the chosen engine (DuckDuckGo by default) — <b>no API key</b> — then the model summarizes the results and ends with a <b>Sources</b> list. Ideal for anything past the model's training: latest versions, release dates, recent facts.</td></tr>
       <tr><td class="c">glia -w+ &lt;question&gt;</td><td class="d">Deep mode: also reads the top result pages in full for more detail (slower). Plain <code style="font-family:var(--mono);color:var(--teal)">-w</code> reads only the result snippets (faster).</td></tr>
       <tr><td class="c">glia -ws &lt;search | URL&gt;</td><td class="d"><b>Direct results, no AI</b> (new in v2.18): titles, URLs and snippets straight from the engine, in a couple of seconds — for quick lookups. Give it a <b>URL or bare domain</b> (<code style="font-family:var(--mono);color:var(--teal)">glia -ws www.morrolinux.it</code>) and it opens that page directly, paged.</td></tr>
@@ -174,8 +175,24 @@ footer .fbrand{font-weight:800;color:var(--white);font-size:1.05rem;margin-botto
     <div class="note">Examples: <code>glia --ask what does rsync do</code> (offline explanation) · <code>glia -w latest stable linux kernel</code> (web + sources) · follow-ups work in <code>--ask</code> (it remembers the recent conversation of this terminal) · piped input is understood here too: <code>cat script.sh | glia --ask what does this do</code><br><br><b>Web search needs w3m</b> — the setup script installs it, and <code>glia --doctor</code> checks it. It runs entirely on your machine: w3m fetches, the local model summarizes. No account, no key.<br><br><b>Tip:</b> w3m is also a text browser you can drive by hand — <code>w3m example.com</code> (Enter follows a link, <code>B</code> back, <code>U</code> open a URL, <code>q</code> quit).</div>
   </section>
 
+  <section class="grp" id="chat">
+    <div class="grp-h"><span class="n">03</span><h2>Chat mode <span class="pill">new in v2.20</span></h2></div>
+    <p class="why"><b>What it is:</b> a real conversation with the model — the whole dialogue is sent back at every turn, so <code>and on Debian?</code> means what it should. <b>Why it exists:</b> <code>--ask</code> answers once and exits; the difference is between asking a stranger and talking to someone who is actually listening. <b>What is different here:</b> a bar under every answer shows how full the context window is, drawn from the <b>real token counts</b> Ollama returns — so you can see the memory filling up instead of guessing why the model forgot your first question.</p>
+    <table class="cmds">
+      <tr><td class="c">glia -c</td><td class="d">Opens the chat (long form <code style="font-family:var(--mono);color:var(--teal)">--chat</code>). Type at the prompt; up/down arrows recall earlier input.</td></tr>
+      <tr><td class="c">glia -c &lt;question&gt;</td><td class="d">Opens the chat <b>and asks the first question right away</b>.</td></tr>
+      <tr><td class="c">/esci</td><td class="d">Quit the chat — also <code style="font-family:var(--mono);color:var(--teal)">/exit</code>, <code style="font-family:var(--mono);color:var(--teal)">/quit</code> or <b>Ctrl+D</b>.</td></tr>
+      <tr><td class="c">/nuova</td><td class="d">Start over: context cleared, bar back to 0%. The AI forgets the conversation, not your stored facts.</td></tr>
+      <tr><td class="c">/salva</td><td class="d">Save the whole conversation to a timestamped <code style="font-family:var(--mono);color:var(--teal)">.md</code> file in <code style="font-family:var(--mono);color:var(--teal)">~/.local/share/glia/chats</code>.</td></tr>
+      <tr><td class="c">/modello [name|n]</td><td class="d"><b>Switch AI on the fly — this chat only</b>: your default (<code style="font-family:var(--mono);color:var(--teal)">-m</code>) is untouched. Bare <code style="font-family:var(--mono);color:var(--teal)">/modello</code> lists the AIs and asks. The old model is unloaded first, so two never sit in RAM together.</td></tr>
+      <tr><td class="c">/aiuto</td><td class="d">The command reminder, inside the chat.</td></tr>
+      <tr><td class="c">glia -c help</td><td class="d">The full help page for chat mode.</td></tr>
+    </table>
+    <div class="note">The bar: <code>[████░░░░░░░░░░░░░░░░] 21% · 1.7k/8.2k tok · turn 3 · qwen2.5-coder:7b</code><br>Green = relaxed · yellow = past half · <b>red = the model is about to forget the beginning</b> — <code>/salva</code>, then <code>/nuova</code>. The window is set at the top of the script: <code>CHAT_NUM_CTX</code> (default 8192) — raise it on a bigger machine with a bigger model.<br><br><b>Commands are localized</b>, matching your interface language: <code>/esci /nuova /salva /modello /aiuto</code> (it) · <code>/ende /neu /speichern /modell /hilfe</code> (de) · <code>/exit /new /save /model /help</code> (en). Anything that is not a <code>/command</code> is conversation.<br><br><b>Which mode when:</b> <code>glia &lt;phrase&gt;</code> proposes and runs <b>commands</b> · <code>glia --ask</code> gives <b>one</b> answer and exits · <code>glia -c</code> is a <b>discussion</b> that keeps its context.</div>
+  </section>
+
   <section class="grp" id="alias">
-    <div class="grp-h"><span class="n">03</span><h2>Shortcuts <span class="pill">no AI call</span></h2></div>
+    <div class="grp-h"><span class="n">04</span><h2>Shortcuts <span class="pill">no AI call</span></h2></div>
     <p class="why"><b>What it is:</b> a shortcut saves a command you use often, so you recall it by name without ever asking the AI. <b>Why it exists:</b> the fastest, greenest path — an alias runs instantly and spends zero GPU. Ask the model once, save the result, reuse it forever.</p>
     <table class="cmds">
       <tr><td class="c">glia -a</td><td class="d">List your shortcuts (numbered).</td></tr>
@@ -191,7 +208,7 @@ footer .fbrand{font-weight:800;color:var(--white);font-size:1.05rem;margin-botto
   </section>
 
   <section class="grp" id="memory">
-    <div class="grp-h"><span class="n">04</span><h2>Memory</h2></div>
+    <div class="grp-h"><span class="n">05</span><h2>Memory</h2></div>
     <p class="why"><b>What it is:</b> GLIA can remember short facts — machines, paths, habits — and adds them to the context of each request. <b>Why it exists:</b> so the AI keeps your setup in mind without you repeating it every time.</p>
     <table class="cmds">
       <tr><td class="c">glia --remember "&lt;fact&gt;"</td><td class="d">Remember a fact.</td></tr>
@@ -202,7 +219,7 @@ footer .fbrand{font-weight:800;color:var(--white);font-size:1.05rem;margin-botto
   </section>
 
   <section class="grp" id="models">
-    <div class="grp-h"><span class="n">05</span><h2>Models / AI</h2></div>
+    <div class="grp-h"><span class="n">06</span><h2>Models / AI</h2></div>
     <p class="why"><b>What it is:</b> the models are downloaded and kept by Ollama; GLIA uses one at a time. <b>Why it exists:</b> different machines and tasks want different models — pick the right one, or override it just for a single command.</p>
     <table class="cmds">
       <tr><td class="c">glia -m</td><td class="d">List downloaded models (numbered) and choose the default (guided). <code>glia -m list</code> and <code>glia -m ls</code> do the same. Each model shows the roles pinned onto it — <b>default · web · project · translate</b> — so you see at a glance which AI serves which command, e.g. <code style="font-family:var(--mono);color:var(--teal)">1) gemma4:latest ← default · web</code>. One AI can hold several roles, or none.</td></tr>
@@ -226,7 +243,7 @@ footer .fbrand{font-weight:800;color:var(--white);font-size:1.05rem;margin-botto
   </section>
 
   <section class="grp" id="project">
-    <div class="grp-h"><span class="n">06</span><h2>Code: edit files (-p) and new projects (--new)</h2></div>
+    <div class="grp-h"><span class="n">07</span><h2>Code: edit files (-p) and new projects (--new)</h2></div>
     <p class="why"><b>What it is:</b> two opposite jobs, two flags. <code>-p</code> changes a file you already have; <code>--new</code> plans a new project and writes its files. Both confirm at every step. <b>Why it exists:</b> for work that goes beyond a single command — still transparent, still one approval at a time. <b>Heads-up (v2.18):</b> <code>-p</code> used to be the generator. It is now the editor, and the generator moved to <code>--new</code>. <code>glia -p something-that-is-not-a-file</code> tells you so instead of guessing — a typo in a filename must never silently scaffold a project.</p>
     <table class="cmds">
       <tr><td class="c">glia -p &lt;file&gt; "&lt;request&gt;"</td><td class="d">Edit a file that <b>already exists</b>: shows the diff and the exact <code>git apply</code> command, then asks. New in v2.18.</td></tr>
@@ -242,7 +259,7 @@ footer .fbrand{font-weight:800;color:var(--white);font-size:1.05rem;margin-botto
   </section>
 
   <section class="grp" id="translate">
-    <div class="grp-h"><span class="n">07</span><h2>Translate a file</h2></div>
+    <div class="grp-h"><span class="n">08</span><h2>Translate a file</h2></div>
     <p class="why"><b>What it is:</b> you hand it a file, it writes the translation into a <b>new file next to it</b>. <b>Why it exists:</b> a README, a script's comments, some notes — translating them by hand is tedious, and pasting them into a web service means shipping your work to someone else's computer. This stays on your machine. <b>The original is never touched:</b> the translation is always a new file, so there is nothing to undo.</p>
     <table class="cmds">
       <tr><td class="c">glia -T &lt;file&gt;</td><td class="d">Translate into the <b>interface language</b> (the one from <code style="font-family:var(--mono);color:var(--teal)">glia --lang</code>).</td></tr>
@@ -258,7 +275,7 @@ footer .fbrand{font-weight:800;color:var(--white);font-size:1.05rem;margin-botto
   </section>
 
   <section class="grp" id="interactive">
-    <div class="grp-h"><span class="n">08</span><h2>Interactive mode</h2></div>
+    <div class="grp-h"><span class="n">09</span><h2>Interactive mode</h2></div>
     <p class="why"><b>What it is:</b> a dedicated prompt where special characters are taken literally. <b>Why it exists:</b> the shell interprets <code>'  "  $  |  ;  &amp;  *  ( )  `</code> before GLIA ever sees them, breaking a sentence that contains them. The interactive prompt reads your request character by character instead.</p>
     <table class="cmds">
       <tr><td class="c">glia</td><td class="d">On its own, enters the prompt <code style="font-family:var(--mono);color:var(--teal)">glia&gt;</code> — a real REPL: type request after request, the conversation context carries over.</td></tr>
@@ -268,7 +285,7 @@ footer .fbrand{font-weight:800;color:var(--white);font-size:1.05rem;margin-botto
   </section>
 
   <section class="grp" id="log">
-    <div class="grp-h"><span class="n">09</span><h2>Log</h2></div>
+    <div class="grp-h"><span class="n">10</span><h2>Log</h2></div>
     <p class="why"><b>What it is:</b> the history of commands GLIA actually executed. <b>Why it exists:</b> transparency you can audit — see exactly what ran on your machine.</p>
     <table class="cmds">
       <tr><td class="c">glia -l</td><td class="d">Show the log of executed commands.</td></tr>
@@ -278,7 +295,7 @@ footer .fbrand{font-weight:800;color:var(--white);font-size:1.05rem;margin-botto
   </section>
 
   <section class="grp" id="settings">
-    <div class="grp-h"><span class="n">10</span><h2>Settings &amp; identity</h2></div>
+    <div class="grp-h"><span class="n">11</span><h2>Settings &amp; identity</h2></div>
     <p class="why"><b>What it is:</b> naming, language and housekeeping. <b>Why it exists:</b> the assistant is yours to name and tune — and you can always find it again, because <code>glia</code> never goes away.</p>
     <table class="cmds">
       <tr><td class="c">glia --rename &lt;name&gt;</td><td class="d">Give the assistant a new name (e.g. <code style="font-family:var(--mono);color:var(--teal)">mypc</code>). The <code style="font-family:var(--mono);color:var(--teal)">glia</code> command always stays as a fallback. <b>A nickname is a command in your PATH</b>, so since v2.18.2 a name that already exists is <b>refused</b>, not silently buried: reserved names (<code>ls</code>, <code>sudo</code>, <code>rm</code>, <code>git</code>, <code>glia</code>, <code>ollama</code>…) never pass, and any other existing command is refused too — showing you the real path it would have covered, plus free names to use instead. <b>One rename, one name:</b> the previous nickname is removed, and the removal is announced with the command that did it.</td></tr>
@@ -294,7 +311,7 @@ footer .fbrand{font-weight:800;color:var(--white);font-size:1.05rem;margin-botto
   </section>
 
   <section class="grp" id="hardware">
-    <div class="grp-h"><span class="n">11</span><h2>Hardware helper</h2></div>
+    <div class="grp-h"><span class="n">12</span><h2>Hardware helper</h2></div>
     <p class="why"><b>What it is:</b> a companion command that reads your machine and recommends the right model tier. <b>Why it exists:</b> picking a model that's too big stalls; too small underperforms. Let the hardware decide.</p>
     <table class="cmds">
       <tr><td class="c">glia-hardware</td><td class="d">Hardware report (RAM / GPU / VRAM) and recommended models.</td></tr>

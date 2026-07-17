@@ -124,6 +124,14 @@ green by design, and it's a whole system, not a lone command.
   Aliases (`glia -a add <name> <cmd>`) save commands you use often so you
   don't ask the AI every time (e.g. `glia -a bangkok`); manage them with
   `-a list` / `-a rm` / `-a edit`.
+  Chat, not just answers: `glia -c` (`--chat`) keeps the **whole dialogue** and
+  sends it back at every turn, so follow-ups mean what they should — `--ask`
+  answers once and exits. Under each answer a bar shows how full the context
+  window is, drawn from the **real token counts** Ollama returns, not an
+  estimate: green → yellow → red, and red means the model is about to forget
+  the beginning. In-chat commands are localized: `/esci` `/nuova` `/salva`
+  (to a `.md`) `/modello` — which switches AI **for this chat only**, leaving
+  your default alone. Full page: `glia -c help`.
   Web search with sources: `glia -w <question>` queries the chosen engine
   (DuckDuckGo by default; `glia --web-engine` switches to Bing or a SearXNG
   instance, an `engine:` prefix like `glia -w bing: <question>` picks one for
@@ -157,7 +165,7 @@ green by design, and it's a whole system, not a lone command.
   in your PATH**, a name that already exists is refused rather than silently
   buried; `glia --doctor` also reports any older nickname that is shadowing
   one. Standard flags
-  throughout: `-h/--help`, `-V/--version`, `-d/--ask`, `-l/--log`.
+  throughout: `-h/--help`, `-V/--version`, `-c/--chat`, `-d/--ask`, `-l/--log`.
 - **`bin/glia-hardware`** — detects RAM/GPU/VRAM and recommends the right
   AI model tier. JSON output (`-j`) designed for the installer.
 - **`config/aichat-config.yaml`** — aichat configuration for local Ollama
