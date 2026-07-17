@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ============================================================
 #  glia - AI terminal assistant (Ollama + aichat)
-#  Version: 2.19.0 - 2026-07-17
+#  Version: 2.19.1 - 2026-07-17
 #  Author: Michele (with Claude)
 #  Project: GLIA (GNU Linux IA)
 #
@@ -9,6 +9,25 @@
 #  what you learn here you can reuse in other programs (and vice versa).
 #
 #  What's new in v2.19 ("your machine, your dangers"):
+#   - v2.19.1: the D2 tail - wm_/pm_/tm_ folded into ONE parametric set. They
+#     were filed as "triplicated strings"; they were not. They had DRIFTED:
+#     tm_default announced a RESULT ("translations go back to following the
+#     default") while wm_/pm_ described a STATE ("always uses the default
+#     model") - printed by the SAME line of code, right after the pin file is
+#     removed. D2 unified the code and left the texts, which is what made the
+#     drift visible. The result-shaped wording won (it reports what just
+#     happened); the role's name now comes from role_noun_* and everything
+#     else is one set of five: 45 lines of strings became 15 + 9 nouns.
+#     `pm` also called itself three different things ("i progetti", "il
+#     codice (comandi -p e --new)", "Codice (-p, --new)") - now one name.
+#     wm_choose/wm_followopt were never role-specific: the generic menu called
+#     wm_* for every role, which is what a leftover prefix looks like -> ro_*.
+#     ROLES loses its 3rd field (the wm/pm/tm prefix): its only job was to
+#     index the duplication, so it died with it. Adding a role = one row +
+#     its name in three languages. web_using/pm_using/tm_using stay per-role
+#     on purpose: "for THIS project" is a different noun form from "the
+#     projects", they live outside the generic body, and folding them would
+#     need a SECOND noun table to save 9 lines and cost 12.
 #   - v2.19.0: `--danger` (D5) - the safety rules stop being only ours. The
 #     built-in patterns cover the classics (rm -rf, dd, mkfs, curl|sh), but
 #     they are OUR defaults on YOUR machine: a deploy script, `terraform
@@ -482,7 +501,7 @@
 # ============================================================
 
 # ----------------- CONFIGURATION -----------------
-VERSION="2.19.0"
+VERSION="2.19.1"
 DEFAULT_MODEL="qwen2.5-coder:7b"
 # -m bench (D6b): CPU vs iGPU on THIS machine, config up top on purpose.
 BENCH_OVERRIDE_DIR="/etc/systemd/system/ollama.service.d"
@@ -1590,21 +1609,7 @@ t() {
         it:tm_using)        echo "Per questa traduzione uso:" ;;
         de:tm_using)        echo "Für diese Übersetzung nutze ich:" ;;
         *:tm_using)         echo "For this translation I use:" ;;
-        it:tm_current)      echo "IA fissa per le traduzioni:" ;;
-        de:tm_current)      echo "Feste KI für Übersetzungen:" ;;
-        *:tm_current)       echo "Pinned translation AI:" ;;
-        it:tm_follow)       echo "Le traduzioni seguono l'IA di default." ;;
-        de:tm_follow)       echo "Übersetzungen folgen der Standard-KI." ;;
-        *:tm_follow)        echo "Translations follow the default AI." ;;
-        it:tm_set)          echo "IA per le traduzioni impostata:" ;;
-        de:tm_set)          echo "KI für Übersetzungen gesetzt:" ;;
-        *:tm_set)           echo "Translation AI set to:" ;;
-        it:tm_default)      echo "Le traduzioni tornano a seguire il default." ;;
-        de:tm_default)      echo "Übersetzungen folgen wieder dem Standard." ;;
-        *:tm_default)       echo "Translations follow the default again." ;;
-        it:tm_pick)         echo "Scegli l'IA per le traduzioni:" ;;
-        de:tm_pick)         echo "Wähle die KI für Übersetzungen:" ;;
-        *:tm_pick)          echo "Pick the AI for translations:" ;;
+        # tm_current/follow/set/default/pick folded into the ro_* set (D2 tail).
         # ---- model swap (v2.14) ----
         it:ms_reload)       echo "Ricarico la tua IA di default:" ;;
         de:ms_reload)       echo "Lade deine Standard-KI wieder:" ;;
@@ -1621,27 +1626,47 @@ t() {
         it:web_using)       echo "Per questa ricerca uso:" ;;
         de:web_using)       echo "Für diese Suche nutze ich:" ;;
         *:web_using)        echo "For this search I use:" ;;
-        it:wm_pick)         echo "Scegli l'IA per la ricerca web:" ;;
-        de:wm_pick)         echo "Wähle die KI für die Websuche:" ;;
-        *:wm_pick)          echo "Pick the AI for web search:" ;;
-        it:wm_followopt)    echo "segui sempre il default" ;;
-        de:wm_followopt)    echo "immer dem Standard folgen" ;;
-        *:wm_followopt)     echo "always follow the default" ;;
-        it:wm_choose)       echo "Scelta [numero, 0=default, Invio=lascia]: " ;;
-        de:wm_choose)       echo "Auswahl [Nummer, 0=Standard, Enter=lassen]: " ;;
-        *:wm_choose)        echo "Choice [number, 0=default, Enter=keep]: " ;;
-        it:wm_default)      echo "Ricerca web: uso sempre il modello di default." ;;
-        de:wm_default)      echo "Websuche: immer das Standardmodell." ;;
-        *:wm_default)       echo "Web search: always uses the default model." ;;
-        it:wm_set)          echo "IA per la ricerca web impostata:" ;;
-        de:wm_set)          echo "KI für die Websuche gesetzt:" ;;
-        *:wm_set)           echo "Web-search AI set to:" ;;
-        it:wm_current)      echo "IA fissa per la ricerca web:" ;;
-        de:wm_current)      echo "Feste KI für die Websuche:" ;;
-        *:wm_current)       echo "Pinned web-search AI:" ;;
-        it:wm_follow)       echo "Ricerca web: attualmente segue il modello di default." ;;
-        de:wm_follow)       echo "Websuche: folgt derzeit dem Standardmodell." ;;
-        *:wm_follow)        echo "Web search: currently follows the default model." ;;
+        # ---- roles: ONE parametric set (D2 tail, v2.19.1) ----
+        # These five lines used to be fifteen: wm_/pm_/tm_ said the same thing
+        # three times, and had drifted apart while nobody was comparing them -
+        # tm_default announced the RESULT ("translations go back to following
+        # the default") while wm_/pm_ described a STATE ("always uses the
+        # default model"), from the very same line of code. $2 is the role, and
+        # the only thing that really differed - its name - now comes from
+        # role_noun_*. The result-shaped wording won: it is printed right after
+        # the pin file is removed, so it reports what just happened.
+        it:role_noun_web)       echo "la ricerca web" ;;
+        de:role_noun_web)       echo "die Websuche" ;;
+        *:role_noun_web)        echo "web search" ;;
+        it:role_noun_project)   echo "i progetti (-p, --new)" ;;
+        de:role_noun_project)   echo "Projekte (-p, --new)" ;;
+        *:role_noun_project)    echo "projects (-p, --new)" ;;
+        it:role_noun_translate) echo "le traduzioni" ;;
+        de:role_noun_translate) echo "Übersetzungen" ;;
+        *:role_noun_translate)  echo "translations" ;;
+        it:ro_pick)         echo "Scegli l'IA per $(t "role_noun_$2"):" ;;
+        de:ro_pick)         echo "Wähle die KI für $(t "role_noun_$2"):" ;;
+        *:ro_pick)          echo "Pick the AI for $(t "role_noun_$2"):" ;;
+        it:ro_set)          echo "IA per $(t "role_noun_$2") impostata:" ;;
+        de:ro_set)          echo "KI für $(t "role_noun_$2") gesetzt:" ;;
+        *:ro_set)           echo "AI for $(t "role_noun_$2") set to:" ;;
+        it:ro_current)      echo "IA fissa per $(t "role_noun_$2"):" ;;
+        de:ro_current)      echo "Feste KI für $(t "role_noun_$2"):" ;;
+        *:ro_current)       echo "Pinned AI for $(t "role_noun_$2"):" ;;
+        it:ro_follow)       echo "L'IA per $(t "role_noun_$2") segue il default." ;;
+        de:ro_follow)       echo "Die KI für $(t "role_noun_$2") folgt dem Standard." ;;
+        *:ro_follow)        echo "The AI for $(t "role_noun_$2") follows the default." ;;
+        it:ro_default)      echo "L'IA per $(t "role_noun_$2") torna a seguire il default." ;;
+        de:ro_default)      echo "Die KI für $(t "role_noun_$2") folgt wieder dem Standard." ;;
+        *:ro_default)       echo "The AI for $(t "role_noun_$2") follows the default again." ;;
+        # These two never had a role in them: the generic menu called wm_* for
+        # every role, which is what a leftover prefix looks like.
+        it:ro_followopt)    echo "segui sempre il default" ;;
+        de:ro_followopt)    echo "immer dem Standard folgen" ;;
+        *:ro_followopt)     echo "always follow the default" ;;
+        it:ro_choose)       echo "Scelta [numero, 0=default, Invio=lascia]: " ;;
+        de:ro_choose)       echo "Auswahl [Nummer, 0=Standard, Enter=lassen]: " ;;
+        *:ro_choose)        echo "Choice [number, 0=default, Enter=keep]: " ;;
         # ---- roles console (D2): -m role ----
         it:role_hdr)        echo "IA scaricate - assegna un ruolo con:  $ASSIST_NAME -m role <n> <ruolo>" ;;
         de:role_hdr)        echo "Geladene KIs - Rolle zuweisen mit:  $ASSIST_NAME -m role <n> <Rolle>" ;;
@@ -1662,21 +1687,11 @@ t() {
         de:role_valid)      echo "Zuweisbare Rollen: web/w · project/p · translate/t" ;;
         *:role_valid)       echo "Assignable roles: web/w · project/p · translate/t" ;;
         # ---- project/coding model (v2.15; serves -p and --new since v2.18) ----
-        it:pm_pick)         echo "Scegli l'IA per il codice (comandi -p e --new):" ;;
-        de:pm_pick)         echo "Wähle die KI für Code (Befehle -p und --new):" ;;
-        *:pm_pick)          echo "Pick the AI for code (commands -p and --new):" ;;
-        it:pm_default)      echo "Codice (-p, --new): uso sempre il modello di default." ;;
-        de:pm_default)      echo "Code (-p, --new): immer das Standardmodell." ;;
-        *:pm_default)       echo "Code (-p, --new): always uses the default model." ;;
-        it:pm_set)          echo "IA per i progetti impostata:" ;;
-        de:pm_set)          echo "KI für Projekte gesetzt:" ;;
-        *:pm_set)           echo "Project AI set to:" ;;
-        it:pm_current)      echo "IA fissa per i progetti:" ;;
-        de:pm_current)      echo "Feste KI für Projekte:" ;;
-        *:pm_current)       echo "Pinned project AI:" ;;
-        it:pm_follow)       echo "Codice (-p, --new): attualmente segue il modello di default." ;;
-        de:pm_follow)       echo "Code (-p, --new): folgt derzeit dem Standardmodell." ;;
-        *:pm_follow)        echo "Code (-p, --new): currently follows the default model." ;;
+        # pm_pick/default/set/current/follow folded into the ro_* set (D2 tail).
+        # pm_using stays: "for THIS project" is a different noun form from "the
+        # projects", and it lives outside the generic body (like web_using and
+        # tm_using). Folding it would need a SECOND noun table to save 9 lines
+        # and cost 12 - generalising past the point where it pays.
         it:pm_using)        echo "Per questo progetto uso:" ;;
         de:pm_using)        echo "Für dieses Projekt nutze ich:" ;;
         *:pm_using)         echo "For this project I use:" ;;
@@ -5704,26 +5719,27 @@ web_target() {
 
 # ============================================================
 #  Roles (D2): which AI can be PINNED to a job. One row per role:
-#      role | pinfile | msg-prefix | help-page | flags-it-serves
-#  The msg-prefix keeps each role's existing wording (wm_/pm_/tm_), so the
-#  generic body below prints byte-for-byte what the old per-role commands did.
-#  Adding a role = adding a ROW here (plus, for the standard long flag, a
-#  three-line alias wrapper). No new menu, no new cmd, no new sheet code.
+#      role | pinfile | help-page | flags-it-serves
+#  Adding a role = adding a ROW here + its name in the three languages
+#  (role_noun_<role>); plus, for the standard long flag, a three-line alias
+#  wrapper. No new menu, no new cmd, no new sheet code, no new message set.
+#  v2.19.1 dropped a 5th field, the message prefix (wm/pm/tm): it existed only
+#  to index three copies of the same messages, and the copies are gone.
 # ============================================================
 ROLES=(
-    "web|$WEBMODELFILE|wm|web_help|-w"
-    "project|$CODEMODELFILE|pm|project_help|-p · --new"
-    "translate|$TRANSMODELFILE|tm|translate_help|-T"
+    "web|$WEBMODELFILE|web_help|-w"
+    "project|$CODEMODELFILE|project_help|-p · --new"
+    "translate|$TRANSMODELFILE|translate_help|-T"
 )
 
-# role_field <role> <2|3|4|5> -> pinfile | prefix | help | flags  (1/def = role)
+# role_field <role> <2|3|4> -> pinfile | help | flags   (1/default = role name)
 role_field() {
-    local r rn pf px hp fl
+    local r rn pf hp fl
     for r in "${ROLES[@]}"; do
-        IFS='|' read -r rn pf px hp fl <<< "$r"
+        IFS='|' read -r rn pf hp fl <<< "$r"
         [ "$rn" = "$1" ] || continue
-        case "$2" in 2) printf '%s' "$pf" ;; 3) printf '%s' "$px" ;;
-                     4) printf '%s' "$hp" ;; 5) printf '%s' "$fl" ;;
+        case "$2" in 2) printf '%s' "$pf" ;; 3) printf '%s' "$hp" ;;
+                     4) printf '%s' "$fl" ;;
                      *) printf '%s' "$rn" ;; esac
         return 0
     done
@@ -5745,50 +5761,50 @@ role_norm() {
 # role_model_menu <role>: numbered pick, 0 = follow the default. Same body the
 # old web/project/translate menus shared, driven by the role's fields.
 role_model_menu() {
-    local role="$1" pf px list n i=0 choice sel
-    pf="$(role_field "$role" 2)"; px="$(role_field "$role" 3)"
+    local role="$1" pf list n i=0 choice sel
+    pf="$(role_field "$role" 2)"
     list="$(model_names)"; [ -z "$list" ] && return 0
-    echo "$(t "${px}_pick")"
+    echo "$(t ro_pick "$role")"
     while IFS= read -r n; do i=$((i+1)); printf "  %d) %s\n" "$i" "$n"; done <<< "$list"
-    printf "  0) %s\n" "$(t wm_followopt)"
-    read -r -p "$(t wm_choose) " choice < /dev/tty || return 0
+    printf "  0) %s\n" "$(t ro_followopt)"
+    read -r -p "$(t ro_choose) " choice < /dev/tty || return 0
     [ -z "$choice" ] && return 0
-    if [ "$choice" = "0" ]; then rm -f "$pf"; echo -e "${GREEN}$(t "${px}_default")${NC}"; return 0; fi
+    if [ "$choice" = "0" ]; then rm -f "$pf"; echo -e "${GREEN}$(t ro_default "$role")${NC}"; return 0; fi
     sel=$(model_resolve "$choice") || { echo -e "${RED}$(t model_badsel)${NC}" >&2; return 1; }
     mkdir -p "$(dirname "$pf")"; printf '%s\n' "$sel" > "$pf"
-    echo -e "${GREEN}$(t "${px}_set") $sel${NC}"; show_equiv "echo '$sel' > ${pf/#$HOME/\~}"
+    echo -e "${GREEN}$(t ro_set "$role") $sel${NC}"; show_equiv "echo '$sel' > ${pf/#$HOME/\~}"
 }
 
 # role_model_cmd <role> [arg]: the generic body behind --web-model,
 # --project-model and --translate-model (and, later, `-m role <role> ...`).
 role_model_cmd() {
     local role="$1"; shift
-    local pf px hp cur sel
-    pf="$(role_field "$role" 2)"; px="$(role_field "$role" 3)"; hp="$(role_field "$role" 4)"
+    local pf hp cur sel
+    pf="$(role_field "$role" 2)"; hp="$(role_field "$role" 3)"
     case "${1:-}" in
         help|-h|--help) page "$hp" ;;
         ""|show|list)
             cur="$(head -n1 "$pf" 2>/dev/null)"
-            if [ -n "$cur" ]; then echo -e "$(t "${px}_current") ${GREEN}$cur${NC}"; else echo -e "$(t "${px}_follow")"; fi
+            if [ -n "$cur" ]; then echo -e "$(t ro_current "$role") ${GREEN}$cur${NC}"; else echo -e "$(t ro_follow "$role")"; fi
             role_model_menu "$role" ;;
         default|-d|none|off|clear|reset)
-            rm -f "$pf"; echo -e "${GREEN}$(t "${px}_default")${NC}"; show_equiv "rm ${pf/#$HOME/\~}" ;;
+            rm -f "$pf"; echo -e "${GREEN}$(t ro_default "$role")${NC}"; show_equiv "rm ${pf/#$HOME/\~}" ;;
         *)
             sel=$(model_resolve "$1") || { echo -e "${RED}$(t model_badsel)${NC}" >&2; exit 1; }
             mkdir -p "$(dirname "$pf")"; printf '%s\n' "$sel" > "$pf"
-            echo -e "${GREEN}$(t "${px}_set") $sel${NC}"; show_equiv "echo '$sel' > ${pf/#$HOME/\~}" ;;
+            echo -e "${GREEN}$(t ro_set "$role") $sel${NC}"; show_equiv "echo '$sel' > ${pf/#$HOME/\~}" ;;
     esac
 }
 # role_list: the console (D2). Lists the DOWNLOADED AIs, numbered and tagged
 # with the role each holds now (same numbering as `-m`), then a legend of the
 # jobs and how to assign one BY NUMBER. Read-only, scriptable.
 role_list() {
-    local r rn rpf px hp fl legend=""
+    local r rn rpf hp fl legend=""
     [ -z "$(model_names)" ] && { echo "$(t model_none)"; return; }
     echo "$(t role_hdr)"
     model_list_tagged
     for r in "${ROLES[@]}"; do
-        IFS='|' read -r rn rpf px hp fl <<< "$r"
+        IFS='|' read -r rn rpf hp fl <<< "$r"
         legend="${legend:+$legend    }$rn ($fl)"
     done
     echo "$(t role_jobs) $legend"

@@ -152,6 +152,43 @@ surfaces" is now one. Still open: fold the tripled `wm_`/`pm_`/`tm_` message
 strings (×3 languages) into one role-parametric set — a text change, kept out
 of this pass so it stayed a byte-identical refactor.
 
+**Landed 2026-07-17 (v2.19.1, tag pending) — and the premise was wrong.** They
+were filed as "triplicated": the same message three times, so folding them
+would be mechanical. Reading all 57 says otherwise — **they had drifted**:
+
+    tm_default: "Le traduzioni tornano a seguire il default."      ← a RESULT
+    wm_default: "Ricerca web: uso sempre il modello di default."   ← a STATE
+    pm_default: "Codice (-p, --new): uso sempre il modello di default."
+
+Same line of code prints all three (right after the pin file is removed), and
+they say different kinds of thing. D2 unified the *code* and left the *texts* —
+which is precisely what made the drift visible: one body, three voices. `pm`
+was the worst: it called itself **three different names** across its own five
+strings ("i progetti", "il codice (comandi -p e --new)", "Codice (-p, --new)").
+
+Decided: **the result-shaped wording wins** — it is printed after the action, so
+it reports what just happened. The role's name moved to `role_noun_*` (the one
+thing that genuinely differs), and the five keys became one parametric set:
+**45 lines of strings → 15 + 9 nouns**. `wm_choose`/`wm_followopt` turned out
+never to have been role-specific at all — the generic menu called `wm_*` for
+every role, which is what a leftover prefix looks like — so they are `ro_*` now,
+text untouched. And **`ROLES` lost its 3rd field**: the `wm/pm/tm` prefix
+existed only to index the duplication, so it died with it. Adding a role is now
+one row + its name in three languages.
+
+`web_using`/`pm_using`/`tm_using` stay per-role **on purpose**: "for THIS
+project" is a different noun form from "the projects", they are printed outside
+the generic body, and folding them would need a SECOND noun table to save 9
+lines and cost 12 — generalising past the point where it pays.
+
+Verified old-vs-new with the D2 harness (fake HOME, 3 languages × 3 roles ×
+4 actions, artefacts normalised). This one is **not** byte-identical, and that
+was the point: every diff line was read and is an intended wording change,
+nothing else moved. The `-m role` console, the role tags on the `-m` sheet and
+all three `--*-model help` pages still work — the help page's field number
+shifted from 4 to 3 when the prefix went, which is exactly the kind of change
+that breaks quietly, so it was tested rather than assumed.
+
 ### D3. Phase 5 — Btrfs snapshots, branding, polish (and what we claim about it)
 
 The site's Status table says phase 5 is "⏳ in progress". It is not: nothing
