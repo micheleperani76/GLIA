@@ -76,12 +76,15 @@ complete -c glia -n __glia_first -a '--lang'      -d 'interface language'
 
 # ------------------- sub-actions -------------------
 # after -m / --model
-complete -c glia -n 'contains -- (__glia_prev) -m --model' -a 'help list ls ps stop pull update rm role'
+complete -c glia -n 'contains -- (__glia_prev) -m --model' -a 'help list ls ps stop pull update rm role bench'
 complete -c glia -n 'contains -- (__glia_prev) -m --model' -a '(__glia_models)'
 
 # -m role <n|name|0> <role> (D2): first the AI (number/name, 0=default), then the job
 complete -c glia -n 'contains -- (__glia_prev) role roles; and contains -- (__glia_prev2) -m --model' -a '0 (__glia_models)'
 complete -c glia -n 'contains -- (__glia_prev2) role roles' -a 'web project translate w p t'
+
+# -m bench [--dry-run] (D6b): no model/name argument, just the one flag
+complete -c glia -n 'contains -- (__glia_prev) bench; and contains -- (__glia_prev2) -m --model' -a '--dry-run'
 
 # -m update <model> · -m rm <model> · -m stop <model>
 complete -c glia -n 'contains -- (__glia_prev2) -m --model; and contains -- (__glia_prev) update rm stop' -a '(__glia_models)'

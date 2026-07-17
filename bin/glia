@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ============================================================
 #  glia - AI terminal assistant (Ollama + aichat)
-#  Version: 2.18.6 - 2026-07-17
+#  Version: 2.18.7 - 2026-07-17
 #  Author: Michele (with Claude)
 #  Project: GLIA (GNU Linux IA)
 #
@@ -45,6 +45,17 @@
 #     vulkan/ subfolder a flat `ls` would miss - the same gap eval-backend.sh
 #     (the D6 prototype) has today. Flipping the backend itself is `-m bench`
 #     (D6b), still to come.
+#   - v2.18.7: `-m bench` (D6b) - flips the backend and measures FOR REAL,
+#     instead of asking the user to edit a systemd override and read two
+#     numbers themselves. Intel iGPU only for now (the CPU-only lever for a
+#     dedicated NVIDIA/AMD GPU isn't verified on real hardware); refuses
+#     cleanly otherwise. Asks for confirmation, needs sudo, restarts
+#     ollama.service twice (CPU baseline, then OLLAMA_IGPU_ENABLE=1), and
+#     ALWAYS restores the original state afterwards via a trap, even on
+#     Ctrl-C. `--dry-run` shows the exact commands without touching
+#     anything. Live-tested end to end on this machine: CPU 6.22 tok/s vs
+#     iGPU 1.74 tok/s (-72%), override cleanly removed, service back to its
+#     original environment afterwards.
 #   - v2.18.3: `--doctor` closes the shadowing case BACKWARDS. v2.18.2 stops
 #     --rename from burying a command, but a nickname made before it is
 #     still sitting there, and whoever has one is exactly the person who
@@ -422,8 +433,16 @@
 # ============================================================
 
 # ----------------- CONFIGURATION -----------------
-VERSION="2.18.6"
+VERSION="2.18.7"
 DEFAULT_MODEL="qwen2.5-coder:7b"
+# -m bench (D6b): CPU vs iGPU on THIS machine, config up top on purpose.
+BENCH_OVERRIDE_DIR="/etc/systemd/system/ollama.service.d"
+BENCH_OVERRIDE_FILE="$BENCH_OVERRIDE_DIR/99-glia-bench.conf"   # our own file only - never touches anyone else's override
+BENCH_PROMPT='Write a bash one-liner that finds the 5 largest files in /home. Answer with the command only.'
+BENCH_RUNS=2            # generations per configuration (CPU / iGPU)
+BENCH_TIMEOUT=600       # seconds, per API call
+BENCH_RESTART_WAIT=20   # seconds to wait for ollama to answer again after a restart
+BENCH_VERDICT_MARGIN=15 # % - the iGPU must beat CPU by more than this to be called "worth it"
 if [ -r "$HOME/.config/glia/model" ]; then
     MODEL="ollama:$(head -n1 "$HOME/.config/glia/model")"
 elif [ -r /etc/glia/model ]; then
@@ -1251,6 +1270,63 @@ t() {
         it:doc_gpu_pkg_unknown) echo "verifica come il tuo pacchetto ollama gestisce CUDA/ROCm (ollama.com/download)" ;;
         de:doc_gpu_pkg_unknown) echo "prüfe, wie dein ollama-Paket CUDA/ROCm behandelt (ollama.com/download)" ;;
         *:doc_gpu_pkg_unknown)  echo "check how your distro's ollama package handles CUDA/ROCm (ollama.com/download)" ;;
+        it:bench_nogpu)        echo "nessuna GPU rilevata: niente da confrontare" ;;
+        de:bench_nogpu)        echo "keine GPU erkannt: nichts zu vergleichen" ;;
+        *:bench_nogpu)         echo "no GPU detected: nothing to compare" ;;
+        it:bench_unsupported)  echo "GPU dedicata rilevata, ma -m bench per ora copre solo iGPU Intel" ;;
+        de:bench_unsupported)  echo "dedizierte GPU erkannt, aber -m bench deckt vorerst nur Intel-iGPUs ab" ;;
+        *:bench_unsupported)   echo "dedicated GPU detected, but -m bench only covers Intel iGPUs for now" ;;
+        it:bench_novulkan)     echo "iGPU Intel rilevata ma nessun backend Vulkan installato:" ;;
+        de:bench_novulkan)     echo "Intel-iGPU erkannt, aber kein Vulkan-Backend installiert:" ;;
+        *:bench_novulkan)      echo "Intel iGPU detected but no Vulkan backend installed:" ;;
+        it:bench_needjq)       echo "-m bench richiede jq:" ;;
+        de:bench_needjq)       echo "-m bench benötigt jq:" ;;
+        *:bench_needjq)        echo "-m bench requires jq:" ;;
+        it:bench_other_override) echo "in $BENCH_OVERRIDE_DIR c'è già un altro override con OLLAMA_IGPU_ENABLE: controllalo a mano, non ci scrivo sopra" ;;
+        de:bench_other_override) echo "in $BENCH_OVERRIDE_DIR gibt es bereits ein anderes Override mit OLLAMA_IGPU_ENABLE: bitte manuell prüfen, ich schreibe nicht darüber" ;;
+        *:bench_other_override)  echo "$BENCH_OVERRIDE_DIR already has another override setting OLLAMA_IGPU_ENABLE: check it by hand, not overwriting it" ;;
+        it:bench_intro)        echo "sto per confrontare CPU e iGPU su questa macchina:" ;;
+        de:bench_intro)        echo "ich vergleiche gleich CPU und iGPU auf dieser Maschine:" ;;
+        *:bench_intro)         echo "about to compare CPU and iGPU on this machine:" ;;
+        it:bench_equiv_measure) echo "misuro $BENCH_RUNS generazioni con lo stesso prompt su entrambe le configurazioni (API /api/generate di Ollama)" ;;
+        de:bench_equiv_measure) echo "ich messe $BENCH_RUNS Generationen mit demselben Prompt in beiden Konfigurationen (Ollama-API /api/generate)" ;;
+        *:bench_equiv_measure)  echo "measuring $BENCH_RUNS generations of the same prompt on both configurations (Ollama's /api/generate)" ;;
+        it:bench_dryrun_note)  echo "modalità di prova (--dry-run): nessuna modifica eseguita" ;;
+        de:bench_dryrun_note)  echo "Testmodus (--dry-run): keine Änderung ausgeführt" ;;
+        *:bench_dryrun_note)   echo "dry-run mode: nothing was changed" ;;
+        it:bench_confirm)      echo "Riavvio ollama.service due volte (serve sudo), poi ripristino tutto. $YES_KEY = procedi | Invio o n = annulla: " ;;
+        de:bench_confirm)      echo "Ich starte ollama.service zweimal neu (sudo nötig), danach stelle ich alles wieder her. $YES_KEY = weiter | Enter oder n = abbrechen: " ;;
+        *:bench_confirm)       echo "This restarts ollama.service twice (needs sudo), then restores everything. $YES_KEY = proceed | Enter or n = cancel: " ;;
+        it:bench_nosudo)       echo "sudo non disponibile o annullato: nessuna modifica eseguita" ;;
+        de:bench_nosudo)       echo "sudo nicht verfügbar oder abgebrochen: keine Änderung ausgeführt" ;;
+        *:bench_nosudo)        echo "sudo unavailable or cancelled: nothing was changed" ;;
+        it:bench_running_cpu)  echo "misuro la CPU (baseline, iGPU disattivata)..." ;;
+        de:bench_running_cpu)  echo "messe die CPU (Baseline, iGPU deaktiviert)..." ;;
+        *:bench_running_cpu)   echo "measuring CPU (baseline, iGPU off)..." ;;
+        it:bench_running_gpu)  echo "misuro la iGPU (OLLAMA_IGPU_ENABLE=1)..." ;;
+        de:bench_running_gpu)  echo "messe die iGPU (OLLAMA_IGPU_ENABLE=1)..." ;;
+        *:bench_running_gpu)   echo "measuring the iGPU (OLLAMA_IGPU_ENABLE=1)..." ;;
+        it:bench_notready)     echo "ollama non ha risposto dopo il riavvio: interrompo e ripristino" ;;
+        de:bench_notready)     echo "ollama hat nach dem Neustart nicht geantwortet: breche ab und stelle wieder her" ;;
+        *:bench_notready)      echo "ollama did not answer after the restart: stopping and restoring" ;;
+        it:bench_measure_fail) echo "misura fallita: interrompo e ripristino" ;;
+        de:bench_measure_fail) echo "Messung fehlgeschlagen: breche ab und stelle wieder her" ;;
+        *:bench_measure_fail)  echo "measurement failed: stopping and restoring" ;;
+        it:bench_result_cpu)   echo "CPU:  " ;;
+        de:bench_result_cpu)   echo "CPU:  " ;;
+        *:bench_result_cpu)    echo "CPU:  " ;;
+        it:bench_result_gpu)   echo "iGPU: " ;;
+        de:bench_result_gpu)   echo "iGPU: " ;;
+        *:bench_result_gpu)    echo "iGPU: " ;;
+        it:bench_verdict_gpu)  echo "conviene la iGPU su questa macchina" ;;
+        de:bench_verdict_gpu)  echo "die iGPU lohnt sich auf dieser Maschine" ;;
+        *:bench_verdict_gpu)   echo "the iGPU is worth it on this machine" ;;
+        it:bench_verdict_gpu_how) echo "per tenerla attiva in modo permanente: sudo systemctl edit ollama, e sotto [Service] aggiungi Environment=OLLAMA_IGPU_ENABLE=1" ;;
+        de:bench_verdict_gpu_how) echo "um sie dauerhaft zu aktivieren: sudo systemctl edit ollama, und unter [Service] Environment=OLLAMA_IGPU_ENABLE=1 hinzufügen" ;;
+        *:bench_verdict_gpu_how)  echo "to keep it on permanently: sudo systemctl edit ollama, and under [Service] add Environment=OLLAMA_IGPU_ENABLE=1" ;;
+        it:bench_verdict_cpu)  echo "resta su CPU: qui la iGPU non conviene" ;;
+        de:bench_verdict_cpu)  echo "bleib bei CPU: die iGPU lohnt sich hier nicht" ;;
+        *:bench_verdict_cpu)   echo "stay on CPU: the iGPU isn't worth it here" ;;
         it:doc_name)        echo "comando '$ASSIST_NAME' presente nel PATH" ;;
         de:doc_name)        echo "Befehl '$ASSIST_NAME' im PATH vorhanden" ;;
         *:doc_name)         echo "command '$ASSIST_NAME' found in PATH" ;;
@@ -3018,6 +3094,152 @@ EOF
     esac
 }
 
+# ================= -m bench (D6b, 2026-07-17) =================
+# The doctor half (D6a, v2.18.6) only ever mentions the iGPU. This is the
+# other half: measure CPU vs iGPU FOR REAL on this machine and print a
+# verdict, instead of asking the user to edit a systemd override by hand
+# and read two numbers themselves. v1 covers only the case we have a
+# verified lever for: Intel iGPU + OLLAMA_IGPU_ENABLE=1. NVIDIA/AMD refuse
+# with a clear message - the equivalent CPU-only lever for a dedicated GPU
+# is not verified on real hardware yet (see docs/ROADMAP.md, D6).
+
+bench_wait_ready() {
+    local i=0
+    while [ "$i" -lt "$BENCH_RESTART_WAIT" ]; do
+        curl -fsS --max-time 2 "$OLLAMA_URL/api/tags" >/dev/null 2>&1 && return 0
+        sleep 1; i=$((i+1))
+    done
+    return 1
+}
+
+bench_measure() {
+    # BENCH_RUNS generations of the same fixed prompt, average tok/s.
+    local i total=0 count=0 tps ec ed json mname
+    mname="${MODEL#ollama:}"
+    for i in $(seq 1 "$BENCH_RUNS"); do
+        json=$(curl -fsS --max-time "$BENCH_TIMEOUT" "$OLLAMA_URL/api/generate" \
+            -d "$(jq -n --arg m "$mname" --arg p "$BENCH_PROMPT" \
+                  '{model:$m, prompt:$p, stream:false, options:{seed:42, temperature:0, num_predict:60}}')" \
+            2>/dev/null)
+        [ -n "$json" ] || continue
+        ec=$(jq -r '.eval_count // 0'    <<< "$json" 2>/dev/null)
+        ed=$(jq -r '.eval_duration // 0' <<< "$json" 2>/dev/null)
+        case "$ec" in ''|*[!0-9]*) continue ;; esac
+        case "$ed" in ''|*[!0-9]*) continue ;; esac
+        [ "$ec" -gt 0 ] && [ "$ed" -gt 0 ] || continue
+        tps=$(awk -v e="$ec" -v d="$ed" 'BEGIN{printf "%.2f", e/(d/1e9)}')
+        total=$(awk -v t="$total" -v x="$tps" 'BEGIN{printf "%.4f", t+x}')
+        count=$((count+1))
+    done
+    [ "$count" -eq 0 ] && return 1
+    awk -v t="$total" -v c="$count" 'BEGIN{printf "%.2f", t/c}'
+}
+
+bench_verdict() {
+    local cpu="$1" gpu="$2" pct
+    echo
+    echo -e "${BLUE}$(t bench_result_cpu)${NC} ${cpu} tok/s"
+    echo -e "${BLUE}$(t bench_result_gpu)${NC} ${gpu} tok/s"
+    pct=$(awk -v c="$cpu" -v g="$gpu" 'BEGIN{ if (c<=0) print 0; else printf "%.0f", (g-c)/c*100 }')
+    if awk -v g="$gpu" -v c="$cpu" -v m="$BENCH_VERDICT_MARGIN" 'BEGIN{ exit !(c>0 && (g-c)/c*100 > m) }'; then
+        echo -e "${GREEN}$(t bench_verdict_gpu) (+${pct}%)${NC}"
+        echo -e "  $(t bench_verdict_gpu_how)"
+    else
+        echo -e "${YELLOW}$(t bench_verdict_cpu) (${pct}%)${NC}"
+    fi
+}
+
+bench_cmd() {
+    local dry=0
+    case "${1:-}" in --dry-run|-n) dry=1; shift ;; esac
+
+    gpu_backend_probe
+    case "$BP_GTYPE" in
+        none)
+            echo -e "${YELLOW}$(t bench_nogpu)${NC}"
+            return 1 ;;
+        nvidia|amd)
+            echo -e "${YELLOW}$(t bench_unsupported) ($BP_GNAME)${NC}"
+            return 1 ;;
+        intel)
+            if [ "$BP_VULKAN" -ne 1 ]; then
+                echo -e "${YELLOW}$(t bench_novulkan) $BP_GNAME${NC}"
+                echo -e "  $(gpu_backend_pkg_hint vulkan)"
+                return 1
+            fi
+            ;;
+    esac
+
+    command -v jq >/dev/null 2>&1 || { echo -e "${RED}$(t bench_needjq) $(pkg_install_cmd jq)${NC}" >&2; return 1; }
+
+    local other
+    other=$(find "$BENCH_OVERRIDE_DIR" -maxdepth 1 -name '*.conf' ! -name "$(basename "$BENCH_OVERRIDE_FILE")" 2>/dev/null)
+    if [ -n "$other" ] && grep -ql 'OLLAMA_IGPU_ENABLE' $other 2>/dev/null; then
+        echo -e "${YELLOW}$(t bench_other_override)${NC}"
+        return 1
+    fi
+
+    local mname
+    mname="${MODEL#ollama:}"
+    case "$mname" in *:*) : ;; *) mname="$mname:latest" ;; esac
+    if ! curl -fsS --max-time 5 "$OLLAMA_URL/api/tags" 2>/dev/null | grep -q "\"$mname\""; then
+        echo -e "${RED}$(t doc_model)${NC}" >&2
+        return 1
+    fi
+
+    echo -e "${BLUE}$(t bench_intro) $BP_GNAME${NC}"
+    show_equiv "sudo mkdir -p $BENCH_OVERRIDE_DIR && printf '[Service]\nEnvironment=OLLAMA_IGPU_ENABLE=1\n' | sudo tee $BENCH_OVERRIDE_FILE"
+    show_equiv "sudo systemctl daemon-reload && sudo systemctl restart ollama"
+    show_equiv "$(t bench_equiv_measure)"
+    show_equiv "sudo rm -f $BENCH_OVERRIDE_FILE && sudo systemctl daemon-reload && sudo systemctl restart ollama"
+
+    if [ "$dry" -eq 1 ]; then
+        echo -e "${YELLOW}$(t bench_dryrun_note)${NC}"
+        return 0
+    fi
+
+    core_confirm "$(t bench_confirm)" || { echo "$(t cancelled)"; return 0; }
+    sudo -v || { echo -e "${RED}$(t bench_nosudo)${NC}" >&2; return 1; }
+
+    _bench_restore_now() {
+        sudo rm -f "$BENCH_OVERRIDE_FILE" 2>/dev/null
+        sudo systemctl daemon-reload 2>/dev/null
+        sudo systemctl restart ollama 2>/dev/null
+        bench_wait_ready
+    }
+    trap _bench_restore_now EXIT INT TERM
+
+    echo -e "${BLUE}$(t bench_running_cpu)${NC}"
+    sudo mkdir -p "$BENCH_OVERRIDE_DIR"
+    sudo rm -f "$BENCH_OVERRIDE_FILE"
+    sudo systemctl daemon-reload
+    sudo systemctl restart ollama
+    if ! bench_wait_ready; then
+        echo -e "${RED}$(t bench_notready)${NC}" >&2
+        return 1
+    fi
+    local cpu_tps
+    cpu_tps=$(bench_measure) || { echo -e "${RED}$(t bench_measure_fail)${NC}" >&2; return 1; }
+
+    echo -e "${BLUE}$(t bench_running_gpu)${NC}"
+    printf '[Service]\nEnvironment=OLLAMA_IGPU_ENABLE=1\n' | sudo tee "$BENCH_OVERRIDE_FILE" >/dev/null
+    sudo systemctl daemon-reload
+    sudo systemctl restart ollama
+    if ! bench_wait_ready; then
+        echo -e "${RED}$(t bench_notready)${NC}" >&2
+        return 1
+    fi
+    local gpu_tps
+    gpu_tps=$(bench_measure) || { echo -e "${RED}$(t bench_measure_fail)${NC}" >&2; return 1; }
+
+    trap - EXIT INT TERM
+    _bench_restore_now
+
+    bench_verdict "$cpu_tps" "$gpu_tps"
+    write_log "model bench" "$BP_GNAME cpu=${cpu_tps}tok/s gpu=${gpu_tps}tok/s"
+}
+# ================= end -m bench (D6b) =================
+
 model_help() {
     case "$UILANG" in
     it) cat <<EOF
@@ -3036,6 +3258,8 @@ Comandi:
   $ASSIST_NAME -m pull <nome>      scarica una nuova IA (es. qwen3:8b), con controllo RAM
   $ASSIST_NAME -m update [n|nome]  aggiorna le IA scaricate (tutte, o solo quella indicata)
   $ASSIST_NAME -m rm <n|nome>      rimuove una IA (chiede conferma)
+  $ASSIST_NAME -m bench            CPU vs iGPU Intel misurate qui (serve sudo, riavvia ollama 2 volte, poi ripristina) - solo iGPU Intel per ora
+  $ASSIST_NAME -m bench --dry-run  come sopra ma mostra solo cosa farebbe, senza toccare nulla
   $ASSIST_NAME --update-engine     aggiorna il motore Ollama stesso
   $ASSIST_NAME -m help             questo aiuto
 
@@ -3072,6 +3296,8 @@ Befehle:
   $ASSIST_NAME -m pull <Name>        eine neue KI laden (z. B. qwen3:8b), mit RAM-Check
   $ASSIST_NAME -m update [n|Name]    geladene KIs aktualisieren (alle, oder nur die eine)
   $ASSIST_NAME -m rm <n|Name>        eine KI entfernen (fragt nach Bestätigung)
+  $ASSIST_NAME -m bench              CPU vs Intel-iGPU, hier gemessen (braucht sudo, startet ollama 2x neu, stellt danach wieder her) - vorerst nur Intel-iGPU
+  $ASSIST_NAME -m bench --dry-run    wie oben, zeigt nur was passieren würde, ohne etwas zu ändern
   $ASSIST_NAME --update-engine       die Ollama-Engine selbst aktualisieren
   $ASSIST_NAME -m help               diese Hilfe
 
@@ -3108,6 +3334,8 @@ Commands:
   $ASSIST_NAME -m pull <name>      download a new AI (e.g. qwen3:8b), with a RAM check
   $ASSIST_NAME -m update [n|name]  refresh the downloaded AIs (all, or just that one)
   $ASSIST_NAME -m rm <n|name>      remove an AI (asks for confirmation)
+  $ASSIST_NAME -m bench            CPU vs Intel iGPU, measured here (needs sudo, restarts ollama twice, then restores) - Intel iGPU only for now
+  $ASSIST_NAME -m bench --dry-run  same, but only shows what it would do, nothing is changed
   $ASSIST_NAME --update-engine     update the Ollama engine itself
   $ASSIST_NAME -m help             this help
 
@@ -3899,6 +4127,27 @@ net_update_status() {
 }
 # ================= end Release channels (Part E) =================
 
+# gpu_backend_probe - shared by --doctor (D6a) and `-m bench` (D6b): sets
+# BP_GTYPE (nvidia|amd|intel|none), BP_GNAME, BP_HWFOUND (1 if glia-hardware
+# ran), BP_VULKAN/BP_CUDA/BP_ROCM (0/1). Backend presence is checked on the
+# real .so files under /usr/lib/ollama, walked RECURSIVELY: a flat listing
+# misses ollama-vulkan's own library, which sits one folder down
+# (vulkan/libggml-vulkan.so) - eval-backend.sh's own flat `ls` has this gap.
+gpu_backend_probe() {
+    local hwjson
+    BP_GTYPE="none"; BP_GNAME=""; BP_HWFOUND=0
+    if command -v glia-hardware >/dev/null 2>&1; then
+        BP_HWFOUND=1
+        hwjson=$(glia-hardware -j 2>/dev/null)
+        BP_GTYPE=$(sed -n 's/.*"gpu_type":"\([^"]*\)".*/\1/p' <<< "$hwjson")
+        BP_GNAME=$(sed -n 's/.*"gpu_name":"\([^"]*\)".*/\1/p'  <<< "$hwjson")
+        [ -z "$BP_GTYPE" ] && BP_GTYPE="none"
+    fi
+    BP_VULKAN=0; find /usr/lib/ollama -iname 'libggml-vulkan.so' 2>/dev/null | grep -q . && BP_VULKAN=1
+    BP_CUDA=0;   find /usr/lib/ollama -iname 'libggml-cuda.so'   2>/dev/null | grep -q . && BP_CUDA=1
+    BP_ROCM=0;   find /usr/lib/ollama -iname 'libggml-hip*.so'   2>/dev/null | grep -q . && BP_ROCM=1
+}
+
 # gpu_backend_pkg_hint <cuda|rocm|vulkan> - D6a: install hint for --doctor's
 # GPU/backend check. pacman splits GPU backends into real packages
 # (ollama-vulkan/-cuda/-rocm, verified in the CachyOS/Arch repos); other
@@ -3959,14 +4208,12 @@ doctor() {
     # no matching backend is the safe, worth-it advice; an Intel iGPU is the
     # opposite (measured 4.5x slower on ours - see docs/design/bench-gpu-
     # 2026-07-17.txt), so it is only ever mentioned, never recommended.
-    if command -v glia-hardware >/dev/null 2>&1; then
-        local hwjson gtype gname has_vulkan has_cuda has_rocm igpu_on want backend_label gok
-        hwjson=$(glia-hardware -j 2>/dev/null)
-        gtype=$(sed -n 's/.*"gpu_type":"\([^"]*\)".*/\1/p' <<< "$hwjson")
-        gname=$(sed -n 's/.*"gpu_name":"\([^"]*\)".*/\1/p'  <<< "$hwjson")
-        has_vulkan=0; find /usr/lib/ollama -iname 'libggml-vulkan.so' 2>/dev/null | grep -q . && has_vulkan=1
-        has_cuda=0;   find /usr/lib/ollama -iname 'libggml-cuda.so'   2>/dev/null | grep -q . && has_cuda=1
-        has_rocm=0;   find /usr/lib/ollama -iname 'libggml-hip*.so'   2>/dev/null | grep -q . && has_rocm=1
+    gpu_backend_probe
+    if [ "$BP_HWFOUND" -eq 0 ]; then
+        echo -e "  ${BLUE}i${NC} $(t doc_gpu_nohw)"
+    else
+        local gtype="$BP_GTYPE" gname="$BP_GNAME" has_vulkan="$BP_VULKAN" has_cuda="$BP_CUDA" has_rocm="$BP_ROCM"
+        local igpu_on want backend_label gok
         case "$gtype" in
             nvidia|amd)
                 if [ "$gtype" = nvidia ]; then want=cuda; backend_label="CUDA"; gok=$has_cuda
@@ -3994,8 +4241,6 @@ doctor() {
                 echo -e "  ${BLUE}i${NC} $(t doc_gpu_none)"
                 ;;
         esac
-    else
-        echo -e "  ${BLUE}i${NC} $(t doc_gpu_nohw)"
     fi
     echo
     echo -e "${YELLOW}$(t doc_sec_paths)${NC}"
@@ -6013,6 +6258,7 @@ case "$1" in
             update)         shift; model_update "${1:-}" ;;
             rm)             shift; model_rm "${1:-}" ;;
             role|roles)     shift; role_cmd "$@" ;;   # D2: see/assign the AI roles
+            bench)          shift; bench_cmd "$@" ;;  # D6b: CPU vs iGPU, measured on this machine
             *)
                 sel=$(model_resolve "$1") || { echo -e "${RED}$(t model_badsel)${NC}" >&2; exit 1; }
                 shift

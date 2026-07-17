@@ -341,6 +341,7 @@ glia -m update                         # refresh the downloaded models (only fet
 glia -m ps                             # which model is loaded in RAM right now (= ollama ps)
 glia -m stop <n|name>                  # unload a model from RAM immediately (= ollama stop)
 glia -m role                           # numbered AIs + who does what; assign by number: glia -m role <n> <role>  (0 = follow the default)
+glia -m bench                          # CPU vs Intel iGPU, measured on this machine (needs sudo, restores everything after; --dry-run to preview)
 glia --update                          # update GLIA itself, from your channel (glia --update help: full guide)
 glia --update --check                  # is there a new version? ask only, install nothing
 glia --rollback                        # go back to a previously installed version

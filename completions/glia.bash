@@ -53,13 +53,18 @@ _glia() {
             COMPREPLY=( $(compgen -W "default show help $(_glia_model_names)" -- "$cur") )
             return ;;
         -m|--model)
-            COMPREPLY=( $(compgen -W "help list ls ps stop pull update rm role $(_glia_model_names)" -- "$cur") )
+            COMPREPLY=( $(compgen -W "help list ls ps stop pull update rm role bench $(_glia_model_names)" -- "$cur") )
             return ;;
         role|roles)
             # -m role <n|name|0>: the AI to assign, by number/name (0 = default)
             case "${COMP_WORDS[COMP_CWORD-2]}" in
                 -m|--model) COMPREPLY=( $(compgen -W "0 $(_glia_model_names)" -- "$cur") ) ;;
             esac
+            return ;;
+        bench)
+            # -m bench [--dry-run]: no model/name argument, just the one flag
+            [ "${COMP_WORDS[COMP_CWORD-2]}" = "-m" ] || [ "${COMP_WORDS[COMP_CWORD-2]}" = "--model" ] \
+                && COMPREPLY=( $(compgen -W "--dry-run" -- "$cur") )
             return ;;
         -U|--update)
             # bare --update updates GLIA itself; --check asks only.

@@ -311,9 +311,24 @@ library one folder down (`vulkan/libggml-vulkan.so`), a gap `eval-backend.sh`'s
 own flat `ls` still has today. Still open: the ROCm filename pattern
 (`libggml-hip*.so`) is the known ggml/llama.cpp convention but unverified on
 disk here (`ollama-rocm` isn't installed on this machine) — worth a quick
-check the first time this runs on AMD. **Still to come: D6b**, the `-m bench`
-command that actually flips the backend and measures on the machine it runs
-on, instead of quoting the one number we already have.
+check the first time this runs on AMD.
+
+**Landed 2026-07-17 (v2.18.7, tag pending)** — D6b, `-m bench`. It flips the
+backend and measures FOR REAL instead of asking the user to edit a systemd
+override and read two numbers themselves: asks for confirmation, needs sudo,
+restarts `ollama.service` twice (CPU baseline with the override removed, then
+`OLLAMA_IGPU_ENABLE=1`), measures the same fixed prompt both times via
+Ollama's own `/api/generate`, and prints a verdict — not just the numbers.
+The override file is ours alone (`99-glia-bench.conf`), never touches any
+other file already in `ollama.service.d/`, and a `trap` restores the original
+state unconditionally, even on Ctrl-C. `--dry-run` shows the exact commands
+without changing anything. Intel iGPU only for v1 — NVIDIA/AMD refuse
+cleanly, since the equivalent CPU-only lever for a dedicated GPU isn't
+verified on real hardware (none of these machines have one). Live-tested
+end to end on this machine: CPU 6.22 tok/s vs iGPU 1.74 tok/s (-72%),
+override cleanly removed and the service back to its original environment
+afterwards — confirmed on disk, not just trusted from the command's own
+output.
 
 ### D7. `make check-docs` — the duplicated surfaces keep drifting
 
