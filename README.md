@@ -330,6 +330,10 @@ glia -ws linux kernel                  # direct results, no AI call — a URL op
 glia -p backup.sh "add a --verbose flag"   # edit an EXISTING file: shows the diff and the git apply command, then asks
 glia --new a bash backup script with rsync and a README explaining how to use it   # new project: plans the steps, then writes the files (with confirmation)
 glia -T README.md en                   # translate into a NEW file next to it (README.en.md); the original is never touched
+glia --remember "the server runs debian"  # store a short fact the AI will recall in later prompts
+glia --memory                          # list stored facts (glia --forget <n> deletes fact n)
+glia --lang it                         # switch the interface language: it / en / de
+glia --clear-cache                     # empty the command cache
 glia -l                                # log of executed commands
 glia --doctor                          # one-shot health check (engine, model, RAM, config)
 glia -m pull                           # guided download: hardware check + the AI models that FIT this machine

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ============================================================
 #  glia - AI terminal assistant (Ollama + aichat)
-#  Version: 2.18.3 - 2026-07-16
+#  Version: 2.18.4 - 2026-07-17
 #  Author: Michele (with Claude)
 #  Project: GLIA (GNU Linux IA)
 #
@@ -9,6 +9,18 @@
 #  what you learn here you can reuse in other programs (and vice versa).
 #
 #  What's new in v2.18 ("-p edits, --new creates, -T translates"):
+#   - v2.18.4: `make check-docs` (D7) - the parser in bin/glia is the source
+#     of truth, and a checker now fails loudly when a documented surface
+#     drifts from it. Four checks: version coherence (VERSION = header, and
+#     compared with the newest tag - VERSION ahead of the tag is the normal
+#     pre-release state, not an error); every parser flag present in README,
+#     commands.html and BOTH completions (aliases excepted; --kaboom is kept
+#     out of tab-completion on purpose, being the destructive uninstall);
+#     the two site navs agreeing on entries, order and mobile breakpoint;
+#     and no page hardcoding a confirm word that is really $CONFIRM_WORD /
+#     $YES_KEY. It caught six real drifts on the first run, fixed here:
+#     README never listed --lang, --remember/--memory/--forget or
+#     --clear-cache, and the fish completion never offered -w+.
 #   - v2.18.3: `--doctor` closes the shadowing case BACKWARDS. v2.18.2 stops
 #     --rename from burying a command, but a nickname made before it is
 #     still sitting there, and whoever has one is exactly the person who
@@ -386,7 +398,7 @@
 # ============================================================
 
 # ----------------- CONFIGURATION -----------------
-VERSION="2.18.3"
+VERSION="2.18.4"
 DEFAULT_MODEL="qwen2.5-coder:7b"
 if [ -r "$HOME/.config/glia/model" ]; then
     MODEL="ollama:$(head -n1 "$HOME/.config/glia/model")"

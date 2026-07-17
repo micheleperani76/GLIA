@@ -317,6 +317,19 @@ It is the `--doctor` idea turned on the project instead of the user's machine
 D2 says adding role #5 must not cost five surfaces. This is how you find out
 whether it did.
 
+**Landed 2026-07-17 (v2.18.4, tag pending)** — `scripts/check-docs.sh` +
+`make check-docs`, read-only, exits 0/1. All four checks from the list above
+are implemented: version coherence (VERSION = header, and VERSION-ahead-of-tag
+treated as the normal pre-release state, not a failure), flag→surfaces,
+the two navs (section entries + breakpoint), and hardcoded confirm words.
+First run caught **six real drifts**, fixed in the same change: README never
+listed `--lang`, `--remember`/`--memory`/`--forget` or `--clear-cache`, and the
+fish completion never offered `-w+`. One deliberate carve-out to revisit:
+`--kaboom` is exempted from the completion check on purpose (a destructive
+uninstall shouldn't be one `<TAB>` away) — flip `COMPLETION_EXEMPT` if that
+call is wrong. Still open for later: wire it into a pre-commit/CI step so the
+check runs itself instead of relying on memory.
+
 ## TODO
 
 - **An AI in RAM that GLIA did not load** (decided 2026-07-16, not yet built).

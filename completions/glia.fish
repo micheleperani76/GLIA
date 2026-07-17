@@ -1,6 +1,6 @@
 # ============================================================
 #  glia.fish - Fish completion for the glia AI assistant
-#  Version: 1.3 - 2026-07-16 (-p now edits files -> completes paths; adds --new/-n)
+#  Version: 1.4 - 2026-07-17 (adds -w+ deep web search to first-position flags)
 #  Author: Michele (with Claude)
 #  Project: GLIA (GNU Linux IA)
 #
@@ -55,6 +55,7 @@ complete -c glia -n __glia_first -a '-p'          -d 'edit an existing file (sho
 complete -c glia -n __glia_first -a '--new'       -d 'new project from scratch (was -p up to v2.17)'
 complete -c glia -n __glia_first -a '-n'          -d 'new project from scratch (short for --new)'
 complete -c glia -n __glia_first -a '-w'          -d 'web search with sources'
+complete -c glia -n __glia_first -a '-w+'         -d 'web search that also reads the pages (deep)'
 complete -c glia -n __glia_first -a '-ws'         -d 'direct web results, no AI (also opens a URL)'
 complete -c glia -n __glia_first -a '-T'          -d 'translate a file into a new file next to it'
 complete -c glia -n __glia_first -a '--web-model' -d 'pin the AI used by -w'
