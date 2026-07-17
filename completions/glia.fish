@@ -47,6 +47,7 @@ complete -c glia -f
 complete -c glia -n __glia_first -a '-h'          -d 'help'
 complete -c glia -n __glia_first -a '-V'          -d 'version'
 complete -c glia -n __glia_first -a '-i'          -d 'interactive mode (REPL)'
+complete -c glia -n __glia_first -a '-c'          -d 'chat with context kept and a saturation bar (--chat)'
 complete -c glia -n __glia_first -a '-d'          -d 'answer in words, run nothing'
 complete -c glia -n __glia_first -a '-l'          -d 'command log'
 complete -c glia -n __glia_first -a '-a'          -d 'aliases (shortcuts)'
@@ -112,7 +113,7 @@ complete -c glia -n 'contains -- (__glia_prev) --web-model --project-model --tra
 complete -c glia -n 'contains -- (__glia_prev) --web-model --project-model --translate-model' -a '(__glia_models)'
 
 # groups that take "help"
-complete -c glia -n 'contains -- (__glia_prev) --update --memory -p --project -n --new -i --interactive' -a 'help'
+complete -c glia -n 'contains -- (__glia_prev) --update --memory -p --project -n --new -i --interactive -c --chat' -a 'help'
 
 # -p <file>: v2.18 edits an EXISTING file, so complete real paths
 complete -c glia -n 'contains -- (__glia_prev) -p --project' -F

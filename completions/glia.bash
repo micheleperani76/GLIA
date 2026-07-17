@@ -33,7 +33,7 @@ _glia() {
     COMPREPLY=()
     cur="${COMP_WORDS[COMP_CWORD]}"
     prev="${COMP_WORDS[COMP_CWORD-1]}"
-    flags="-h --help -V --version -i --interactive -d --ask -l --log
+    flags="-h --help -V --version -i --interactive -c --chat -d --ask -l --log
            -a --alias -m --model -p --project -n --new --remember --memory --forget
            -w --web -w+ --web-deep -ws --web-search --web-model --web-engine --project-model
            -T --translate --translate-model

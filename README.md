@@ -324,6 +324,7 @@ mkdir -p ~/.config/aichat && cp config/aichat-config.yaml ~/.config/aichat/confi
 glia find the largest files in /home   # proposes the command → Enter runs it
 glia                                   # interactive REPL: request after request, any symbol allowed; empty line quits
 glia --ask what does rsync do          # plain-text explanation only (-d is the old short form)
+glia -c                                # real chat (--chat): the whole dialogue is kept turn after turn; a bar shows how full the context window is (real tokens); /esci /nuova /salva /modello (switch AI, this chat only)
 cat error.log | glia why does it fail  # piped input becomes context for the AI
 glia -w latest stable linux kernel     # search the web and answer, always with sources (-w+ reads the pages too)
 glia -ws linux kernel                  # direct results, no AI call — a URL opens that page

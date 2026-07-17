@@ -1,12 +1,27 @@
 #!/usr/bin/env bash
 # ============================================================
 #  glia - AI terminal assistant (Ollama + aichat)
-#  Version: 2.19.3 - 2026-07-17
+#  Version: 2.20.0 - 2026-07-17
 #  Author: Michele (with Claude)
 #  Project: GLIA (GNU Linux IA)
 #
 #  Design pillar: commands follow standard terminal conventions, so
 #  what you learn here you can reuse in other programs (and vice versa).
+#
+#  What's new in v2.20 ("someone who is actually listening"):
+#   - New chat mode: `glia -c` / `--chat`. --ask answers once and exits; -c
+#     keeps the WHOLE dialogue and sends it back every turn, so "and on
+#     Debian?" means what it should. It talks to Ollama's native /api/chat
+#     directly (not aichat): that endpoint takes the messages array as-is,
+#     and its final streamed chunk carries the REAL token counts - which is
+#     exactly what the saturation bar under every answer shows (green ->
+#     yellow -> red; red = the model is about to forget the beginning of the
+#     conversation). In-chat commands, localized: /esci /nuova /salva
+#     /modello /aiuto. /modello switches the AI for THIS chat only - the
+#     default is untouched, and the old model is unloaded first so two LLMs
+#     never sit in RAM together. One trap defused: Ollama silently uses a
+#     SMALL context unless asked, so CHAT_NUM_CTX is requested explicitly
+#     (options.num_ctx) - the bar's denominator is the truth, not a hope.
 #
 #  What's new in v2.19 ("your machine, your dangers"):
 #   - v2.19.3: D4's other half - reading someone ELSE's error. When a command
@@ -536,7 +551,7 @@
 # ============================================================
 
 # ----------------- CONFIGURATION -----------------
-VERSION="2.19.3"
+VERSION="2.20.0"
 DEFAULT_MODEL="qwen2.5-coder:7b"
 # -m bench (D6b): CPU vs iGPU on THIS machine, config up top on purpose.
 BENCH_OVERRIDE_DIR="/etc/systemd/system/ollama.service.d"
@@ -642,6 +657,17 @@ PMODE_CTX_RESERVE=1500                        # tokens reserved for prompt scaff
 PMODE_LOG="$HOME/.config/glia/pmode.log"      # one plain-text block per run
 PMODE_DRYRUN=true                             # true = never touch a file without an explicit confirm
 PMODE_MAX_RETRIES=2                           # search/replace retries before the whole-file fallback
+
+# --- Chat mode (-c): a real conversation (v2.20) ---
+# The context is a JSON messages array sent WHOLE to Ollama's native
+# /api/chat at every turn - follow-ups are exact, not summarized. The bar
+# under each answer uses the real token counts Ollama returns. Ollama
+# defaults to a small context unless asked: CHAT_NUM_CTX is requested
+# explicitly (options.num_ctx), so the bar's denominator is the truth.
+CHAT_NUM_CTX=8192                             # context window requested from Ollama (raise on a bigger machine)
+CHAT_WARN_PCT=75                              # bar turns yellow from this saturation
+CHAT_CRIT_PCT=90                              # bar turns red + suggests /salva and /nuova
+CHAT_SAVE_DIR="$HOME/.local/share/glia/chats" # where /salva writes the conversation (.md)
 
 # --- Release channel / self-update (v2.17, Part E) ---
 # Everything here is meant to be easy to change. Discovery uses the HTTPS repo
@@ -1068,6 +1094,51 @@ t() {
         it:need_jq)         echo "La modalità progetto richiede jq:  $(pkg_install_cmd jq)" ;;
         de:need_jq)         echo "Der Projektmodus benötigt jq:  $(pkg_install_cmd jq)" ;;
         *:need_jq)          echo "Project mode requires jq:  $(pkg_install_cmd jq)" ;;
+        it:chat_hint)       echo "Chat con ${MODEL#ollama:} · /aiuto = comandi · /esci o Ctrl+D = esci" ;;
+        de:chat_hint)       echo "Chat mit ${MODEL#ollama:} · /hilfe = Befehle · /ende oder Strg+D = beenden" ;;
+        *:chat_hint)        echo "Chat with ${MODEL#ollama:} · /help = commands · /exit or Ctrl+D = quit" ;;
+        it:chat_prompt)     echo "tu" ;;
+        de:chat_prompt)     echo "du" ;;
+        *:chat_prompt)      echo "you" ;;
+        it:chat_turn)       echo "turno" ;;
+        de:chat_turn)       echo "Runde" ;;
+        *:chat_turn)        echo "turn" ;;
+        it:chat_full)       echo "Contesto quasi pieno: il modello sta per scordare l'inizio. /salva per conservare, /nuova per ripartire." ;;
+        de:chat_full)       echo "Kontext fast voll: das Modell vergisst gleich den Anfang. /speichern zum Sichern, /neu für den Neustart." ;;
+        *:chat_full)        echo "Context almost full: the model is about to forget the beginning. /save to keep it, /new to start over." ;;
+        it:chat_cleared)    echo "Contesto azzerato: la chat riparte da zero." ;;
+        de:chat_cleared)    echo "Kontext geleert: der Chat beginnt von vorn." ;;
+        *:chat_cleared)     echo "Context cleared: the chat starts fresh." ;;
+        it:chat_saved)      echo "Conversazione salvata in:" ;;
+        de:chat_saved)      echo "Unterhaltung gespeichert in:" ;;
+        *:chat_saved)       echo "Conversation saved to:" ;;
+        it:chat_nosave)     echo "Niente da salvare: ancora nessuno scambio." ;;
+        de:chat_nosave)     echo "Nichts zu speichern: noch kein Austausch." ;;
+        *:chat_nosave)      echo "Nothing to save: no exchange yet." ;;
+        it:chat_bye)        echo "Chat chiusa." ;;
+        de:chat_bye)        echo "Chat beendet." ;;
+        *:chat_bye)         echo "Chat closed." ;;
+        it:chat_err)        echo "Errore dal modello:" ;;
+        de:chat_err)        echo "Fehler vom Modell:" ;;
+        *:chat_err)         echo "Error from the model:" ;;
+        it:chat_model_now)  echo "Modello di questa chat:" ;;
+        de:chat_model_now)  echo "Modell dieses Chats:" ;;
+        *:chat_model_now)   echo "This chat's model:" ;;
+        it:chat_model_only) echo "(solo per questa chat: il default non cambia)" ;;
+        de:chat_model_only) echo "(nur für diesen Chat: der Standard bleibt)" ;;
+        *:chat_model_only)  echo "(this chat only: the default is untouched)" ;;
+        it:chat_badcmd)     echo "Comando sconosciuto: /aiuto per l'elenco." ;;
+        de:chat_badcmd)     echo "Unbekannter Befehl: /hilfe für die Liste." ;;
+        *:chat_badcmd)      echo "Unknown command: /help for the list." ;;
+        it:chat_need_jq)    echo "La chat richiede jq:  $(pkg_install_cmd jq)" ;;
+        de:chat_need_jq)    echo "Der Chat benötigt jq:  $(pkg_install_cmd jq)" ;;
+        *:chat_need_jq)     echo "Chat mode requires jq:  $(pkg_install_cmd jq)" ;;
+        it:chat_tty)        echo "La chat è un dialogo: serve un terminale interattivo." ;;
+        de:chat_tty)        echo "Der Chat ist ein Dialog: er braucht ein interaktives Terminal." ;;
+        *:chat_tty)         echo "Chat is a dialogue: it needs an interactive terminal." ;;
+        it:chat_you)        echo "Tu" ;;
+        de:chat_you)        echo "Du" ;;
+        *:chat_you)         echo "You" ;;
         it:cache_hit)       echo "[dalla cache, r = richiedi all'IA]" ;;
         de:cache_hit)       echo "[aus dem Cache, r = KI erneut fragen]" ;;
         *:cache_hit)        echo "[from cache, r = ask the AI again]" ;;
@@ -1970,6 +2041,7 @@ L'essenziale:
   $ASSIST_NAME <richiesta>         propone un comando: Invio = esegui, n = annulla
   $ASSIST_NAME                     da solo: prompt libero (qualsiasi simbolo)
   $ASSIST_NAME --ask <domanda>     risponde a parole, senza eseguire nulla
+  $ASSIST_NAME -c                  chat vera: il contesto resta, barra di saturazione (--chat)
   $ASSIST_NAME -w <domanda>        cerca sul web e risponde con le fonti
   $ASSIST_NAME -p <file> "<cosa>"  modifica un file esistente (diff, poi chiede)
   $ASSIST_NAME -m                  scegli quale IA usare (guidato)
@@ -1984,6 +2056,7 @@ Aiuto per area — ogni help elenca TUTTI i suoi sotto-comandi:
   -w help        ricerca web: -w veloce · -w+ approfondita · -ws senza IA · --web-engine · --web-model
   -T help        traduci un file: file nuovo accanto · lingua · --translate-model
   -i help        modalità interattiva (frasi con simboli speciali)
+  -c help        chat con l'IA: /nuova · /salva · /modello al volo · barra contesto
   --memory help  memoria: --remember salva · --forget scorda · --memory elenca
   --update help  aggiorna: -U · --check · --channel · --rollback · engine
 
@@ -2004,6 +2077,7 @@ Das Wesentliche:
   $ASSIST_NAME <Anfrage>          schlägt einen Befehl vor: Enter = ausführen, n = nein
   $ASSIST_NAME                    allein: freier Prompt (beliebige Zeichen)
   $ASSIST_NAME --ask <Frage>      antwortet in Worten, führt nichts aus
+  $ASSIST_NAME -c                 echter Chat: der Kontext bleibt, Füllbalken (--chat)
   $ASSIST_NAME -w <Frage>         sucht im Web und antwortet mit Quellen
   $ASSIST_NAME -p <Datei> "<was>" ändert eine vorhandene Datei (Diff, dann Frage)
   $ASSIST_NAME -m                 KI wählen (geführt)
@@ -2018,6 +2092,7 @@ Hilfe pro Bereich — jede Hilfe listet ALLE ihre Unterbefehle:
   -w help        Websuche: -w schnell · -w+ gründlich · -ws ohne KI · --web-engine · --web-model
   -T help        Datei übersetzen: neue Datei daneben · Sprache · --translate-model
   -i help        interaktiver Modus (Sätze mit Sonderzeichen)
+  -c help        Chat mit der KI: /neu · /speichern · /modell im Flug · Kontext-Balken
   --memory help  Gedächtnis: --remember merken · --forget vergessen · --memory
   --update help  aktualisieren: -U · --check · --channel · --rollback · Engine
 
@@ -2038,6 +2113,7 @@ The essentials:
   $ASSIST_NAME <request>          proposes a command: Enter = run, n = cancel
   $ASSIST_NAME                    alone: free prompt (any symbol)
   $ASSIST_NAME --ask <question>   answers in words, runs nothing
+  $ASSIST_NAME -c                 real chat: the context stays, saturation bar (--chat)
   $ASSIST_NAME -w <question>      searches the web, answers with sources
   $ASSIST_NAME -p <file> "<what>" edits an existing file (diff, then asks)
   $ASSIST_NAME -m                 choose which AI to use (guided)
@@ -2052,6 +2128,7 @@ Help per area — each help lists ALL of its subcommands:
   -w help        web search: -w fast · -w+ deep · -ws no AI · --web-engine · --web-model
   -T help        translate a file: new file next to it · language · --translate-model
   -i help        interactive mode (requests with special characters)
+  -c help        chat with the AI: /new · /save · /model on the fly · context bar
   --memory help  memory: --remember saves · --forget drops · --memory lists
   --update help  updating: -U · --check · --channel · --rollback · engine
 
@@ -4294,6 +4371,307 @@ Simple requests (no symbols) can still go inline:
 EOF
         ;;
     esac
+}
+
+# ============================================================
+#  SECTION: chat mode (-c, v2.20) - a real conversation
+# ============================================================
+# --ask answers once and exits; -c keeps the WHOLE dialogue and sends it
+# back at every turn, so "and on Debian?" means what it should. It talks
+# to Ollama's native /api/chat directly (not aichat): that endpoint takes
+# the messages array as-is, and its final streamed chunk carries the REAL
+# token counts (prompt_eval_count + eval_count) - exactly what the
+# saturation bar needs. In-chat commands are slash-words, so no phrase is
+# ever eaten by mistake; each has localized aliases (see the case below).
+
+chat_fmt_tok() {
+    # 12345 -> "12.3k"; below 1000 the plain number
+    if [ "$1" -ge 1000 ]; then
+        printf '%d.%dk' "$(($1/1000))" "$(($1%1000/100))"
+    else
+        printf '%d' "$1"
+    fi
+}
+
+chat_bar() {
+    # $1 = tokens of the LAST call (its prompt already contains the whole
+    # history, so this IS the saturation), $2 = turn number. Drawn on
+    # stderr, so a redirected chat transcript stays clean.
+    local used=$1 turn=$2 width=20 pct fill i bar='' color
+    pct=$(( used * 100 / CHAT_NUM_CTX )); [ "$pct" -gt 100 ] && pct=100
+    fill=$(( pct * width / 100 ))
+    for ((i=0; i<width; i++)); do
+        if [ "$i" -lt "$fill" ]; then bar+='█'; else bar+='░'; fi
+    done
+    color=$GREEN
+    [ "$pct" -ge "$CHAT_WARN_PCT" ] && color=$YELLOW
+    [ "$pct" -ge "$CHAT_CRIT_PCT" ] && color=$RED
+    printf '%b[%s] %d%%%b · %s/%s tok · %s %d · %s\n' \
+        "$color" "$bar" "$pct" "$NC" "$(chat_fmt_tok "$used")" \
+        "$(chat_fmt_tok "$CHAT_NUM_CTX")" "$(t chat_turn)" "$turn" "${MODEL#ollama:}" >&2
+    [ "$pct" -ge "$CHAT_CRIT_PCT" ] && echo -e "${RED}$(t chat_full)${NC}" >&2
+    return 0
+}
+
+chat_sysmsg() {
+    # the system message: stored facts (--memory) + the answer language
+    local s; s="$(memory_context)"
+    case "$UILANG" in
+        it) s="${s}Rispondi in italiano." ;;
+        de) s="${s}Antworte auf Deutsch." ;;
+        *)  s="${s}Answer in English." ;;
+    esac
+    printf '%s' "$s"
+}
+
+chat_save() {
+    # /salva -> one timestamped .md (the system message stays out)
+    local n f
+    n=$(jq 'map(select(.role!="system")) | length' <<<"$CHAT_MSGS")
+    [ "$n" -eq 0 ] && { echo "$(t chat_nosave)"; return 0; }
+    mkdir -p "$CHAT_SAVE_DIR"
+    f="$CHAT_SAVE_DIR/chat-$(date +%Y%m%d-%H%M%S).md"
+    {
+        printf '# glia chat · %s · %s\n' "$(date '+%Y-%m-%d %H:%M')" "${MODEL#ollama:}"
+        jq -r --arg u "$(t chat_you)" --arg m "${MODEL#ollama:}" \
+            '.[] | select(.role!="system")
+                 | "\n## " + (if .role=="user" then $u else $m end) + "\n\n" + .content' \
+            <<<"$CHAT_MSGS"
+    } > "$f"
+    echo -e "${GREEN}$(t chat_saved)${NC} ${f/#$HOME/\~}"
+}
+
+chat_model_cmd() {
+    # /modello [name|number] - switch the AI of THIS chat only. The default
+    # (-m) is untouched; the old model is unloaded first, so two LLMs never
+    # sit in RAM together on a small machine (the same care set_model takes).
+    local q="$1" sel old="${MODEL#ollama:}"
+    if [ -z "$q" ]; then
+        echo "$(t model_avail)"; model_list_tagged
+        read -r -p "$(t model_pick)" q || return 0
+        [ -z "$q" ] && { echo "$(t model_kept)"; return 0; }
+    fi
+    sel=$(model_resolve "$q") || { echo -e "${RED}$(t model_badsel)${NC}" >&2; return 1; }
+    if [ "$sel" != "$old" ] && model_loaded "$old"; then mem_unload "$old"; fi
+    MODEL="ollama:$sel"
+    echo -e "${GREEN}$(t chat_model_now) $sel${NC}  $(t chat_model_only)"
+}
+
+chat_cmds_help() {
+    # /aiuto: the short in-chat reminder (full page: glia -c help)
+    case "$UILANG" in
+    it) cat <<EOF
+Comandi della chat (tutto il resto è conversazione):
+  /esci      chiudi la chat (anche /exit, /quit o Ctrl+D)
+  /nuova     riparti da zero: contesto azzerato, barra a 0%
+  /salva     salva la conversazione in un file .md (${CHAT_SAVE_DIR/#$HOME/\~})
+  /modello   cambia IA al volo, solo per questa chat (/modello <nome|numero>)
+  /aiuto     questo promemoria
+La barra sotto ogni risposta dice quanto è piena la memoria della
+conversazione: token veri contati da Ollama, finestra CHAT_NUM_CTX.
+EOF
+        ;;
+    de) cat <<EOF
+Chat-Befehle (alles andere ist Unterhaltung):
+  /ende       Chat beenden (auch /exit, /quit oder Strg+D)
+  /neu        von vorn beginnen: Kontext geleert, Balken auf 0%
+  /speichern  Unterhaltung in eine .md-Datei (${CHAT_SAVE_DIR/#$HOME/\~})
+  /modell     KI wechseln, nur für diesen Chat (/modell <Name|Nummer>)
+  /hilfe      diese Übersicht
+Der Balken unter jeder Antwort zeigt, wie voll das Gedächtnis der
+Unterhaltung ist: echte Token von Ollama, Fenster CHAT_NUM_CTX.
+EOF
+        ;;
+    *) cat <<EOF
+Chat commands (everything else is conversation):
+  /exit      close the chat (also /quit or Ctrl+D)
+  /new       start over: context cleared, bar back to 0%
+  /save      save the conversation to a .md file (${CHAT_SAVE_DIR/#$HOME/\~})
+  /model     switch AI on the fly, this chat only (/model <name|number>)
+  /help      this reminder
+The bar under every answer shows how full the conversation memory is:
+real tokens counted by Ollama, window CHAT_NUM_CTX.
+EOF
+        ;;
+    esac
+}
+
+chat_help() {
+    case "$UILANG" in
+    it) cat <<EOF
+Modalità chat - $ASSIST_NAME -c  (forma lunga: --chat)
+
+A cosa serve:
+  --ask risponde UNA volta e finisce lì. -c invece tiene TUTTO il dialogo
+  e lo rimanda al modello a ogni turno: "e su Debian?" viene capito perché
+  la domanda di prima è ancora lì. È la differenza tra chiedere a uno
+  sconosciuto e parlare con qualcuno che ti sta davvero ascoltando.
+
+Come si usa:
+  $ASSIST_NAME -c                  entra in chat
+  $ASSIST_NAME -c <domanda>        entra e fa subito la prima domanda
+  poi scrivi al prompt e premi Invio · frecce su/giù = messaggi precedenti
+
+Comandi dentro la chat:
+  /esci      esci (anche /exit, /quit o Ctrl+D)
+  /nuova     riparti da zero (contesto azzerato)
+  /salva     salva tutto in un file .md
+  /modello   cambia IA al volo, SOLO per questa chat: il default resta
+  /aiuto     promemoria dei comandi
+
+La barra sotto ogni risposta:
+  [████░░░░░░░░░░░░░░░░] 21% · 1.7k/8.2k tok · turno 3 · qwen2.5-coder:7b
+  È la memoria della conversazione che si riempie: token VERI contati da
+  Ollama, non stime. Verde = tranquillo · giallo = oltre metà · rosso = il
+  modello sta per scordare l'inizio: /salva e poi /nuova.
+  La finestra si regola in testa allo script: CHAT_NUM_CTX (default 8192).
+
+Differenze dalle altre modalità:
+  $ASSIST_NAME <frase>   propone ed esegue COMANDI (con conferma)
+  $ASSIST_NAME --ask     una risposta secca, poi esce
+  $ASSIST_NAME -c        discussione vera, il contesto resta
+EOF
+        ;;
+    de) cat <<EOF
+Chat-Modus - $ASSIST_NAME -c  (lange Form: --chat)
+
+Wozu:
+  --ask antwortet EINMAL und ist fertig. -c behält den GANZEN Dialog und
+  schickt ihn dem Modell bei jeder Runde mit: "und auf Debian?" wird
+  verstanden, weil die Frage davor noch da ist. Der Unterschied zwischen
+  einem Fremden und jemandem, der wirklich zuhört.
+
+Verwendung:
+  $ASSIST_NAME -c                  Chat öffnen
+  $ASSIST_NAME -c <Frage>          öffnen und gleich die erste Frage stellen
+  dann am Prompt schreiben und Enter · Pfeile hoch/runter = frühere Eingaben
+
+Befehle im Chat:
+  /ende       beenden (auch /exit, /quit oder Strg+D)
+  /neu        von vorn beginnen (Kontext geleert)
+  /speichern  alles in eine .md-Datei sichern
+  /modell     KI wechseln, NUR für diesen Chat: der Standard bleibt
+  /hilfe      Übersicht der Befehle
+
+Der Balken unter jeder Antwort:
+  [████░░░░░░░░░░░░░░░░] 21% · 1.7k/8.2k tok · Runde 3 · qwen2.5-coder:7b
+  Das Gedächtnis der Unterhaltung füllt sich: ECHTE Token von Ollama, keine
+  Schätzung. Grün = entspannt · gelb = über der Hälfte · rot = das Modell
+  vergisst gleich den Anfang: /speichern, dann /neu.
+  Das Fenster steht oben im Skript: CHAT_NUM_CTX (Standard 8192).
+
+Unterschied zu den anderen Modi:
+  $ASSIST_NAME <Satz>    schlägt BEFEHLE vor und führt sie aus (mit Frage)
+  $ASSIST_NAME --ask     eine einzelne Antwort, dann Schluss
+  $ASSIST_NAME -c        echtes Gespräch, der Kontext bleibt
+EOF
+        ;;
+    *) cat <<EOF
+Chat mode - $ASSIST_NAME -c  (long form: --chat)
+
+What it is for:
+  --ask answers ONCE and is done. -c keeps the WHOLE dialogue and sends it
+  back to the model at every turn: "and on Debian?" is understood because
+  the previous question is still there. The difference between asking a
+  stranger and talking to someone who is actually listening.
+
+How to use it:
+  $ASSIST_NAME -c                  open the chat
+  $ASSIST_NAME -c <question>       open it and ask the first question now
+  then type at the prompt and press Enter · up/down arrows = earlier input
+
+Commands inside the chat:
+  /exit      quit (also /quit or Ctrl+D)
+  /new       start over (context cleared)
+  /save      save everything to a .md file
+  /model     switch AI on the fly, THIS chat only: the default stays
+  /help      command reminder
+
+The bar under every answer:
+  [████░░░░░░░░░░░░░░░░] 21% · 1.7k/8.2k tok · turn 3 · qwen2.5-coder:7b
+  The conversation memory filling up: REAL tokens counted by Ollama, not
+  estimates. Green = relaxed · yellow = past half · red = the model is
+  about to forget the beginning: /save, then /new.
+  The window is set at the top of the script: CHAT_NUM_CTX (default 8192).
+
+How it differs from the other modes:
+  $ASSIST_NAME <phrase>  proposes and runs COMMANDS (with confirmation)
+  $ASSIST_NAME --ask     one plain answer, then it exits
+  $ASSIST_NAME -c        a real discussion, the context stays
+EOF
+        ;;
+    esac
+}
+
+chat_mode() {
+    # $1 = optional first question (glia -c why is my disk full)
+    local line first="${1:-}" reply piece chunk used=0 turn=0 sys req err waiting
+    command -v jq >/dev/null 2>&1 || { echo -e "${RED}$(t chat_need_jq)${NC}" >&2; exit 1; }
+    [ -t 0 ] || { echo -e "${YELLOW}$(t chat_tty)${NC}" >&2; exit 1; }
+    check_ai
+    sys="$(chat_sysmsg)"
+    CHAT_MSGS=$(jq -cn --arg s "$sys" '[{role:"system",content:$s}]')
+    echo -e "${BLUE}$(t chat_hint)${NC}"
+    while true; do
+        if [ -n "$first" ]; then
+            line="$first"; first=""
+            printf '%s> %s\n' "$(t chat_prompt)" "$line"
+        else
+            IFS= read -r -e -p "$(t chat_prompt)> " line || { echo; break; }
+            history -s -- "$line" 2>/dev/null
+        fi
+        case "$line" in
+            "")                          continue ;;
+            /esci|/exit|/quit|/ende)     break ;;
+            /nuova|/new|/neu)
+                CHAT_MSGS=$(jq -cn --arg s "$sys" '[{role:"system",content:$s}]')
+                used=0; turn=0
+                echo -e "${GREEN}$(t chat_cleared)${NC}"; continue ;;
+            /salva|/save|/speichern)     chat_save; continue ;;
+            /modello|/model|/modell)     chat_model_cmd ""; continue ;;
+            '/modello '*|'/model '*|'/modell '*)
+                                         chat_model_cmd "${line#* }"; continue ;;
+            /aiuto|/help|/hilfe|/\?)     chat_cmds_help; continue ;;
+            /*)                          echo "$(t chat_badcmd)"; continue ;;
+        esac
+        turn=$((turn+1))
+        CHAT_MSGS=$(jq -c --arg c "$line$(nothink)" '. + [{role:"user",content:$c}]' <<<"$CHAT_MSGS")
+        req=$(jq -cn --arg m "${MODEL#ollama:}" --argjson h "$CHAT_MSGS" --argjson n "$CHAT_NUM_CTX" \
+              '{model:$m, messages:$h, stream:true, options:{num_ctx:$n}}')
+        reply=""; err=""; waiting=1
+        printf '%s' "$(t thinking)" >&2        # erased at the first token
+        # NDJSON stream: one JSON object per line. jq runs once per chunk
+        # (the hot path); the full parse happens only on error/final lines,
+        # recognized by a cheap string match first.
+        while IFS= read -r chunk; do
+            [ -z "$chunk" ] && continue
+            case "$chunk" in '{"error'*)
+                err=$(jq -r '.error // empty' <<<"$chunk"); break ;;
+            esac
+            piece=$(jq -rj '.message.content // empty' <<<"$chunk")
+            if [ -n "$piece" ]; then
+                [ "$waiting" = 1 ] && { printf '\r\033[K' >&2; waiting=0; }
+                reply+="$piece"; printf '%s' "$piece"
+            fi
+            case "$chunk" in *'"done":true'*)
+                used=$(jq -r '(.prompt_eval_count // 0) + (.eval_count // 0)' <<<"$chunk") ;;
+            esac
+        done < <(curl -sN --max-time 600 "$OLLAMA_URL/api/chat" -d "$req" 2>/dev/null)
+        [ "$waiting" = 1 ] && printf '\r\033[K' >&2
+        printf '\n'
+        if [ -n "$err" ] || [ -z "$reply" ]; then
+            echo -e "${RED}$(t chat_err)${NC} ${err:-Ollama}" >&2
+            # drop the unanswered question, so history and reality agree
+            CHAT_MSGS=$(jq -c 'del(.[-1])' <<<"$CHAT_MSGS")
+            turn=$((turn-1))
+            continue
+        fi
+        CHAT_MSGS=$(jq -c --arg c "$reply" '. + [{role:"assistant",content:$c}]' <<<"$CHAT_MSGS")
+        session_add "$line" "(discussed in chat -c)"
+        chat_bar "$used" "$turn"
+    done
+    echo "$(t chat_bye)"
+    exit 0
 }
 
 # ---- doctor (v2.7): one-shot health check ----
@@ -6947,6 +7325,13 @@ case "$1" in
         case "${1:-}" in
             help|-h|--help) page int_help ;;
             *)              interactive_mode ;;
+        esac
+        ;;
+    -c|--chat)
+        shift
+        case "${1:-}" in
+            help|-h|--help) page chat_help ;;
+            *)              chat_mode "$*" ;;
         esac
         ;;
     -d|--ask)
