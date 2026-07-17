@@ -21,6 +21,16 @@
 #     $YES_KEY. It caught six real drifts on the first run, fixed here:
 #     README never listed --lang, --remember/--memory/--forget or
 #     --clear-cache, and the fish completion never offered -w+.
+#   - v2.18.4: `-m role` (D2) - one console for the AI roles. `-m role` shows
+#     which model holds each job (default/web/project/translate) and what it
+#     serves; `-m role <role> <AI|default>` assigns, in the grammar of
+#     `git remote` (bare = list) and `git config` (key value). The old
+#     --web-model / --project-model / --translate-model still work: they, the
+#     new console and the sheet's role tags all read ONE table (ROLES), so
+#     adding a role is one row instead of five hand-kept surfaces - the very
+#     cost D7's check-docs measures. The three near-identical *_model_cmd and
+#     *_model_menu triplets collapsed into one generic body, output verified
+#     byte-for-byte identical to before.
 #   - v2.18.3: `--doctor` closes the shadowing case BACKWARDS. v2.18.2 stops
 #     --rename from burying a command, but a nickname made before it is
 #     still sitting there, and whoever has one is exactly the person who
@@ -1374,6 +1384,19 @@ t() {
         it:wm_follow)       echo "Ricerca web: attualmente segue il modello di default." ;;
         de:wm_follow)       echo "Websuche: folgt derzeit dem Standardmodell." ;;
         *:wm_follow)        echo "Web search: currently follows the default model." ;;
+        # ---- roles console (D2): -m role ----
+        it:role_hdr)        echo "Ruoli - quale IA fa ogni lavoro   (· = segue il default):" ;;
+        de:role_hdr)        echo "Rollen - welche KI welche Aufgabe macht   (· = folgt dem Standard):" ;;
+        *:role_hdr)         echo "Roles - which AI does each job   (· = follows the default):" ;;
+        it:role_assign)     echo "Assegna:  $ASSIST_NAME -m role <ruolo> <IA | default>   (default = torna a seguire la predefinita)" ;;
+        de:role_assign)     echo "Zuweisen: $ASSIST_NAME -m role <Rolle> <KI | default>   (default = wieder dem Standard folgen)" ;;
+        *:role_assign)      echo "Assign:   $ASSIST_NAME -m role <role> <AI | default>   (default = follow the default again)" ;;
+        it:role_unknown)    echo "Ruolo sconosciuto:" ;;
+        de:role_unknown)    echo "Unbekannte Rolle:" ;;
+        *:role_unknown)     echo "Unknown role:" ;;
+        it:role_valid)      echo "Ruoli assegnabili: web · project · translate" ;;
+        de:role_valid)      echo "Zuweisbare Rollen: web · project · translate" ;;
+        *:role_valid)       echo "Assignable roles: web · project · translate" ;;
         # ---- project/coding model (v2.15; serves -p and --new since v2.18) ----
         it:pm_pick)         echo "Scegli l'IA per il codice (comandi -p e --new):" ;;
         de:pm_pick)         echo "Wähle die KI für Code (Befehle -p und --new):" ;;
@@ -1582,7 +1605,7 @@ L'essenziale:
 
 Aiuto per area — ogni help elenca TUTTI i suoi sotto-comandi:
   -a help        scorciatoie: -a <nome> esegue · add · save · rm · edit
-  -m help        le IA: list · pull · update · rm · ps · stop · <n> default
+  -m help        le IA: list · pull · update · rm · ps · stop · role · <n> default
   -p help        modifica file: più file insieme · -p --undo · --project-model
   --new help     progetto nuovo da zero: pianifica e scrive i file
   -w help        ricerca web: -w veloce · -w+ approfondita · -ws senza IA · --web-engine · --web-model
@@ -1615,7 +1638,7 @@ Das Wesentliche:
 
 Hilfe pro Bereich — jede Hilfe listet ALLE ihre Unterbefehle:
   -a help        Shortcuts: -a <Name> ausführen · add · save · rm · edit
-  -m help        die KIs: list · pull · update · rm · ps · stop · <n> Standard
+  -m help        die KIs: list · pull · update · rm · ps · stop · role · <n> Standard
   -p help        Dateien ändern: mehrere Dateien · -p --undo · --project-model
   --new help     neues Projekt von Null: plant und schreibt die Dateien
   -w help        Websuche: -w schnell · -w+ gründlich · -ws ohne KI · --web-engine · --web-model
@@ -1648,7 +1671,7 @@ The essentials:
 
 Help per area — each help lists ALL of its subcommands:
   -a help        shortcuts: -a <name> runs · add · save · rm · edit
-  -m help        the AIs: list · pull · update · rm · ps · stop · <n> default
+  -m help        the AIs: list · pull · update · rm · ps · stop · role · <n> default
   -p help        edit files: several files at once · -p --undo · --project-model
   --new help     new project from scratch: plans and writes the files
   -w help        web search: -w fast · -w+ deep · -ws no AI · --web-engine · --web-model
@@ -2046,22 +2069,22 @@ set_model() {
 model_menu() {
     # list the downloaded AIs numbered, mark the active one, and (with a real
     # terminal) let you pick one as the permanent default.
-    local list active webpin codepin trpin name i=1 choice sel tags
+    local list active name i=1 choice sel tags r rn rpf pin
     list=$(model_names)
     [ -z "$list" ] && { echo "$(t model_none)"; return; }
     active="${MODEL#ollama:}"
-    webpin="$(head -n1 "$WEBMODELFILE" 2>/dev/null)"    # explicit web pin (empty = follows default)
-    codepin="$(head -n1 "$CODEMODELFILE" 2>/dev/null)"  # explicit project pin (empty = follows default)
-    trpin="$(head -n1 "$TRANSMODELFILE" 2>/dev/null)"   # explicit translate pin (v2.18)
     echo "$(t model_avail)"
     while IFS= read -r name; do
-        # role tags: default / web / project / translate, only for EXPLICIT pins.
-        # Every role that can pin an AI must show up here, or the sheet lies.
+        # role tags: default first, then every PINNED role from the ROLES
+        # table (D2). Driven by the table, so the sheet can no longer forget
+        # a role the code knows about - the same drift D7's check-docs guards.
         tags=""
-        [ "$name" = "$active" ]  && tags="default"
-        [ "$name" = "$webpin" ]  && tags="${tags:+$tags · }web"
-        [ "$name" = "$codepin" ] && tags="${tags:+$tags · }project"
-        [ "$name" = "$trpin" ]   && tags="${tags:+$tags · }translate"
+        [ "$name" = "$active" ] && tags="default"
+        for r in "${ROLES[@]}"; do
+            IFS='|' read -r rn rpf _ _ <<< "$r"
+            pin="$(head -n1 "$rpf" 2>/dev/null)"
+            [ -n "$pin" ] && [ "$name" = "$pin" ] && tags="${tags:+$tags · }$rn"
+        done
         if [ -n "$tags" ]; then
             printf '  %d) %s   ← %s\n' "$i" "$name" "$tags"
         else
@@ -2956,6 +2979,8 @@ Comandi:
   $ASSIST_NAME -m list|ls          come sopra
   $ASSIST_NAME -m <n|nome>         imposta la predefinita (per numero o nome)
   $ASSIST_NAME -m <n|nome> <task>  usa quella IA solo per quel comando (predefinita invariata)
+  $ASSIST_NAME -m role             mostra quale IA fa ogni lavoro (default · web · project · translate)
+  $ASSIST_NAME -m role <ruolo> <IA|default>  assegna una IA a un ruolo (default = torna a seguire la predefinita)
   $ASSIST_NAME -m pull             (da solo) check hardware + lista di IA fattibili, scegli e scarica
   $ASSIST_NAME -m pull <nome>      scarica una nuova IA (es. qwen3:8b), con controllo RAM
   $ASSIST_NAME -m update [n|nome]  aggiorna le IA scaricate (tutte, o solo quella indicata)
@@ -2990,6 +3015,8 @@ Befehle:
   $ASSIST_NAME -m list|ls            wie oben
   $ASSIST_NAME -m <n|Name>           Standard setzen (per Nummer oder Name)
   $ASSIST_NAME -m <n|Name> <Aufgabe> diese KI nur für diesen Befehl nutzen (Standard bleibt)
+  $ASSIST_NAME -m role             zeigt, welche KI welche Aufgabe macht (default · web · project · translate)
+  $ASSIST_NAME -m role <Rolle> <KI|default>  eine KI einer Rolle zuweisen (default = folgt wieder dem Standard)
   $ASSIST_NAME -m pull               (allein) Hardware-Check + Liste machbarer KIs, wählen und laden
   $ASSIST_NAME -m pull <Name>        eine neue KI laden (z. B. qwen3:8b), mit RAM-Check
   $ASSIST_NAME -m update [n|Name]    geladene KIs aktualisieren (alle, oder nur die eine)
@@ -3024,6 +3051,8 @@ Commands:
   $ASSIST_NAME -m list|ls          same as above
   $ASSIST_NAME -m <n|name>         set the default (by number or name)
   $ASSIST_NAME -m <n|name> <task>  use that AI for this command only (default unchanged)
+  $ASSIST_NAME -m role             show which AI does each job (default · web · project · translate)
+  $ASSIST_NAME -m role <role> <AI|default>   pin an AI to a role (default = follow the default again)
   $ASSIST_NAME -m pull             (alone) hardware check + list of feasible AIs, pick and download
   $ASSIST_NAME -m pull <name>      download a new AI (e.g. qwen3:8b), with a RAM check
   $ASSIST_NAME -m update [n|name]  refresh the downloaded AIs (all, or just that one)
@@ -4884,35 +4913,109 @@ web_target() {
     printf '%s' "${MODEL#ollama:}"
 }
 
-web_model_menu() {
-    local list n i=0 choice sel
+# ============================================================
+#  Roles (D2): which AI can be PINNED to a job. One row per role:
+#      role | pinfile | msg-prefix | help-page | flags-it-serves
+#  The msg-prefix keeps each role's existing wording (wm_/pm_/tm_), so the
+#  generic body below prints byte-for-byte what the old per-role commands did.
+#  Adding a role = adding a ROW here (plus, for the standard long flag, a
+#  three-line alias wrapper). No new menu, no new cmd, no new sheet code.
+# ============================================================
+ROLES=(
+    "web|$WEBMODELFILE|wm|web_help|-w  -w+"
+    "project|$CODEMODELFILE|pm|project_help|-p  --new"
+    "translate|$TRANSMODELFILE|tm|translate_help|-T"
+)
+
+# role_field <role> <2|3|4|5> -> pinfile | prefix | help | flags  (1/def = role)
+role_field() {
+    local r rn pf px hp fl
+    for r in "${ROLES[@]}"; do
+        IFS='|' read -r rn pf px hp fl <<< "$r"
+        [ "$rn" = "$1" ] || continue
+        case "$2" in 2) printf '%s' "$pf" ;; 3) printf '%s' "$px" ;;
+                     4) printf '%s' "$hp" ;; 5) printf '%s' "$fl" ;;
+                     *) printf '%s' "$rn" ;; esac
+        return 0
+    done
+    return 1
+}
+
+# role_model_menu <role>: numbered pick, 0 = follow the default. Same body the
+# old web/project/translate menus shared, driven by the role's fields.
+role_model_menu() {
+    local role="$1" pf px list n i=0 choice sel
+    pf="$(role_field "$role" 2)"; px="$(role_field "$role" 3)"
     list="$(model_names)"; [ -z "$list" ] && return 0
-    echo "$(t wm_pick)"
+    echo "$(t "${px}_pick")"
     while IFS= read -r n; do i=$((i+1)); printf "  %d) %s\n" "$i" "$n"; done <<< "$list"
     printf "  0) %s\n" "$(t wm_followopt)"
     read -r -p "$(t wm_choose) " choice < /dev/tty || return 0
     [ -z "$choice" ] && return 0
-    if [ "$choice" = "0" ]; then rm -f "$WEBMODELFILE"; echo -e "${GREEN}$(t wm_default)${NC}"; return 0; fi
+    if [ "$choice" = "0" ]; then rm -f "$pf"; echo -e "${GREEN}$(t "${px}_default")${NC}"; return 0; fi
     sel=$(model_resolve "$choice") || { echo -e "${RED}$(t model_badsel)${NC}" >&2; return 1; }
-    mkdir -p "$(dirname "$WEBMODELFILE")"; printf '%s\n' "$sel" > "$WEBMODELFILE"
-    echo -e "${GREEN}$(t wm_set) $sel${NC}"; show_equiv "echo '$sel' > ${WEBMODELFILE/#$HOME/\~}"
+    mkdir -p "$(dirname "$pf")"; printf '%s\n' "$sel" > "$pf"
+    echo -e "${GREEN}$(t "${px}_set") $sel${NC}"; show_equiv "echo '$sel' > ${pf/#$HOME/\~}"
 }
-web_model_cmd() {
-    local cur sel
+
+# role_model_cmd <role> [arg]: the generic body behind --web-model,
+# --project-model and --translate-model (and, later, `-m role <role> ...`).
+role_model_cmd() {
+    local role="$1"; shift
+    local pf px hp cur sel
+    pf="$(role_field "$role" 2)"; px="$(role_field "$role" 3)"; hp="$(role_field "$role" 4)"
     case "${1:-}" in
-        help|-h|--help) page web_help ;;
+        help|-h|--help) page "$hp" ;;
         ""|show|list)
-            cur="$(head -n1 "$WEBMODELFILE" 2>/dev/null)"
-            if [ -n "$cur" ]; then echo -e "$(t wm_current) ${GREEN}$cur${NC}"; else echo -e "$(t wm_follow)"; fi
-            web_model_menu ;;
+            cur="$(head -n1 "$pf" 2>/dev/null)"
+            if [ -n "$cur" ]; then echo -e "$(t "${px}_current") ${GREEN}$cur${NC}"; else echo -e "$(t "${px}_follow")"; fi
+            role_model_menu "$role" ;;
         default|-d|none|off|clear|reset)
-            rm -f "$WEBMODELFILE"; echo -e "${GREEN}$(t wm_default)${NC}"; show_equiv "rm ${WEBMODELFILE/#$HOME/\~}" ;;
+            rm -f "$pf"; echo -e "${GREEN}$(t "${px}_default")${NC}"; show_equiv "rm ${pf/#$HOME/\~}" ;;
         *)
             sel=$(model_resolve "$1") || { echo -e "${RED}$(t model_badsel)${NC}" >&2; exit 1; }
-            mkdir -p "$(dirname "$WEBMODELFILE")"; printf '%s\n' "$sel" > "$WEBMODELFILE"
-            echo -e "${GREEN}$(t wm_set) $sel${NC}"; show_equiv "echo '$sel' > ${WEBMODELFILE/#$HOME/\~}" ;;
+            mkdir -p "$(dirname "$pf")"; printf '%s\n' "$sel" > "$pf"
+            echo -e "${GREEN}$(t "${px}_set") $sel${NC}"; show_equiv "echo '$sel' > ${pf/#$HOME/\~}" ;;
     esac
 }
+# role_list: the console (D2) - who holds each job. Read-only, scriptable.
+# Reads the ROLES table, so a new role shows up here with zero extra code.
+role_list() {
+    local def r rn rpf px hp fl pin who
+    def="${MODEL#ollama:}"
+    echo "$(t role_hdr)"
+    printf '  %-11s %-24s %s\n' default "$def" "-m <n>"
+    for r in "${ROLES[@]}"; do
+        IFS='|' read -r rn rpf px hp fl <<< "$r"
+        pin="$(head -n1 "$rpf" 2>/dev/null)"
+        [ -n "$pin" ] && who="$pin" || who="·"
+        printf '  %-11s %-24s %s\n' "$rn" "$who" "$fl"
+    done
+    echo
+    echo "$(t role_assign)"
+}
+
+# role_cmd [args]: the `-m role` subconsole (D2). Bare = list the table;
+# <role> <AI|default> = assign; <role> alone = show it + pick menu; help.
+role_cmd() {
+    case "${1:-}" in
+        ""|list|ls)     role_list ;;
+        help|-h|--help) page model_help ;;
+        *)
+            local role="$1"; shift
+            if ! role_field "$role" >/dev/null 2>&1; then
+                echo -e "${RED}$(t role_unknown) $role${NC}" >&2
+                echo "$(t role_valid)" >&2
+                exit 1
+            fi
+            role_model_cmd "$role" "$@"
+            ;;
+    esac
+}
+
+# Public entry points (kept: the dispatch and the old flags call these).
+# Each is a thin alias over the generic body above.
+web_model_cmd() { role_model_cmd web "$@"; }
 
 # which AI runs -p (projects/coding):  pinned project model  >  default
 project_target() {
@@ -4921,35 +5024,7 @@ project_target() {
     printf '%s' "${MODEL#ollama:}"
 }
 
-project_model_menu() {
-    local list n i=0 choice sel
-    list="$(model_names)"; [ -z "$list" ] && return 0
-    echo "$(t pm_pick)"
-    while IFS= read -r n; do i=$((i+1)); printf "  %d) %s\n" "$i" "$n"; done <<< "$list"
-    printf "  0) %s\n" "$(t wm_followopt)"
-    read -r -p "$(t wm_choose) " choice < /dev/tty || return 0
-    [ -z "$choice" ] && return 0
-    if [ "$choice" = "0" ]; then rm -f "$CODEMODELFILE"; echo -e "${GREEN}$(t pm_default)${NC}"; return 0; fi
-    sel=$(model_resolve "$choice") || { echo -e "${RED}$(t model_badsel)${NC}" >&2; return 1; }
-    mkdir -p "$(dirname "$CODEMODELFILE")"; printf '%s\n' "$sel" > "$CODEMODELFILE"
-    echo -e "${GREEN}$(t pm_set) $sel${NC}"; show_equiv "echo '$sel' > ${CODEMODELFILE/#$HOME/\~}"
-}
-project_model_cmd() {
-    local cur sel
-    case "${1:-}" in
-        help|-h|--help) page project_help ;;
-        ""|show|list)
-            cur="$(head -n1 "$CODEMODELFILE" 2>/dev/null)"
-            if [ -n "$cur" ]; then echo -e "$(t pm_current) ${GREEN}$cur${NC}"; else echo -e "$(t pm_follow)"; fi
-            project_model_menu ;;
-        default|-d|none|off|clear|reset)
-            rm -f "$CODEMODELFILE"; echo -e "${GREEN}$(t pm_default)${NC}"; show_equiv "rm ${CODEMODELFILE/#$HOME/\~}" ;;
-        *)
-            sel=$(model_resolve "$1") || { echo -e "${RED}$(t model_badsel)${NC}" >&2; exit 1; }
-            mkdir -p "$(dirname "$CODEMODELFILE")"; printf '%s\n' "$sel" > "$CODEMODELFILE"
-            echo -e "${GREEN}$(t pm_set) $sel${NC}"; show_equiv "echo '$sel' > ${CODEMODELFILE/#$HOME/\~}" ;;
-    esac
-}
+project_model_cmd() { role_model_cmd project "$@"; }
 
 # which AI runs -T (translations):  one-off -m  >  pinned  >  default
 translate_target() {
@@ -4959,35 +5034,7 @@ translate_target() {
     printf '%s' "${MODEL#ollama:}"
 }
 
-translate_model_menu() {
-    local list n i=0 choice sel
-    list="$(model_names)"; [ -z "$list" ] && return 0
-    echo "$(t tm_pick)"
-    while IFS= read -r n; do i=$((i+1)); printf "  %d) %s\n" "$i" "$n"; done <<< "$list"
-    printf "  0) %s\n" "$(t wm_followopt)"
-    read -r -p "$(t wm_choose) " choice < /dev/tty || return 0
-    [ -z "$choice" ] && return 0
-    if [ "$choice" = "0" ]; then rm -f "$TRANSMODELFILE"; echo -e "${GREEN}$(t tm_default)${NC}"; return 0; fi
-    sel=$(model_resolve "$choice") || { echo -e "${RED}$(t model_badsel)${NC}" >&2; return 1; }
-    mkdir -p "$(dirname "$TRANSMODELFILE")"; printf '%s\n' "$sel" > "$TRANSMODELFILE"
-    echo -e "${GREEN}$(t tm_set) $sel${NC}"; show_equiv "echo '$sel' > ${TRANSMODELFILE/#$HOME/\~}"
-}
-translate_model_cmd() {
-    local cur sel
-    case "${1:-}" in
-        help|-h|--help) page translate_help ;;
-        ""|show|list)
-            cur="$(head -n1 "$TRANSMODELFILE" 2>/dev/null)"
-            if [ -n "$cur" ]; then echo -e "$(t tm_current) ${GREEN}$cur${NC}"; else echo -e "$(t tm_follow)"; fi
-            translate_model_menu ;;
-        default|-d|none|off|clear|reset)
-            rm -f "$TRANSMODELFILE"; echo -e "${GREEN}$(t tm_default)${NC}"; show_equiv "rm ${TRANSMODELFILE/#$HOME/\~}" ;;
-        *)
-            sel=$(model_resolve "$1") || { echo -e "${RED}$(t model_badsel)${NC}" >&2; exit 1; }
-            mkdir -p "$(dirname "$TRANSMODELFILE")"; printf '%s\n' "$sel" > "$TRANSMODELFILE"
-            echo -e "${GREEN}$(t tm_set) $sel${NC}"; show_equiv "echo '$sel' > ${TRANSMODELFILE/#$HOME/\~}" ;;
-    esac
-}
+translate_model_cmd() { role_model_cmd translate "$@"; }
 
 # web_take_prefix <query...>: an "engine:" prefix picks the engine for THIS
 # search only ("-w bing: query" or "-w bing:query"); --web-engine sets the
@@ -5832,6 +5879,7 @@ case "$1" in
                             if [ -n "${1:-}" ]; then model_pull "$1"; else model_pull_menu; fi ;;
             update)         shift; model_update "${1:-}" ;;
             rm)             shift; model_rm "${1:-}" ;;
+            role|roles)     shift; role_cmd "$@" ;;   # D2: see/assign the AI roles
             *)
                 sel=$(model_resolve "$1") || { echo -e "${RED}$(t model_badsel)${NC}" >&2; exit 1; }
                 shift

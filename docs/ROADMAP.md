@@ -137,6 +137,19 @@ Constraints that must survive:
 - Whatever the shape, adding role #5 must not mean touching five surfaces
   again. If it does, the refactor missed the point.
 
+**Landed 2026-07-17 (v2.18.4, tag pending)** — `-m role` is the console: bare
+lists who holds each job, `-m role <role> <AI|default>` assigns (the grammar
+of `git remote` bare-lists + `git config` key-value), `roles` is a silent
+alias. The old `--web-model` / `--project-model` / `--translate-model` still
+work — they, the console AND the `-m` sheet's role tags now all read ONE table
+(`ROLES`). The three near-identical `*_model_cmd` / `*_model_menu` triplets
+collapsed into one generic body, output verified **byte-identical** (12 cases,
+old vs new). Adding role #5 = one row in `ROLES` (+ a three-line alias for the
+long flag); check-docs (D7) guards README/commands.html/completions. The "five
+surfaces" is now one. Still open: fold the tripled `wm_`/`pm_`/`tm_` message
+strings (×3 languages) into one role-parametric set — a text change, kept out
+of this pass so it stayed a byte-identical refactor.
+
 ### D3. Phase 5 — Btrfs snapshots, branding, polish (and what we claim about it)
 
 The site's Status table says phase 5 is "⏳ in progress". It is not: nothing

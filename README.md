@@ -340,6 +340,7 @@ glia -m pull                           # guided download: hardware check + the A
 glia -m update                         # refresh the downloaded models (only fetches new versions)
 glia -m ps                             # which model is loaded in RAM right now (= ollama ps)
 glia -m stop <n|name>                  # unload a model from RAM immediately (= ollama stop)
+glia -m role                           # who does what (default/web/project/translate); assign: glia -m role <role> <AI|default>
 glia --update                          # update GLIA itself, from your channel (glia --update help: full guide)
 glia --update --check                  # is there a new version? ask only, install nothing
 glia --rollback                        # go back to a previously installed version

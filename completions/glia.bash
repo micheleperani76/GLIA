@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ============================================================
 #  glia.bash - Bash completion for the glia AI assistant
-#  Version: 1.4 - 2026-07-16 (-p now edits files -> completes paths; adds --new/-n)
+#  Version: 1.5 - 2026-07-17 (adds `-m role` roles console: roles + assignees)
 #  Author: Michele (with Claude)
 #  Project: GLIA (GNU Linux IA)
 #
@@ -53,7 +53,19 @@ _glia() {
             COMPREPLY=( $(compgen -W "default show help $(_glia_model_names)" -- "$cur") )
             return ;;
         -m|--model)
-            COMPREPLY=( $(compgen -W "help list ls ps stop pull update rm $(_glia_model_names)" -- "$cur") )
+            COMPREPLY=( $(compgen -W "help list ls ps stop pull update rm role $(_glia_model_names)" -- "$cur") )
+            return ;;
+        role|roles)
+            # -m role <role>: the pinnable roles (D2)
+            case "${COMP_WORDS[COMP_CWORD-2]}" in
+                -m|--model) COMPREPLY=( $(compgen -W "web project translate" -- "$cur") ) ;;
+            esac
+            return ;;
+        web|project|translate)
+            # -m role <role> <AI|default>: a downloaded model, or "default"
+            case "${COMP_WORDS[COMP_CWORD-2]}" in
+                role|roles) COMPREPLY=( $(compgen -W "default $(_glia_model_names)" -- "$cur") ) ;;
+            esac
             return ;;
         -U|--update)
             # bare --update updates GLIA itself; --check asks only.

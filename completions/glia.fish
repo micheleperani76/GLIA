@@ -1,6 +1,6 @@
 # ============================================================
 #  glia.fish - Fish completion for the glia AI assistant
-#  Version: 1.4 - 2026-07-17 (adds -w+ deep web search to first-position flags)
+#  Version: 1.5 - 2026-07-17 (adds `-m role` roles console: roles + assignees)
 #  Author: Michele (with Claude)
 #  Project: GLIA (GNU Linux IA)
 #
@@ -76,8 +76,13 @@ complete -c glia -n __glia_first -a '--lang'      -d 'interface language'
 
 # ------------------- sub-actions -------------------
 # after -m / --model
-complete -c glia -n 'contains -- (__glia_prev) -m --model' -a 'help list ls ps stop pull update rm'
+complete -c glia -n 'contains -- (__glia_prev) -m --model' -a 'help list ls ps stop pull update rm role'
 complete -c glia -n 'contains -- (__glia_prev) -m --model' -a '(__glia_models)'
+
+# -m role <role> (D2): the pinnable roles, then a model or "default"
+complete -c glia -n 'contains -- (__glia_prev) role roles; and contains -- (__glia_prev2) -m --model' -a 'web project translate'
+complete -c glia -n 'contains -- (__glia_prev2) role roles' -a 'default'
+complete -c glia -n 'contains -- (__glia_prev2) role roles' -a '(__glia_models)'
 
 # -m update <model> · -m rm <model> · -m stop <model>
 complete -c glia -n 'contains -- (__glia_prev2) -m --model; and contains -- (__glia_prev) update rm stop' -a '(__glia_models)'
