@@ -1,11 +1,28 @@
 # GLIA Roadmap
 
-Updated: 2026-07-16
+Updated: 2026-07-17
 
 Where things are heading: **[Direction — the next moves](#direction-the-next-moves-noted-2026-07-16)**
-(shared Ollama · one console for the AIs · phase 5 · the teaching audit ·
-configurable safety · the GPU nobody uses, with real numbers · check-docs
-against drift). Below that, the running TODO list.
+— written 2026-07-16 as five threads, then D6 and D7 were added to it the same
+night. Of the seven: **five landed, one dropped on purpose, one is half done**
+(and says so):
+
+| | thread | outcome |
+|---|---|---|
+| D1 | shared Ollama (`--engine`) | **dropped 2026-07-17** — costs the half of GLIA that measures your machine, buys the half that worked anyway |
+| D2 | one console for the AIs | landed v2.18.5 · tail (one parametric message set) v2.19.1 |
+| D3 | phase 5 + what we claim about it | landed 2026-07-17 — marked honestly **not started**; logo regenerated |
+| D4 | does every command teach? | audit half landed v2.18.9 · **open:** reading someone else's error |
+| D5 | configurable safety | landed v2.19.0 (`--danger`) |
+| D6 | the GPU nobody uses | landed v2.18.6 (`--doctor`) + v2.18.7 (`-m bench`) |
+| D7 | check-docs against drift | landed v2.18.4 |
+
+Still open, and worth writing down before the enthusiasm returns: **D4's other
+half** (explaining the errors where the popular workaround is worse than the
+problem — mirror 404, stale keyring, partial upgrade), the **`OLLAMA_HOST`
+silence** (see D1), and **phase 5 itself** (Btrfs snapshots), which is now
+honestly labelled rather than quietly "in progress". Below all that, the
+running TODO list.
 
 ## Assistant intelligence mechanisms
 
@@ -78,7 +95,9 @@ Implemented in glia v1.6:
 ## Direction: the next moves (noted 2026-07-16)
 
 Five threads to open, in no particular order. Written down before they are
-built, so the reasons survive the enthusiasm.
+built, so the reasons survive the enthusiasm. (D6 and D7 were appended to the
+list the same night, which makes seven — the count above is the honest one.
+Each thread carries its own outcome note at the end of its section.)
 
 ### D1. A shared Ollama — use an AI that lives on another machine
 
@@ -115,6 +134,62 @@ with the whole hardware/RAM/rotation layer switching off and saying so, rather
 than pretending to measure a computer it cannot see. Doctor should report
 which engine it is talking to, and refuse to give RAM advice about a machine
 that isn't there.
+
+---
+
+### **DECIDED 2026-07-17: DROPPED.** A shared Ollama is not a road GLIA takes.
+
+Not "postponed" — decided against, so it stops being re-opened every time the
+idea sounds clever again. The reasons, in the order they matter:
+
+**1. The hardware layer isn't a satellite, it's half the product.** The list
+above ("the hardware logic becomes a lie") reads like a chore list. It isn't:
+`glia-hardware`, the tier table, the guided `-m pull`, the RAM line in
+`--doctor`, `-m bench`, the D6a GPU check — that IS what GLIA does that a bare
+`ollama run` doesn't. Against a remote engine every one of them either switches
+off or lies about the wrong computer. What survives — propose, confirm, explain,
+teach, `--danger`, memory, aliases, `-w`/`-p`/`-T` — survives *unchanged*, which
+is the tell: D1 costs the half of GLIA that measures your machine and buys the
+half that would have worked anyway.
+
+**2. The estimate was stale, and got staler the same day it was written.**
+"`OLLAMA_URL` is one variable, 17 uses, the plumbing is nearly free" — it is
+**20** uses now, and the three added on 2026-07-17 are the worst kind: `-m bench`
+(D6b) writes `/etc/systemd/system/ollama.service.d/` and runs `systemctl restart
+ollama`, and the D6a GPU check reads `/usr/lib/ollama` and `lspci`. Against a
+remote engine `-m bench` doesn't merely measure the wrong box — it tries to
+restart a service that isn't there. The list of local assumptions in this
+section was already incomplete hours after being written, which is itself the
+argument: the local engine isn't a variable, it's a premise, and premises don't
+have call sites you can count.
+
+**3. `--engine <url>` was the wrong shape anyway.** Ollama already has the
+standard variable — `OLLAMA_HOST` — and this project's own rule, written in D2
+above, is that *we never invent bespoke syntax when a standard one exists*. Any
+version of D1 worth shipping would have honoured `OLLAMA_HOST`, not invented a
+flag beside it.
+
+**4. Nobody here needs it.** The pitch is "a weak laptop drives a 30B on the
+beefy machine in the other room". The machines this is built on are an XPS17
+with 31 GB and a Debian server that is *not* bigger. A feature for a user we
+don't have, costing the half of the product we do have.
+
+**The claim on the home page stands, unchanged.** "No cloud, nothing leaves your
+machine" needed rewording only if we shipped this. We didn't, so it stays true —
+and that is a feature, not a technicality: it is the one sentence that says what
+GLIA is.
+
+**One residue, and it survives INVERTED.** GLIA ignores `OLLAMA_HOST` silently
+(0 occurrences, `OLLAMA_URL` is hardcoded to localhost). For anyone who has that
+variable exported — exactly the people who own a server — `ollama list` and
+`glia -m` answer differently in the same shell, and neither says why. Deciding
+against remote engines makes that silence *worse*, not better: if GLIA is a
+local-engine program by design, it should SAY so when it finds a variable
+claiming otherwise, not quietly disagree with `ollama list` under the user's
+nose. Same class as `-V` announcing "up to date" from four-hour-old facts
+(fixed in v2.18.8). Open, small, and not about supporting remote at all:
+a `--doctor` line — *"OLLAMA_HOST points at X: GLIA only works with the local
+engine and is ignoring it."*
 
 ### D2. One console for the AIs — refactor `-m` and its satellites
 
