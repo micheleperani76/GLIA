@@ -335,6 +335,7 @@ glia --memory                          # list stored facts (glia --forget <n> de
 glia --lang it                         # switch the interface language: it / en / de
 glia --clear-cache                     # empty the command cache
 glia -l                                # log of executed commands
+glia --danger                          # the danger rules, numbered: built-in + yours (add '<regex>' · rm <n> · test '<cmd>')
 glia --doctor                          # one-shot health check (engine, model, RAM, config)
 glia -m pull                           # guided download: hardware check + the AI models that FIT this machine
 glia -m update                         # refresh the downloaded models (only fetches new versions)

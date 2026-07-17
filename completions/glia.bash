@@ -66,6 +66,10 @@ _glia() {
             [ "${COMP_WORDS[COMP_CWORD-2]}" = "-m" ] || [ "${COMP_WORDS[COMP_CWORD-2]}" = "--model" ] \
                 && COMPREPLY=( $(compgen -W "--dry-run" -- "$cur") )
             return ;;
+        --danger)
+            # --danger [list|add|rm|test|help]: a regex/command is free text
+            COMPREPLY=( $(compgen -W "list add rm test help" -- "$cur") )
+            return ;;
         -U|--update)
             # bare --update updates GLIA itself; --check asks only.
             # 'glia' and 'ollama' stay as hidden aliases (not offered here).

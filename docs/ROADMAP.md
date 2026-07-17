@@ -240,6 +240,39 @@ self-explanation (mechanism 5 above) should work for user patterns too — a
 custom rule that just says "are you sure?" without explaining is a lesser
 tool than the ones we ship.
 
+**Landed 2026-07-17 (v2.19.0, tag pending)** — `--danger`, and the three open
+questions above are answered:
+
+- **Config file or `--danger add`? Both, and they are the same thing.** The
+  file IS the storage (`~/.config/glia/danger`, plain text, one ERE per line,
+  `#` comments) and the command is the door — exactly the shape `--remember`,
+  `-a add` and `--lang` already have. You can `cat` it, edit it, put it in your
+  dotfiles; nothing is hidden in a format only we can read.
+- **Extend or replace? Extend, only.** The built-ins are the floor.
+- **Can a built-in be disabled? No** — like `RENAME_FORBIDDEN`. `--danger rm
+  <n>` on a built-in is refused, and it says WHY: the rule only asks for one
+  more keypress, and the risk it covers is your disk. A locked door with a sign
+  on it, not a blank wall. The numbering is shared across the whole list
+  (built-in first, yours after), the way `-m` and `-m role` share theirs.
+
+The self-explanation needed **no work at all** to cover custom rules — it
+explains the COMMAND, not the rule, so it was already right. Two guards the
+ask didn't mention but the code needed: a regex is validated **at the door**
+(a broken one would be fed to grep on every single command while guarding
+nothing), and one that fires on `ls` gets a warning before it's accepted — a
+rule that always fires doesn't protect, it teaches you to confirm without
+reading, which is the exact habit the confirm word exists to prevent.
+
+**And `--danger test` earned its place on day one**: its first real run showed
+`terraform destroy -auto-approve` tripping a BUILT-IN rule. Not a bug in the
+new code — `rm .*-[a-zA-Z]*[rf]` was unanchored, so it matched the "rm" inside
+*terrafo**rm***, and `confi**rm** -xf` too. It has been doing that in shipped
+GLIA for a long time, fails closed (a spurious warning, not a missed one) and
+so nobody noticed. Fixed here to `\brm\b`, verified to still catch every real
+case (`rm -rf`, `sudo rm -rf`, `rm -r`, `rm -f`, `rm --recursive`). Same story
+as check-docs finding six drifts on ITS first run: a tool that catches a real
+bug the day it ships is the argument for the tool.
+
 ### D6. The GPU nobody uses — backend packages, and telling who should care
 
 **Measured on 2026-07-17**, not guessed. Dell XPS17, i7 TigerLake-H, Intel UHD

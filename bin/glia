@@ -1,12 +1,38 @@
 #!/usr/bin/env bash
 # ============================================================
 #  glia - AI terminal assistant (Ollama + aichat)
-#  Version: 2.18.9 - 2026-07-17
+#  Version: 2.19.0 - 2026-07-17
 #  Author: Michele (with Claude)
 #  Project: GLIA (GNU Linux IA)
 #
 #  Design pillar: commands follow standard terminal conventions, so
 #  what you learn here you can reuse in other programs (and vice versa).
+#
+#  What's new in v2.19 ("your machine, your dangers"):
+#   - v2.19.0: `--danger` (D5) - the safety rules stop being only ours. The
+#     built-in patterns cover the classics (rm -rf, dd, mkfs, curl|sh), but
+#     they are OUR defaults on YOUR machine: a deploy script, `terraform
+#     destroy`, a `kubectl delete` against prod are dangers we cannot know.
+#     Now you add them: `--danger` lists every rule numbered (built-in first,
+#     yours after), `--danger add '<regex>'`, `--danger rm <n>` for your own,
+#     and `--danger test '<cmd>'` - the dry-run of safety: it says whether a
+#     rule would fire and WHICH, running nothing. Yours are ADDED to the
+#     built-ins, never instead: the built-ins don't come off, like
+#     RENAME_FORBIDDEN, because the cost is one keypress and the risk is your
+#     disk - and refusing says WHY, which is the difference between a locked
+#     door and a blank wall. The danger explanation needed no work to cover
+#     custom rules: it explains the COMMAND, not the rule. A regex is
+#     validated at the door (a broken one would be checked on every command
+#     while guarding nothing) and one that fires on `ls` is warned about: a
+#     rule that always fires teaches you to confirm without reading.
+#     File: ~/.config/glia/danger, plain text, one ERE per line.
+#   - v2.19.0: a built-in rule stops crying wolf - `rm .*-[a-zA-Z]*[rf]` was
+#     unanchored, so it fired on `terrafo(rm) destroy -auto-approve` and
+#     `confi(rm) -xf`. `\brm\b` catches every real case (rm -rf, sudo rm -rf,
+#     rm -r, rm -f, rm --recursive) and no innocents. Found by `--danger
+#     test` on its first run - the same way check-docs (D7) found six drifts
+#     on its first run. A tool that finds a real bug the day it ships is the
+#     argument for the tool.
 #
 #  What's new in v2.18 ("-p edits, --new creates, -T translates"):
 #   - v2.18.4: `make check-docs` (D7) - the parser in bin/glia is the source
@@ -440,6 +466,7 @@
 #    glia --memory         list stored facts
 #    glia --forget <n>     delete fact number n
 #    glia --clear-cache    empty the command cache
+#    glia --danger         your extra danger rules (list/add/rm/test)
 #    glia --doctor         one-shot health check (engine, model, RAM, config)
 #    glia -m pull [name]   download a new AI model (alone: guided menu; update/rm)
 #    glia --update         update GLIA itself, from the chosen channel (-U)
@@ -455,7 +482,7 @@
 # ============================================================
 
 # ----------------- CONFIGURATION -----------------
-VERSION="2.18.9"
+VERSION="2.19.0"
 DEFAULT_MODEL="qwen2.5-coder:7b"
 # -m bench (D6b): CPU vs iGPU on THIS machine, config up top on purpose.
 BENCH_OVERRIDE_DIR="/etc/systemd/system/ollama.service.d"
@@ -579,6 +606,7 @@ RC_CHECK_KEY="update-check"                                             # cache 
 # Aliases (v2.0): user shortcuts, one per line
 #   name<TAB>type<TAB>request<TAB>command   (type = run | ask)
 ALIASFILE="$HOME/.config/glia/aliases"
+DANGERFILE="$HOME/.config/glia/danger"           # D5: YOUR extra danger patterns, one ERE per line (# = comment)
 
 # Save-last / repeat proposal (v2.2)
 LASTFILE="$LOGDIR/last"        # last successful command   request<TAB>command
@@ -609,8 +637,18 @@ PROJBASE_SHOW="${PROJBASE/#$HOME/\~}"   # short form for help/messages
 # NOTE (v2.7): plain 'sudo' is NOT in this list anymore - auto-sudo (v1.8)
 # made every routine install/systemctl trip the heavy warning. Destructive
 # actions are matched by what they DO, with or without sudo in front.
+# D5 (v2.19.0): this list is the FLOOR, not the whole story. It is ours, on
+# your machine; your own dangers (a deploy script, terraform destroy, kubectl
+# delete against prod) live in $DANGERFILE and are ADDED to these, never
+# instead of them - see `--danger`. These built-ins do not bend, for the same
+# reason RENAME_FORBIDDEN doesn't: a seatbelt you can unbolt is decoration.
 EXTRA_CONFIRM_PATTERNS=(
-    'rm .*-[a-zA-Z]*[rf]'
+    # \brm\b, not plain 'rm': unanchored, this fired on terrafo(rm) destroy
+    # -auto-approve and confi(rm) -xf. Found by `--danger test` on its first
+    # run, v2.19.0. The anchored form still catches every real case (rm -rf,
+    # sudo rm -rf, rm -r, rm -f, rm --recursive) and stops crying wolf - a
+    # warning that fires on innocent commands is how people learn to ignore it.
+    '\brm\b .*-[a-zA-Z]*[rf]'
     '\bdd\b'
     '\bmkfs'
     '\bshred\b'
@@ -1172,6 +1210,78 @@ t() {
         it:equiv)           echo "equivale a:" ;;
         de:equiv)           echo "entspricht:" ;;
         *:equiv)            echo "same as:" ;;
+        it:dg_builtin_title) echo "Regole di serie (non si tolgono):" ;;
+        de:dg_builtin_title) echo "Eingebaute Regeln (nicht entfernbar):" ;;
+        *:dg_builtin_title)  echo "Built-in rules (cannot be removed):" ;;
+        it:dg_user_title)   echo "Le tue regole -" ;;
+        de:dg_user_title)   echo "Deine Regeln -" ;;
+        *:dg_user_title)    echo "Your rules -" ;;
+        it:dg_user_none)    echo "(nessuna: aggiungine con --danger add '<regex>')" ;;
+        de:dg_user_none)    echo "(keine: mit --danger add '<regex>' hinzufuegen)" ;;
+        *:dg_user_none)     echo "(none yet: add one with --danger add '<regex>')" ;;
+        it:dg_broken)       echo "regex non valida: non protegge nulla, correggila o rimuovila" ;;
+        de:dg_broken)       echo "ungueltige Regex: schuetzt nichts, korrigieren oder entfernen" ;;
+        *:dg_broken)        echo "invalid regex: guards nothing, fix it or remove it" ;;
+        it:dg_hint)         echo "Prova una regola senza rischiare niente:  --danger test '<comando>'" ;;
+        de:dg_hint)         echo "Eine Regel gefahrlos testen:  --danger test '<Befehl>'" ;;
+        *:dg_hint)          echo "Try a rule without risking anything:  --danger test '<command>'" ;;
+        it:dg_usage)        echo "Uso: --danger [list] | add '<regex>' | rm <n> | test '<comando>' | help" ;;
+        de:dg_usage)        echo "Verwendung: --danger [list] | add '<Regex>' | rm <n> | test '<Befehl>' | help" ;;
+        *:dg_usage)         echo "Usage: --danger [list] | add '<regex>' | rm <n> | test '<command>' | help" ;;
+        it:dg_add_usage)    echo "Uso: --danger add '<regex>'   (es: --danger add 'terraform .*destroy')" ;;
+        de:dg_add_usage)    echo "Verwendung: --danger add '<Regex>'   (z. B.: --danger add 'terraform .*destroy')" ;;
+        *:dg_add_usage)     echo "Usage: --danger add '<regex>'   (e.g.: --danger add 'terraform .*destroy')" ;;
+        it:dg_bad_regex)    echo "regex non valida, non l'ho aggiunta (verrebbe controllata a ogni comando):" ;;
+        de:dg_bad_regex)    echo "ungueltige Regex, nicht hinzugefuegt (sie wuerde bei jedem Befehl geprueft):" ;;
+        *:dg_bad_regex)     echo "invalid regex, not added (it would be checked on every command):" ;;
+        it:dg_too_broad)    echo "Attenzione: questa regola scatta anche su comandi innocui come 'ls'. Una regola che scatta sempre non protegge: insegna a confermare senza leggere." ;;
+        de:dg_too_broad)    echo "Achtung: diese Regel greift auch bei harmlosen Befehlen wie 'ls'. Eine Regel, die immer greift, schuetzt nicht: sie lehrt, ungelesen zu bestaetigen." ;;
+        *:dg_too_broad)     echo "Careful: this rule fires even on harmless commands like 'ls'. A rule that always fires doesn't protect: it teaches you to confirm without reading." ;;
+        it:dg_too_broad_ask) echo "Aggiungerla lo stesso? $YES_KEY = sì | Invio o n = annulla: " ;;
+        de:dg_too_broad_ask) echo "Trotzdem hinzufuegen? $YES_KEY = ja | Enter oder n = abbrechen: " ;;
+        *:dg_too_broad_ask)  echo "Add it anyway? $YES_KEY = yes | Enter or n = cancel: " ;;
+        it:dg_dup)          echo "regola già presente:" ;;
+        de:dg_dup)          echo "Regel bereits vorhanden:" ;;
+        *:dg_dup)           echo "rule already there:" ;;
+        it:dg_added)        echo "Regola aggiunta:" ;;
+        de:dg_added)        echo "Regel hinzugefuegt:" ;;
+        *:dg_added)         echo "Rule added:" ;;
+        it:dg_removed)      echo "Regola rimossa:" ;;
+        de:dg_removed)      echo "Regel entfernt:" ;;
+        *:dg_removed)       echo "Rule removed:" ;;
+        it:dg_rm_usage)     echo "Uso: --danger rm <n>   (il numero lo vedi con --danger)" ;;
+        de:dg_rm_usage)     echo "Verwendung: --danger rm <n>   (Nummer siehe --danger)" ;;
+        *:dg_rm_usage)      echo "Usage: --danger rm <n>   (--danger shows the numbers)" ;;
+        it:dg_rm_range)     echo "numero fuori intervallo:" ;;
+        de:dg_rm_range)     echo "Nummer ausserhalb des Bereichs:" ;;
+        *:dg_rm_range)      echo "number out of range:" ;;
+        it:dg_rm_builtin)   echo "questa è una regola di serie e non si toglie:" ;;
+        de:dg_rm_builtin)   echo "das ist eine eingebaute Regel und wird nicht entfernt:" ;;
+        *:dg_rm_builtin)    echo "that is a built-in rule and does not come off:" ;;
+        it:dg_rm_builtin_why) echo "chiede solo una conferma in più, non blocca niente: il costo è un tasto, il rischio che copre è il disco. Puoi aggiungere le tue regole, non togliere queste." ;;
+        de:dg_rm_builtin_why) echo "sie verlangt nur eine zusaetzliche Bestaetigung, blockiert nichts: Kosten eine Taste, Risiko die Platte. Du kannst eigene Regeln hinzufuegen, diese nicht entfernen." ;;
+        *:dg_rm_builtin_why)  echo "it only asks for one more confirmation, it blocks nothing: the cost is a keypress, the risk it covers is your disk. You can add your own rules, not remove these." ;;
+        it:dg_rm_confirm)   echo "Rimuovo questa tua regola? $YES_KEY = sì | Invio o n = annulla: " ;;
+        de:dg_rm_confirm)   echo "Diese deiner Regeln entfernen? $YES_KEY = ja | Enter oder n = abbrechen: " ;;
+        *:dg_rm_confirm)    echo "Remove this rule of yours? $YES_KEY = yes | Enter or n = cancel: " ;;
+        it:dg_test_usage)   echo "Uso: --danger test '<comando>'   (non esegue niente: dice solo se scatterebbe una regola)" ;;
+        de:dg_test_usage)   echo "Verwendung: --danger test '<Befehl>'   (fuehrt nichts aus: sagt nur, ob eine Regel greifen wuerde)" ;;
+        *:dg_test_usage)    echo "Usage: --danger test '<command>'   (runs nothing: only says whether a rule would fire)" ;;
+        it:dg_test_reboot)  echo "-> riavvia o spegne la macchina: conferma richiesta (regola fissa, prima delle altre)" ;;
+        de:dg_test_reboot)  echo "-> startet neu oder faehrt herunter: Bestaetigung noetig (feste Regel, vor allen anderen)" ;;
+        *:dg_test_reboot)   echo "-> reboots or shuts down the machine: confirmation required (fixed rule, ahead of the others)" ;;
+        it:dg_test_hit_builtin) echo "-> scatta una regola DI SERIE:" ;;
+        de:dg_test_hit_builtin) echo "-> greift eine EINGEBAUTE Regel:" ;;
+        *:dg_test_hit_builtin)  echo "-> a BUILT-IN rule fires:" ;;
+        it:dg_test_hit_user)    echo "-> scatta una regola TUA:" ;;
+        de:dg_test_hit_user)    echo "-> greift eine DEINER Regeln:" ;;
+        *:dg_test_hit_user)     echo "-> a rule of YOURS fires:" ;;
+        it:dg_test_hit_means)   echo "prima di eseguirlo vedresti l'avviso, la spiegazione dell'IA e la richiesta di conferma." ;;
+        de:dg_test_hit_means)   echo "vor der Ausfuehrung saehest du die Warnung, die Erklaerung der KI und die Bestaetigungsabfrage." ;;
+        *:dg_test_hit_means)    echo "before running it you'd see the warning, the AI's explanation, and the confirmation prompt." ;;
+        it:dg_test_miss)    echo "-> nessuna regola scatta: conferma normale (Invio)" ;;
+        de:dg_test_miss)    echo "-> keine Regel greift: normale Bestaetigung (Enter)" ;;
+        *:dg_test_miss)     echo "-> no rule fires: normal confirmation (Enter)" ;;
         it:mp_manual)       echo "Puoi farlo tu con il comando:  ollama pull <nome>" ;;
         de:mp_manual)       echo "Du kannst es selbst tun, mit dem Befehl:  ollama pull <Name>" ;;
         *:mp_manual)        echo "You can do it yourself with the command:  ollama pull <name>" ;;
@@ -1755,6 +1865,7 @@ L'essenziale:
   $ASSIST_NAME -w <domanda>        cerca sul web e risponde con le fonti
   $ASSIST_NAME -p <file> "<cosa>"  modifica un file esistente (diff, poi chiede)
   $ASSIST_NAME -m                  scegli quale IA usare (guidato)
+  $ASSIST_NAME --danger            le tue regole di pericolo: elenca, add, rm, test (--danger help)
   $ASSIST_NAME --doctor            controllo rapido: motore, modello, RAM
 
 Aiuto per area — ogni help elenca TUTTI i suoi sotto-comandi:
@@ -1788,6 +1899,7 @@ Das Wesentliche:
   $ASSIST_NAME -w <Frage>         sucht im Web und antwortet mit Quellen
   $ASSIST_NAME -p <Datei> "<was>" ändert eine vorhandene Datei (Diff, dann Frage)
   $ASSIST_NAME -m                 KI wählen (geführt)
+  $ASSIST_NAME --danger           deine Gefahrenregeln: auflisten, add, rm, test (--danger help)
   $ASSIST_NAME --doctor           Schnellcheck: Engine, Modell, RAM
 
 Hilfe pro Bereich — jede Hilfe listet ALLE ihre Unterbefehle:
@@ -1821,6 +1933,7 @@ The essentials:
   $ASSIST_NAME -w <question>      searches the web, answers with sources
   $ASSIST_NAME -p <file> "<what>" edits an existing file (diff, then asks)
   $ASSIST_NAME -m                 choose which AI to use (guided)
+  $ASSIST_NAME --danger           your danger rules: list, add, rm, test (--danger help)
   $ASSIST_NAME --doctor           quick check: engine, model, RAM
 
 Help per area — each help lists ALL of its subcommands:
@@ -3543,6 +3656,116 @@ EOF
     esac
 }
 
+danger_help() {
+    case "$UILANG" in
+    it) cat <<EOF
+Regole di pericolo - $ASSIST_NAME --danger
+
+Prima di eseguire un comando distruttivo, $ASSIST_NAME avvisa, fa spiegare
+all'IA cosa sta per succedere, e chiede conferma. A decidere QUALI comandi
+sono "distruttivi" è una lista di regole (espressioni regolari).
+
+Le regole di serie sono le nostre, e restano: coprono i classici (rm -rf, dd,
+mkfs, shred, fork bomb, curl|sh...). Ma i pericoli veri sono anche i tuoi: uno
+script di deploy, terraform destroy, un kubectl delete in produzione. Quelli
+li aggiungi tu — si sommano alle nostre, non le sostituiscono.
+
+Comandi:
+  $ASSIST_NAME --danger                 elenca tutte le regole numerate (di serie + tue)
+  $ASSIST_NAME --danger add '<regex>'   aggiungi una tua regola
+  $ASSIST_NAME --danger rm <n>          togli una regola TUA (di serie: rifiutato)
+  $ASSIST_NAME --danger test '<cmd>'    scatterebbe? quale regola? (non esegue NIENTE)
+  $ASSIST_NAME --danger help            questo aiuto
+
+Esempi:
+  $ASSIST_NAME --danger add 'terraform .*destroy'
+  $ASSIST_NAME --danger add 'kubectl .*delete.*(prod|production)'
+  $ASSIST_NAME --danger test 'terraform destroy -auto-approve'
+
+Note:
+  · una regola NON blocca: chiede una conferma in più, e prima l'IA spiega cosa fa
+  · la spiegazione funziona anche sulle tue regole: spiega il COMANDO, non la regola
+  · le regole di serie non si tolgono (come i nomi riservati di --rename):
+    il costo è un tasto, il rischio che coprono è il disco
+  · una regex non valida viene rifiutata: verrebbe controllata a ogni comando
+  · sintassi: espressioni regolari estese (ERE), come grep -E, senza distinzione
+    tra maiuscole e minuscole
+  · file: $DANGERFILE (testo semplice, una regex per riga, # = commento)
+EOF
+        ;;
+    de) cat <<EOF
+Gefahrenregeln - $ASSIST_NAME --danger
+
+Vor einem zerstoererischen Befehl warnt $ASSIST_NAME, laesst die KI erklaeren,
+was gleich passiert, und fragt nach. WELCHE Befehle "zerstoererisch" sind,
+entscheidet eine Liste von Regeln (regulaere Ausdruecke).
+
+Die eingebauten Regeln sind unsere und bleiben: sie decken die Klassiker ab
+(rm -rf, dd, mkfs, shred, Fork-Bomb, curl|sh...). Die echten Gefahren sind
+aber auch deine: ein Deploy-Skript, terraform destroy, ein kubectl delete in
+der Produktion. Die fuegst du hinzu - sie kommen DAZU, nicht an ihre Stelle.
+
+Befehle:
+  $ASSIST_NAME --danger                 alle Regeln nummeriert auflisten (eingebaut + deine)
+  $ASSIST_NAME --danger add '<Regex>'   eigene Regel hinzufuegen
+  $ASSIST_NAME --danger rm <n>          eine DEINER Regeln entfernen (eingebaute: abgelehnt)
+  $ASSIST_NAME --danger test '<cmd>'    wuerde sie greifen? welche? (fuehrt NICHTS aus)
+  $ASSIST_NAME --danger help            diese Hilfe
+
+Beispiele:
+  $ASSIST_NAME --danger add 'terraform .*destroy'
+  $ASSIST_NAME --danger add 'kubectl .*delete.*(prod|production)'
+  $ASSIST_NAME --danger test 'terraform destroy -auto-approve'
+
+Hinweise:
+  · eine Regel blockiert NICHT: sie verlangt eine Bestaetigung mehr, davor erklaert die KI
+  · die Erklaerung gilt auch fuer deine Regeln: sie erklaert den BEFEHL, nicht die Regel
+  · eingebaute Regeln werden nicht entfernt (wie die reservierten Namen bei --rename):
+    Kosten eine Taste, Risiko die Platte
+  · eine ungueltige Regex wird abgelehnt: sie wuerde bei jedem Befehl geprueft
+  · Syntax: erweiterte regulaere Ausdruecke (ERE), wie grep -E, ohne Gross-/Kleinschreibung
+  · Datei: $DANGERFILE (Klartext, eine Regex pro Zeile, # = Kommentar)
+EOF
+        ;;
+    *) cat <<EOF
+Danger rules - $ASSIST_NAME --danger
+
+Before running a destructive command, $ASSIST_NAME warns you, has the AI
+explain in one sentence what is about to happen, and asks you to confirm.
+WHICH commands count as "destructive" is decided by a list of rules (regular
+expressions).
+
+The built-in rules are ours, and they stay: they cover the classics (rm -rf,
+dd, mkfs, shred, fork bombs, curl|sh...). But the real dangers are also yours:
+a deploy script, terraform destroy, a kubectl delete against production. Those
+you add yourself - and they are ADDED to ours, never instead of them.
+
+Commands:
+  $ASSIST_NAME --danger                 list every rule, numbered (built-in + yours)
+  $ASSIST_NAME --danger add '<regex>'   add a rule of your own
+  $ASSIST_NAME --danger rm <n>          remove one of YOUR rules (built-in: refused)
+  $ASSIST_NAME --danger test '<cmd>'    would it fire? which rule? (runs NOTHING)
+  $ASSIST_NAME --danger help            this help
+
+Examples:
+  $ASSIST_NAME --danger add 'terraform .*destroy'
+  $ASSIST_NAME --danger add 'kubectl .*delete.*(prod|production)'
+  $ASSIST_NAME --danger test 'terraform destroy -auto-approve'
+
+Notes:
+  · a rule does NOT block: it asks for one more confirmation, with the AI's
+    explanation first
+  · the explanation works for your rules too: it explains the COMMAND, not the rule
+  · built-in rules do not come off (like --rename's reserved names): the cost
+    is a keypress, the risk they cover is your disk
+  · an invalid regex is refused: it would be checked on every single command
+  · syntax: extended regular expressions (ERE), like grep -E, case-insensitive
+  · file: $DANGERFILE (plain text, one regex per line, # = comment)
+EOF
+        ;;
+    esac
+}
+
 memory_help() {
     case "$UILANG" in
     it) cat <<EOF
@@ -4433,15 +4656,168 @@ maybe_sudo() {
     printf '%s' "$out"
 }
 
+# ================= D5: the danger rules (v2.19.0) =================
+# The built-ins above are the floor; these are YOURS, added on top. Plain text
+# on purpose, like memory and aliases: one ERE per line, '#' starts a comment,
+# so you can cat it, edit it, or put it in your dotfiles.
+
+danger_user_patterns() {
+    # your patterns, one per line. Blank lines and # comments skipped.
+    [ -r "$DANGERFILE" ] || return 0
+    sed -e 's/[[:space:]]*$//' -e '/^[[:space:]]*#/d' -e '/^[[:space:]]*$/d' "$DANGERFILE" 2>/dev/null
+}
+
+danger_esc() {
+    # A regex is full of backslashes and `echo -e` eats them: \bdd\b would
+    # print as "dd" (\b = backspace) and a taught command would be a lie.
+    # Double them so echo -e renders the pattern exactly as it is on disk.
+    printf '%s' "${1//\\/\\\\}"
+}
+
+danger_regex_ok() {
+    # A user regex reaches grep on EVERY proposed command. A broken one would
+    # print an error each time and, worse, match nothing while looking armed -
+    # so it is validated here, at the door, and refused if it does not compile.
+    printf '%s' "" | grep -qiE "$1" 2>/dev/null || [ $? -eq 1 ]
+}
+
 needs_extra_confirm() {
+    # SAFETY PATH: built-ins first, then yours. 2>/dev/null on the user loop
+    # only - a built-in that stopped compiling is our bug and must be loud.
     local cmd="$1" p
+    DANGER_HIT=""; DANGER_HIT_SRC=""
     for p in "${EXTRA_CONFIRM_PATTERNS[@]}"; do
         if grep -qiE "$p" <<< "$cmd"; then
+            DANGER_HIT="$p"; DANGER_HIT_SRC="builtin"
             return 0
         fi
     done
+    while IFS= read -r p; do
+        [ -n "$p" ] || continue
+        if grep -qiE "$p" <<< "$cmd" 2>/dev/null; then
+            DANGER_HIT="$p"; DANGER_HIT_SRC="user"
+            return 0
+        fi
+    done < <(danger_user_patterns)
     return 1
 }
+
+danger_list() {
+    # ONE list, numbered straight through: you see every rule that guards this
+    # machine and which part of it is yours. The numbering is shared with
+    # `--danger rm <n>`, the same way `-m` and `-m role` share theirs.
+    local p n=0 nb=0
+    echo -e "${BLUE}$(t dg_builtin_title)${NC}"
+    for p in "${EXTRA_CONFIRM_PATTERNS[@]}"; do
+        n=$((n+1)); nb=$((nb+1))
+        printf '  %2d) %s\n' "$n" "$p"
+    done
+    echo
+    echo -e "${BLUE}$(t dg_user_title)${NC} ${YELLOW}${DANGERFILE/#$HOME/\~}${NC}"
+    local had=0
+    while IFS= read -r p; do
+        [ -n "$p" ] || continue
+        n=$((n+1)); had=1
+        if danger_regex_ok "$p"; then
+            printf '  %2d) %s\n' "$n" "$p"
+        else
+            printf '  %2d) %s   %b\n' "$n" "$p" "${RED}<- $(t dg_broken)${NC}"
+        fi
+    done < <(danger_user_patterns)
+    [ "$had" -eq 0 ] && echo -e "  $(t dg_user_none)"
+    echo
+    echo -e "$(t dg_hint)"
+    DANGER_NBUILTIN="$nb"
+}
+
+danger_add() {
+    local p="$1"
+    [ -n "$p" ] || { echo "$(t dg_add_usage)" >&2; return 1; }
+    if ! danger_regex_ok "$p"; then
+        echo -e "${RED}$(t dg_bad_regex)${NC} $(danger_esc "$p")" >&2
+        return 1
+    fi
+    # A rule that fires on everything is not protection, it is noise you learn
+    # to click through - and a habit of confirming without reading is the very
+    # thing the confirm word exists to prevent.
+    if grep -qiE "$p" <<< "ls" 2>/dev/null && grep -qiE "$p" <<< "echo hello" 2>/dev/null; then
+        echo -e "${YELLOW}$(t dg_too_broad)${NC}"
+        core_confirm "$(t dg_too_broad_ask)" || { echo "$(t cancelled)"; return 0; }
+    fi
+    if danger_user_patterns | grep -qxF "$p"; then
+        echo -e "${YELLOW}$(t dg_dup)${NC} $(danger_esc "$p")"; return 0
+    fi
+    mkdir -p "$(dirname "$DANGERFILE")"
+    printf '%s\n' "$p" >> "$DANGERFILE"
+    echo -e "${GREEN}$(t dg_added)${NC} $(danger_esc "$p")"
+    # printf, not echo: `echo '\bfoo\b' >> file` writes a different thing in
+    # sh than in bash. printf '%s\n' is the form that always writes the regex.
+    show_equiv "printf '%s\\\\n' '$(danger_esc "$p")' >> ${DANGERFILE/#$HOME/\~}"
+    write_log "danger add" "$p"
+}
+
+danger_rm() {
+    local n="$1" nb total p
+    nb="${#EXTRA_CONFIRM_PATTERNS[@]}"
+    case "$n" in ''|*[!0-9]*) echo "$(t dg_rm_usage)" >&2; return 1 ;; esac
+    total=$(( nb + $(danger_user_patterns | grep -c . 2>/dev/null || echo 0) ))
+    if [ "$n" -lt 1 ] || [ "$n" -gt "$total" ]; then
+        echo -e "${RED}$(t dg_rm_range) 1-$total${NC}" >&2; return 1
+    fi
+    # The built-ins do not bend. Saying WHY, and pointing at what you CAN do,
+    # is the difference between a locked door and a wall with no sign on it.
+    if [ "$n" -le "$nb" ]; then
+        echo -e "${RED}$(t dg_rm_builtin)${NC} $(danger_esc "${EXTRA_CONFIRM_PATTERNS[$((n-1))]}")"
+        echo -e "  $(t dg_rm_builtin_why)"
+        return 1
+    fi
+    p="$(danger_user_patterns | sed -n "$((n-nb))p")"
+    [ -n "$p" ] || { echo -e "${RED}$(t dg_rm_range) 1-$total${NC}" >&2; return 1; }
+    echo -e "  ${GREEN}$(danger_esc "$p")${NC}"
+    core_confirm "$(t dg_rm_confirm)" || { echo "$(t cancelled)"; return 0; }
+    # grep -vxF, not sed: a regex is exactly the thing you must not feed to sed
+    # as a pattern. Fixed-string, whole-line, on a temp file + atomic mv.
+    grep -vxF "$p" "$DANGERFILE" > "$DANGERFILE.tmp" 2>/dev/null
+    mv "$DANGERFILE.tmp" "$DANGERFILE"
+    echo -e "${GREEN}$(t dg_removed)${NC} $(danger_esc "$p")"
+    show_equiv "grep -vxF '$(danger_esc "$p")' ${DANGERFILE/#$HOME/\~} > tmp && mv tmp ${DANGERFILE/#$HOME/\~}"
+    write_log "danger rm" "$p"
+}
+
+danger_test() {
+    # The dry-run of safety: ask whether a command WOULD trip a rule, without
+    # running anything. The one way to check a new pattern that does not
+    # involve typing something destructive and hoping.
+    local cmd="$*"
+    [ -n "$cmd" ] || { echo "$(t dg_test_usage)" >&2; return 1; }
+    echo -e "$(t proposed) ${GREEN}$cmd${NC}"
+    if is_reboot_cmd "$cmd"; then
+        echo -e "${RED}$(t dg_test_reboot)${NC}"
+        return 0
+    fi
+    if needs_extra_confirm "$cmd"; then
+        case "$DANGER_HIT_SRC" in
+            user) echo -e "${RED}$(t dg_test_hit_user)${NC} ${YELLOW}$(danger_esc "$DANGER_HIT")${NC}" ;;
+            *)    echo -e "${RED}$(t dg_test_hit_builtin)${NC} ${YELLOW}$(danger_esc "$DANGER_HIT")${NC}" ;;
+        esac
+        echo -e "  $(t dg_test_hit_means)"
+    else
+        echo -e "${GREEN}$(t dg_test_miss)${NC}"
+    fi
+    return 0
+}
+
+danger_cmd() {
+    case "${1:-}" in
+        ""|list|ls)     danger_list ;;
+        help|-h|--help) page danger_help ;;
+        add)            shift; danger_add "$*" ;;
+        rm|remove)      shift; danger_rm "${1:-}" ;;
+        test)           shift; danger_test "$@" ;;
+        *)              echo "$(t dg_usage)" >&2; return 1 ;;
+    esac
+}
+# ================= end D5: the danger rules =================
 
 # ---- piped input as context (v2.7) ----
 # cat error.log | glia why does this fail   -> the piped text goes to the AI.
@@ -6245,6 +6621,10 @@ case "$1" in
         ;;
     -V|--version)
         version_line
+        ;;
+    --danger)
+        shift
+        danger_cmd "$@"
         ;;
     --doctor)
         doctor

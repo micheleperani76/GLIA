@@ -66,6 +66,7 @@ complete -c glia -n __glia_first -a '--remember'  -d 'store a fact'
 complete -c glia -n __glia_first -a '--memory'    -d 'list stored facts'
 complete -c glia -n __glia_first -a '--forget'    -d 'delete fact number n'
 complete -c glia -n __glia_first -a '--clear-cache' -d 'empty the command cache'
+complete -c glia -n __glia_first -a '--danger'    -d 'your danger rules: list/add/rm/test'
 complete -c glia -n __glia_first -a '--doctor'    -d 'one-shot health check'
 complete -c glia -n __glia_first -a '--update'    -d 'update GLIA itself (chosen channel)'
 complete -c glia -n __glia_first -a '--update-engine' -d 'update the Ollama engine'
@@ -85,6 +86,9 @@ complete -c glia -n 'contains -- (__glia_prev2) role roles' -a 'web project tran
 
 # -m bench [--dry-run] (D6b): no model/name argument, just the one flag
 complete -c glia -n 'contains -- (__glia_prev) bench; and contains -- (__glia_prev2) -m --model' -a '--dry-run'
+
+# --danger (D5): the sub-actions; a regex or command after them is free text
+complete -c glia -n 'contains -- (__glia_prev) --danger' -a 'list add rm test help'
 
 # -m update <model> · -m rm <model> · -m stop <model>
 complete -c glia -n 'contains -- (__glia_prev2) -m --model; and contains -- (__glia_prev) update rm stop' -a '(__glia_models)'
