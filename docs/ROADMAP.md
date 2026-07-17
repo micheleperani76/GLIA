@@ -201,6 +201,28 @@ handful of these (mirror 404, keyring out of date, partial upgrade, disk
 full): the errors where the popular workaround is worse than the problem.
 That is where an assistant earns the word "assistant".
 
+**Landed 2026-07-17 (v2.18.9, tag pending) — the audit half.** Done the way it
+was written: list every action that writes a file, makes a link or calls an
+external tool, then check each one against `show_equiv` instead of trusting a
+memory of it. **Three were silent, and all three now teach**: `-a add` / `-a
+save` and `-a rm` (they write `~/.config/glia/aliases`), and `--channel
+stable|beta` (it writes `~/.config/glia/channel`). Four suspects were CLEARED,
+which is the other half of an audit's value: `-m pull`/`rm`/`stop`/`update`
+print their `ollama ...` line themselves, and `-p` already closes its diff with
+the `git apply` you could type — teaching by another route is still teaching,
+and a second copy would have been noise. The 26 existing call sites all held
+up. One rule earned along the way: the equivalents shown were **run by hand**
+and produce a byte-identical aliases file — a teaching line that doesn't
+actually work is worse than no line, and `echo -e` eating the `\t` in the first
+draft would have shipped exactly that. Where the internals differ from the
+line shown (`grep -v` + atomic `mv` vs the `sed -i` we teach) the code says so
+in a comment: identical result, and the temp-file dance is why an interrupted
+write can't leave half an aliases file.
+
+**Still open: the other half**, and it is the bigger one — reading someone
+ELSE's error (mirror 404, stale keyring, partial upgrade, disk full). That is a
+feature, not an audit, so it gets its own change rather than riding along here.
+
 ### D5. Safety first, but configurable
 
 `EXTRA_CONFIRM_PATTERNS` is a hardcoded array (`rm -[rf]`, `dd`, `mkfs`,

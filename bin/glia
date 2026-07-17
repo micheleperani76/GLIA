@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ============================================================
 #  glia - AI terminal assistant (Ollama + aichat)
-#  Version: 2.18.8 - 2026-07-17
+#  Version: 2.18.9 - 2026-07-17
 #  Author: Michele (with Claude)
 #  Project: GLIA (GNU Linux IA)
 #
@@ -65,6 +65,19 @@
 #     side effect); offline it falls back to the cache but says so, in the
 #     past tense ("was up to date as of...") instead of asserting the
 #     present. Costs ~0.6s online; offline stays instant.
+#   - v2.18.9: the teaching audit (D4, first half). Every action that writes a
+#     file, makes a link or calls an external tool, checked one by one against
+#     show_equiv. Three were doing it silently, and all three are now taught:
+#     `-a add`/`-a save` and `-a rm` (they write ~/.config/glia/aliases) and
+#     `--channel stable|beta` (it writes ~/.config/glia/channel). The audit
+#     also cleared four suspects that teach by another route and needed no
+#     change: -m pull/rm/stop/update print the `ollama ...` line themselves,
+#     and -p already ends its diff with the `git apply` that would do it by
+#     hand. The equivalents shown were RUN by hand and produce a byte-
+#     identical aliases file - a teaching line that doesn't work is worse
+#     than none. Still open (D4's other half, its own change): explaining
+#     someone ELSE's error - mirror 404, stale keyring, partial upgrade -
+#     where the popular workaround is worse than the problem.
 #   - v2.18.3: `--doctor` closes the shadowing case BACKWARDS. v2.18.2 stops
 #     --rename from burying a command, but a nickname made before it is
 #     still sitting there, and whoever has one is exactly the person who
@@ -442,7 +455,7 @@
 # ============================================================
 
 # ----------------- CONFIGURATION -----------------
-VERSION="2.18.8"
+VERSION="2.18.9"
 DEFAULT_MODEL="qwen2.5-coder:7b"
 # -m bench (D6b): CPU vs iGPU on THIS machine, config up top on purpose.
 BENCH_OVERRIDE_DIR="/etc/systemd/system/ollama.service.d"
@@ -2817,6 +2830,10 @@ alias_resolve() {
 
 alias_store() {
     # $1 name  $2 type  $3 request  $4 command  (replaces an existing name)
+    # D4 (v2.18.9): saving a shortcut writes a file, so it must teach the file.
+    # show_equiv shows the HAND-TYPABLE equivalent (sed -i / printf >>), which
+    # gives the identical result; the internals below use grep -v + mv because
+    # a temp file and one atomic rename can't leave a half-written aliases file.
     local existed=0
     mkdir -p "$(dirname "$ALIASFILE")"; touch "$ALIASFILE"
     grep -qE "^$1"$'\t' "$ALIASFILE" && existed=1
@@ -2825,8 +2842,10 @@ alias_store() {
     mv "$ALIASFILE.tmp" "$ALIASFILE"
     if [ "$existed" -eq 1 ]; then
         echo -e "${GREEN}$(t al_updated) $1${NC}"
+        show_equiv "sed -i '/^$1\\\\t/d' ${ALIASFILE/#$HOME/\~}  ·  printf '%s\\\\t%s\\\\t%s\\\\t%s\\\\n' '$1' '$2' '$3' '$4' >> ${ALIASFILE/#$HOME/\~}"
     else
         echo -e "${GREEN}$(t al_saved) $1${NC}"
+        show_equiv "printf '%s\\\\t%s\\\\t%s\\\\t%s\\\\n' '$1' '$2' '$3' '$4' >> ${ALIASFILE/#$HOME/\~}"
     fi
 }
 
@@ -2886,6 +2905,7 @@ alias_rm() {
     grep -vE "^$name"$'\t' "$ALIASFILE" > "$ALIASFILE.tmp"
     mv "$ALIASFILE.tmp" "$ALIASFILE"
     echo -e "${GREEN}$(t al_removed) $name${NC}"
+    show_equiv "sed -i '/^$name\\\\t/d' ${ALIASFILE/#$HOME/\~}"
 }
 
 alias_edit() {
@@ -4140,11 +4160,13 @@ set_channel() {
             echo "$(t rc_chan_expl)" ;;
         stable)
             chan_set stable
-            echo -e "${GREEN}$(t rc_chan_set) stable${NC}" ;;
+            echo -e "${GREEN}$(t rc_chan_set) stable${NC}"
+            show_equiv "echo stable > ${GLIA_CHANNEL_FILE/#$HOME/\~}" ;;
         beta)
             chan_set beta
             echo -e "${YELLOW}$(t rc_chan_beta_warn)${NC}"
-            echo -e "${GREEN}$(t rc_chan_set) beta${NC}" ;;
+            echo -e "${GREEN}$(t rc_chan_set) beta${NC}"
+            show_equiv "echo beta > ${GLIA_CHANNEL_FILE/#$HOME/\~}" ;;
         *)
             echo -e "${RED}$(t rc_chan_bad)${NC}" >&2; return 1 ;;
     esac
