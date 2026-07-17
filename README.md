@@ -382,9 +382,10 @@ Safety, by design:
 - the new version is fetched with one shallow clone of the tag and **validated
   before it replaces anything** (syntax check + the file's version must match the
   tag), and the swap is atomic: a failed update leaves the working version alone;
-- `glia -V` **never touches the network** — it shows your version, your channel
-  and the last cached check with its age. The online check only happens in
-  `glia --update [--check]` and `glia --doctor`.
+- `glia -V` **checks for real when online** (the same probe as
+  `glia --update [--check]`, ~0.5s), so its verdict and the checker's can never
+  contradict each other. Offline it falls back to the last cached check — and
+  says so, with the age of that answer, instead of asserting the present.
 
 > **Changed in v2.17:** bare `glia --update` now updates **GLIA**; the Ollama
 > engine moved to `glia --update-engine`. The explicit old forms (`glia --update glia`,

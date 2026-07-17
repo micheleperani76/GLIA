@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ============================================================
 #  glia - AI terminal assistant (Ollama + aichat)
-#  Version: 2.18.7 - 2026-07-17
+#  Version: 2.18.8 - 2026-07-17
 #  Author: Michele (with Claude)
 #  Project: GLIA (GNU Linux IA)
 #
@@ -56,6 +56,15 @@
 #     anything. Live-tested end to end on this machine: CPU 6.22 tok/s vs
 #     iGPU 1.74 tok/s (-72%), override cleanly removed, service back to its
 #     original environment afterwards.
+#   - v2.18.8: `-V` checks for real. It used to be offline-only, recomputing
+#     its verdict from cached facts - honest logic, stale facts: a -V run
+#     hours after the last check kept saying "up to date" while newer tags
+#     had landed, and --update --check contradicted it a second later. If -V
+#     shows a verdict at all, the verdict must be true: online it now runs
+#     the SAME check as --update --check (rc_check, cache refreshed as a
+#     side effect); offline it falls back to the cache but says so, in the
+#     past tense ("was up to date as of...") instead of asserting the
+#     present. Costs ~0.6s online; offline stays instant.
 #   - v2.18.3: `--doctor` closes the shadowing case BACKWARDS. v2.18.2 stops
 #     --rename from burying a command, but a nickname made before it is
 #     still sitting there, and whoever has one is exactly the person who
@@ -433,7 +442,7 @@
 # ============================================================
 
 # ----------------- CONFIGURATION -----------------
-VERSION="2.18.7"
+VERSION="2.18.8"
 DEFAULT_MODEL="qwen2.5-coder:7b"
 # -m bench (D6b): CPU vs iGPU on THIS machine, config up top on purpose.
 BENCH_OVERRIDE_DIR="/etc/systemd/system/ollama.service.d"
@@ -707,6 +716,15 @@ t() {
         it:rc_never)        echo "mai (esegui: --update --check)" ;;
         de:rc_never)        echo "nie (fuehre aus: --update --check)" ;;
         *:rc_never)         echo "never (run: --update --check)" ;;
+        it:rc_stale_ok)     echo "risultava aggiornato (riprova online per esserne certo)" ;;
+        de:rc_stale_ok)     echo "war auf dem neuesten Stand (online erneut pruefen)" ;;
+        *:rc_stale_ok)      echo "was up to date (check again online to be sure)" ;;
+        it:rc_stale_yes)    echo "risultava disponibile" ;;
+        de:rc_stale_yes)    echo "war verfuegbar" ;;
+        *:rc_stale_yes)     echo "was available" ;;
+        it:rc_offline_v)    echo "offline: dato dall'ultimo controllo" ;;
+        de:rc_offline_v)    echo "offline: Stand der letzten Pruefung" ;;
+        *:rc_offline_v)     echo "offline: as of the last check" ;;
         it:rc_notags)       echo "nessun tag di release ancora presente sul remoto" ;;
         de:rc_notags)       echo "noch keine Release-Tags im Remote vorhanden" ;;
         *:rc_notags)        echo "no release tags on the remote yet" ;;
@@ -4079,22 +4097,35 @@ rc_age_human() {
     else                            printf '%dd' $(( age / 86400 )); fi
 }
 
-# --- offline version line for -V (never touches the network) ---
+# --- version line for -V: a FRESH check when online, honest cache offline ---
 version_line() {
     # One honest line: VERSION is the code, the tag is WHICH build of that code.
     # Showing 2.17.0 while v2.17.0-beta.1 is installed was confusing (E6.1).
     echo -e "$ASSIST_NAME $VERSION (GLIA) · $(t rc_channel): $(chan_get) · $(t rc_installed) $(glia_effective_tag)"
+    # v2.18.8: -V used to be offline-only, recomputing the verdict from cached
+    # facts. The verdict logic was honest but the FACTS could be stale: a -V
+    # run 4h after the last check kept saying "up to date" while two newer
+    # tags had landed, and --update --check contradicted it a second later.
+    # If -V shows a verdict at all, the verdict must be true: so when online
+    # it now runs the SAME check as --update --check (rc_check, which also
+    # refreshes the cache), and only offline does it fall back to the cache -
+    # saying so, in the past tense, instead of asserting the present.
+    if rc_check; then
+        echo -e "$(t rc_lastcheck): $(date '+%Y-%m-%d %H:%M') — $(t doc_update_no)"
+        return 0
+    elif [ -n "$NEWVER" ]; then
+        echo -e "$(t rc_lastcheck): $(date '+%Y-%m-%d %H:%M') — $(t doc_update_yes) ${GREEN}$NEWVER${NC}   ->   ${GREEN}$ASSIST_NAME --update${NC}"
+        return 0
+    fi
+    # offline (or the probe failed): cached facts, worded as the past they are
     local c tag ts when
     if c="$(rc_cached)"; then
         tag="${c%%|*}"; ts="${c##*|}"
         when="$(date -d "@$ts" '+%Y-%m-%d' 2>/dev/null) ($(rc_age_human "$ts"))"
-        # The verdict is computed HERE, from the cached facts (E6.2) — still no
-        # network. Recomputing is what makes -V honest after an update AND after
-        # a rollback, with no cache invalidation anywhere.
         if [ "$(ver_cmp "$tag" "$(glia_effective_tag)")" = 1 ]; then
-            echo -e "$(t rc_lastcheck): $when — $(t doc_update_yes) ${GREEN}${tag#v}${NC}   ->   ${GREEN}$ASSIST_NAME --update${NC}"
+            echo -e "$(t rc_offline_v) $when — ${GREEN}${tag#v}${NC} $(t rc_stale_yes)   ->   ${GREEN}$ASSIST_NAME --update${NC}"
         else
-            echo -e "$(t rc_lastcheck): $when — $(t doc_update_no)"
+            echo -e "$(t rc_offline_v) $when — $(t rc_stale_ok)"
         fi
     else
         echo -e "$(t rc_lastcheck): $(t rc_never)"
