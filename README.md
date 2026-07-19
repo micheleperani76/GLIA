@@ -126,8 +126,9 @@ green by design, and it's a whole system, not a lone command.
   `-a list` / `-a rm` / `-a edit`.
   Chat, not just answers: `glia -c` (`--chat`) keeps the **whole dialogue** and
   sends it back at every turn, so follow-ups mean what they should — `--ask`
-  answers once and exits. The chat **knows what GLIA is**: the command sheet
-  goes to the model, so it explains `glia -T` instead of inventing a flag — and
+  answers once and exits. Both modes **know what GLIA is**: the command sheet
+  goes to the model — in `-c` and in `--ask` alike, one `/contesto` switch for
+  both — so it explains `glia -T` instead of inventing a flag — and
   that sheet is not a hand-written copy, it is `show_help`, the same function
   `-h` prints, so it cannot drift. Under each answer a bar shows how full the
   window is, from the **real token counts** Ollama returns: green → yellow →

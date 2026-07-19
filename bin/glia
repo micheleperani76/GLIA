@@ -1,12 +1,24 @@
 #!/usr/bin/env bash
 # ============================================================
 #  glia - AI terminal assistant (Ollama + aichat)
-#  Version: 2.21.0 - 2026-07-17
+#  Version: 2.22.0 - 2026-07-19
 #  Author: Michele (with Claude)
 #  Project: GLIA (GNU Linux IA)
 #
 #  Design pillar: commands follow standard terminal conventions, so
 #  what you learn here you can reuse in other programs (and vice versa).
+#
+#  What's new in v2.22 ("--ask knows itself too"):
+#   - v2.21 gave the chat the command sheet and left --ask out, to save 536
+#     tokens on a one-shot question. But --ask is where a user asks "how do I
+#     translate a file?" most often - and got an invented flag in a confident
+#     voice, exactly the failure the sheet exists to stop. Now --ask gets the
+#     SAME sheet: chat_blk_help (i.e. show_help - one source of truth, never
+#     a copy), honouring the SAME /contesto switch: turn "help" off once and
+#     BOTH modes stop paying. One truth, one switch, one file of state.
+#   - Only the intro changes: the model is told it answers ONCE, no dialogue,
+#     because a sheet that says "you are the chat mode" to a mode that exits
+#     after one answer would start its life with a false sentence.
 #
 #  What's new in v2.21 ("the machine knows better than the author"):
 #   - The chat window stops being a number we picked. v2.20 shipped
@@ -597,7 +609,7 @@
 # ============================================================
 
 # ----------------- CONFIGURATION -----------------
-VERSION="2.21.0"
+VERSION="2.22.0"
 DEFAULT_MODEL="qwen2.5-coder:7b"
 # -m bench (D6b): CPU vs iGPU on THIS machine, config up top on purpose.
 BENCH_OVERRIDE_DIR="/etc/systemd/system/ollama.service.d"
@@ -4660,12 +4672,23 @@ chat_blk_help() {
     # would be the SIXTH copy of the same truth (scripts/check-docs.sh exists
     # because the first five drifted) and the only one nobody could see drift
     # - the model would recite dead flags in a confident voice.
-    local sheet; sheet="$(show_help 2>/dev/null)"
+    # $1 = mode ("chat", default, or "ask"): same sheet for both, only the
+    # first sentence changes - the chat holds a dialogue, --ask answers once
+    # and exits, and telling the model which one it is costs one line.
+    local mode="${1:-chat}" sheet intro
+    sheet="$(show_help 2>/dev/null)"
     [ -n "$sheet" ] || return 0
+    case "$UILANG:$mode" in
+        it:ask) intro="Sei la modalità risposta secca (--ask) di $ASSIST_NAME, un assistente IA da terminale per Linux: rispondi una volta sola, senza dialogo, e sai rispondere anche su te stesso." ;;
+        it:*)   intro="Sei la modalità chat di $ASSIST_NAME, un assistente IA da terminale per Linux: sai rispondere anche su te stesso." ;;
+        de:ask) intro="Du bist der Einmal-Antwort-Modus (--ask) von $ASSIST_NAME, einem KI-Terminal-Assistenten für Linux: du antwortest genau einmal, ohne Dialog, und kannst auch über dich selbst Auskunft geben." ;;
+        de:*)   intro="Du bist der Chat-Modus von $ASSIST_NAME, einem KI-Terminal-Assistenten für Linux: du kannst auch über dich selbst Auskunft geben." ;;
+        *:ask)  intro="You are the one-shot answer mode (--ask) of $ASSIST_NAME, an AI terminal assistant for Linux: you answer once, no dialogue, and you can answer about yourself too." ;;
+        *:*)    intro="You are the chat mode of $ASSIST_NAME, an AI terminal assistant for Linux: you can answer about yourself too." ;;
+    esac
     case "$UILANG" in
     it) cat <<EOF
-Sei la modalità chat di $ASSIST_NAME, un assistente IA da terminale per Linux:
-sai rispondere anche su te stesso. Questa è la tua guida, cioè esattamente ciò
+$intro Questa è la tua guida, cioè esattamente ciò
 che stampa "$ASSIST_NAME -h":
 --- inizio guida ---
 $sheet
@@ -4677,8 +4700,7 @@ a "$ASSIST_NAME <flag> help". Tu i comandi li spieghi, non li esegui.
 EOF
         ;;
     de) cat <<EOF
-Du bist der Chat-Modus von $ASSIST_NAME, einem KI-Terminal-Assistenten für
-Linux: du kannst auch über dich selbst Auskunft geben. Das ist deine Anleitung,
+$intro Das ist deine Anleitung,
 genau das, was "$ASSIST_NAME -h" ausgibt:
 --- Anleitung Anfang ---
 $sheet
@@ -4691,8 +4713,7 @@ du führst sie nicht aus.
 EOF
         ;;
     *) cat <<EOF
-You are the chat mode of $ASSIST_NAME, an AI terminal assistant for Linux:
-you can answer about yourself too. This is your guide - exactly what
+$intro This is your guide - exactly what
 "$ASSIST_NAME -h" prints:
 --- guide start ---
 $sheet
@@ -7939,11 +7960,19 @@ case "$1" in
         # session context so follow-ups work in ask mode too (v2.7); the
         # question is stored before exec (the streamed answer can't be)
         MEMCTX="$(memory_context)$(session_context)$(piped_context)"
+        # v2.22: --ask knows itself too. Same sheet as the chat (chat_blk_help,
+        # i.e. show_help: ONE source of truth), same /contesto switch - turn
+        # "help" off there and this mode stops paying for it as well. Only the
+        # intro differs: this mode answers once, no dialogue. The separator is
+        # added HERE because $(...) eats trailing newlines (the v2.21 lesson).
+        ASKSHEET=""
+        [ "$(chat_blk_state help)" = "on" ] && ASKSHEET="$(chat_blk_help ask)"
+        [ -n "$ASKSHEET" ] && ASKSHEET="${ASKSHEET}"$'\n\n'
         session_add "$*" "(answered in words via -d)"
         case "$UILANG" in
-            it) exec aichat --model "$MODEL" "${MEMCTX}Rispondi in italiano. $*$(nothink)" ;;
-            de) exec aichat --model "$MODEL" "${MEMCTX}Antworte auf Deutsch. $*$(nothink)" ;;
-            *)  exec aichat --model "$MODEL" "${MEMCTX}$*$(nothink)" ;;
+            it) exec aichat --model "$MODEL" "${ASKSHEET}${MEMCTX}Rispondi in italiano. $*$(nothink)" ;;
+            de) exec aichat --model "$MODEL" "${ASKSHEET}${MEMCTX}Antworte auf Deutsch. $*$(nothink)" ;;
+            *)  exec aichat --model "$MODEL" "${ASKSHEET}${MEMCTX}$*$(nothink)" ;;
         esac
         ;;
     -w|--web)
