@@ -26,6 +26,41 @@ $(t cw_frame2)" '. + [{role:"user",content:$c}]' <<<"$CHAT_MSGS")
     echo -e "${GREEN}$(t cw_added)${NC}"
 }
 
+# ---- /compatta: shrink without starting over (v3.2) ----
+
+chat_compact_cmd() {
+    # The middle way between the red bar and /nuova. The model SUMMARIZES
+    # the dialogue, then the conversation becomes: base (sheet/memory or
+    # source, untouched) + the summary MARKED as a summary + the last 2
+    # exchanges VERBATIM - the immediate thread stays exact, "e quindi?"
+    # keeps working. Compaction is LOSSY by definition and SAYS so; the
+    # full text is saved to a .md FIRST (safety net before scissors), the
+    # inference is declared, and on any failure nothing is touched.
+    local n req summary tail
+    n=$(jq length <<<"$CHAT_MSGS")
+    # system + 4 kept verbatim: below 7 there is nothing worth squeezing
+    if [ "$n" -le 7 ]; then echo "$(t cc_empty)"; return 1; fi
+    echo -e "${BLUE}$(t cc_saving)${NC}"
+    chat_save
+    echo -e "${BLUE}$(t cc_working)${NC}"
+    req=$(jq -cn --arg m "${MODEL#ollama:}" --argjson h "$CHAT_MSGS" --argjson n "$CHAT_CTX" \
+              --arg p "$(t cc_sumprompt)$(nothink)" \
+          '{model:$m, messages:($h + [{role:"user",content:$p}]), stream:false,
+            options:{num_ctx:$n}}')
+    summary=$(curl -fsS --max-time 300 "$OLLAMA_URL/api/chat" -d "$req" 2>/dev/null \
+              | jq -r '.message.content // empty' \
+              | sed -z 's/<think>.*<\/think>//g')
+    summary="${summary#"${summary%%[![:space:]]*}"}"
+    if [ -z "$summary" ]; then
+        echo -e "${RED}$(t cc_fail)${NC}"; return 1
+    fi
+    tail=$(jq -c '.[-4:]' <<<"$CHAT_MSGS")
+    CHAT_MSGS=$(jq -c --arg s "$(t cc_sumhead)
+
+$summary" --argjson tail "$tail" '[.[0], {role:"user",content:$s}] + $tail' <<<"$CHAT_MSGS")
+    echo -e "${GREEN}$(t cc_done)${NC}"
+}
+
 chat_help() {
     case "$UILANG" in
     it) cat <<EOF
@@ -59,6 +94,11 @@ Comandi dentro la chat:
              per un GdR con le tue regole. Scheda e memoria sospese (meno
              allucinazioni, più spazio), l'IA cita il testo · /fonte off
              All'avvio: $ASSIST_NAME -c --fonte <file> [prima domanda]
+  /compatta  la via di mezzo tra la barra rossa e /nuova: prima salva TUTTO
+             in un .md (la rete di sicurezza), poi il modello riassume e la
+             conversazione diventa base + riassunto (marcato come tale) +
+             ultimi 2 scambi testuali. Un riassunto perde qualcosa per
+             definizione, e costa un'inferenza: entrambe le cose dichiarate.
   /aiuto     promemoria dei comandi
 
 La barra sotto ogni risposta:
@@ -132,6 +172,11 @@ Befehle im Chat:
               ein Rollenspiel mit eigenen Regeln. Blatt und Gedächtnis
               pausiert, die KI zitiert den Text · /quelle off
               Beim Start: $ASSIST_NAME -c --fonte <Datei> [erste Frage]
+  /kompakt    der Mittelweg zwischen rotem Balken und /neu: erst wird ALLES
+              in eine .md gesichert (das Sicherheitsnetz), dann fasst das
+              Modell zusammen - Basis + Zusammenfassung (als solche markiert)
+              + letzte 2 Wechsel im Wortlaut. Eine Zusammenfassung verliert
+              per Definition etwas und kostet eine Inferenz: beides gesagt.
   /hilfe      Übersicht der Befehle
 
 Der Balken unter jeder Antwort:
@@ -194,6 +239,11 @@ Commands inside the chat:
              an RPG with house rules. Sheet and memory suspended, the AI
              cites the text · /source off
              At launch: $ASSIST_NAME -c --fonte <file> [first question]
+  /compact   the middle way between the red bar and /new: EVERYTHING is
+             saved to a .md first (the safety net), then the model
+             summarizes - base + summary (marked as such) + last 2
+             exchanges verbatim. A summary loses something by definition
+             and costs one inference: both said out loud.
   /help      command reminder
 
 The bar under every answer:
@@ -311,6 +361,7 @@ chat_mode() {
                                          CHAT_MSGS=$(jq -c --arg s "$sys" '.[0].content=$s' <<<"$CHAT_MSGS")
                                          continue ;;
             /scorda|/forget|/vergiss)    echo "$(t forget_usage)"; continue ;;
+            /compatta|/compact|/kompakt) chat_compact_cmd || true; continue ;;
             '/web '*|'/cerca '*|'/suche '*)
                                          chat_web_cmd "${line#* }" || true; continue ;;
             /web|/cerca|/suche)          echo "$(t cw_usage)"; continue ;;

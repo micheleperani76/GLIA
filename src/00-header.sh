@@ -1,12 +1,31 @@
 #!/usr/bin/env bash
 # ============================================================
 #  glia - AI terminal assistant (Ollama + aichat)
-#  Version: 3.1.0 - 2026-07-19
+#  Version: 3.2.0 - 2026-07-19
 #  Author: Michele (with Claude)
 #  Project: GLIA (GNU Linux IA)
 #
 #  Design pillar: commands follow standard terminal conventions, so
 #  what you learn here you can reuse in other programs (and vice versa).
+#
+#  What's new in v3.2.0 ("shrink without starting over"):
+#   - `/compatta` (aliases /compact, /kompakt): the missing middle way
+#     between the red bar and /nuova. With /fonte and /web the window
+#     finally fills up for real, and the only exits were "lose everything"
+#     or "watch the model forget the beginning". Now: the model summarizes
+#     the dialogue, and the conversation becomes base (untouched) + the
+#     summary + the LAST 2 EXCHANGES VERBATIM - the immediate thread stays
+#     exact, "e quindi?" keeps working.
+#   - Safety net BEFORE scissors: the full conversation is saved to a .md
+#     (same file /salva writes) before anything is compressed. If the
+#     summary disappoints, the whole text exists on disk.
+#   - Honesty, twice: compaction is LOSSY by definition and the messages
+#     say so; it costs one inference and the messages say that too. The
+#     summary enters the dialogue MARKED as a summary - even the model
+#     knows it is reading a digest, not the real conversation. On any
+#     failure (engine down, empty answer) the conversation is untouched.
+#   - The red-bar hint now offers all three roads: /compatta to keep
+#     going, /salva to keep, /nuova to restart.
 #
 #  What's new in v3.1.0 ("the net into the conversation"):
 #   - `/web <question>` in the chat (aliases /cerca, /suche): grab a piece

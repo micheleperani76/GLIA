@@ -353,9 +353,9 @@ t() {
         it:chat_turn)       echo "turno" ;;
         de:chat_turn)       echo "Runde" ;;
         *:chat_turn)        echo "turn" ;;
-        it:chat_full)       echo "Contesto quasi pieno: il modello sta per scordare l'inizio. /salva per conservare, /nuova per ripartire." ;;
-        de:chat_full)       echo "Kontext fast voll: das Modell vergisst gleich den Anfang. /speichern zum Sichern, /neu für den Neustart." ;;
-        *:chat_full)        echo "Context almost full: the model is about to forget the beginning. /save to keep it, /new to start over." ;;
+        it:chat_full)       echo "Contesto quasi pieno: il modello sta per scordare l'inizio. /compatta per proseguire (riassume e libera spazio), /salva per conservare, /nuova per ripartire." ;;
+        de:chat_full)       echo "Kontext fast voll: das Modell vergisst gleich den Anfang. /kompakt zum Weitermachen (fasst zusammen, macht Platz), /speichern zum Sichern, /neu für den Neustart." ;;
+        *:chat_full)        echo "Context almost full: the model is about to forget the beginning. /compact to keep going (summarizes, frees room), /save to keep it, /new to start over." ;;
         it:chat_cleared)    echo "Contesto azzerato: la chat riparte da zero." ;;
         de:chat_cleared)    echo "Kontext geleert: der Chat beginnt von vorn." ;;
         *:chat_cleared)     echo "Context cleared: the chat starts fresh." ;;
@@ -1088,6 +1088,27 @@ t() {
         it:cw_frame2)       echo "Usali quando la conversazione li tocca: cita la fonte come [n], e se non bastano dillo invece di inventare." ;;
         de:cw_frame2)       echo "Nutze sie, wenn das Gespräch sie berührt: zitiere die Quelle als [n]; reichen sie nicht, sag es, statt zu erfinden." ;;
         *:cw_frame2)        echo "Use them when the conversation touches them: cite the source as [n], and if they are not enough say so instead of inventing." ;;
+        it:cc_empty)        echo "conversazione ancora corta: niente da compattare" ;;
+        de:cc_empty)        echo "Gespräch noch kurz: nichts zu komprimieren" ;;
+        *:cc_empty)         echo "conversation still short: nothing to compact" ;;
+        it:cc_saving)       echo "prima la rete di sicurezza: salvo la conversazione integrale..." ;;
+        de:cc_saving)       echo "erst das Sicherheitsnetz: sichere das vollständige Gespräch..." ;;
+        *:cc_saving)        echo "safety net first: saving the full conversation..." ;;
+        it:cc_working)      echo "il modello riassume (un'inferenza; un riassunto perde qualcosa per definizione)..." ;;
+        de:cc_working)      echo "das Modell fasst zusammen (eine Inferenz; eine Zusammenfassung verliert per Definition etwas)..." ;;
+        *:cc_working)       echo "the model is summarizing (one inference; a summary loses something by definition)..." ;;
+        it:cc_fail)         echo "riassunto non riuscito: la conversazione è INTATTA, non ho toccato nulla" ;;
+        de:cc_fail)         echo "Zusammenfassung fehlgeschlagen: das Gespräch ist UNVERÄNDERT" ;;
+        *:cc_fail)          echo "summary failed: the conversation is UNTOUCHED" ;;
+        it:cc_done)         echo "compattata: base + riassunto + ultimi 2 scambi testuali. Il testo integrale è nel file salvato; la barra dirà il numero vero al prossimo turno." ;;
+        de:cc_done)         echo "komprimiert: Basis + Zusammenfassung + letzte 2 Wechsel im Wortlaut. Der volle Text liegt in der gesicherten Datei; der Balken zeigt die echte Zahl beim nächsten Zug." ;;
+        *:cc_done)          echo "compacted: base + summary + last 2 exchanges verbatim. The full text is in the saved file; the bar shows the real number next turn." ;;
+        it:cc_sumprompt)    echo "Riassumi la conversazione fin qui, in modo fedele e compatto: le decisioni prese, i fatti citati (con le fonti [n] se c'erano), i tiri di dado rilevanti, le cose rimaste aperte. Niente premesse né commenti: solo il riassunto." ;;
+        de:cc_sumprompt)    echo "Fasse das bisherige Gespräch treu und kompakt zusammen: getroffene Entscheidungen, genannte Fakten (mit Quellen [n], falls vorhanden), relevante Würfelwürfe, offene Punkte. Keine Vorrede, kein Kommentar: nur die Zusammenfassung." ;;
+        *:cc_sumprompt)     echo "Summarize the conversation so far, faithfully and compactly: decisions taken, facts cited (with [n] sources if any), relevant dice rolls, open points. No preamble, no commentary: the summary only." ;;
+        it:cc_sumhead)      echo "Riassunto della conversazione precedente (è un RIASSUNTO, non il testo integrale: la versione completa è salvata su file). Prosegui da qui:" ;;
+        de:cc_sumhead)      echo "Zusammenfassung des bisherigen Gesprächs (eine ZUSAMMENFASSUNG, nicht der volle Text: die vollständige Fassung ist als Datei gesichert). Mach hier weiter:" ;;
+        *:cc_sumhead)       echo "Summary of the earlier conversation (a SUMMARY, not the full text: the complete version is saved to a file). Continue from here:" ;;
         it:flag_unknown)    echo "flag sconosciuto:" ;;
         de:flag_unknown)    echo "unbekanntes Flag:" ;;
         *:flag_unknown)     echo "unknown flag:" ;;
@@ -1438,7 +1459,7 @@ Aiuto per area — ogni help elenca TUTTI i suoi sotto-comandi:
   -w help        ricerca web: -w veloce · -w+ approfondita · -ws senza IA · --web-engine · --web-model
   -T help        traduci un file: file nuovo accanto · lingua · --translate-model
   -i help        modalità interattiva (frasi con simboli speciali)
-  -c help        chat: /contesto · /ricorda · /dadi · /web (dati dalla rete) · /fonte (solo un documento)
+  -c help        chat: /contesto · /dadi · /web (dati dalla rete) · /fonte (un documento) · /compatta
   --memory help  memoria: --remember salva · --forget scorda · --memory elenca
   --update help  aggiorna: -U · --check · --channel · --rollback · engine
 
@@ -1474,7 +1495,7 @@ Hilfe pro Bereich — jede Hilfe listet ALLE ihre Unterbefehle:
   -w help        Websuche: -w schnell · -w+ gründlich · -ws ohne KI · --web-engine · --web-model
   -T help        Datei übersetzen: neue Datei daneben · Sprache · --translate-model
   -i help        interaktiver Modus (Sätze mit Sonderzeichen)
-  -c help        Chat: /kontext · /merken · /wuerfel · /suche (Daten aus dem Netz) · /quelle (nur ein Dokument)
+  -c help        Chat: /kontext · /wuerfel · /suche (Daten aus dem Netz) · /quelle (ein Dokument) · /kompakt
   --memory help  Gedächtnis: --remember merken · --forget vergessen · --memory
   --update help  aktualisieren: -U · --check · --channel · --rollback · Engine
 
@@ -1510,7 +1531,7 @@ Help per area — each help lists ALL of its subcommands:
   -w help        web search: -w fast · -w+ deep · -ws no AI · --web-engine · --web-model
   -T help        translate a file: new file next to it · language · --translate-model
   -i help        interactive mode (requests with special characters)
-  -c help        chat: /context · /remember · /roll · /web (data from the net) · /source (one document only)
+  -c help        chat: /context · /roll · /web (data from the net) · /source (one document) · /compact
   --memory help  memory: --remember saves · --forget drops · --memory lists
   --update help  updating: -U · --check · --channel · --rollback · engine
 

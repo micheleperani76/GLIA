@@ -1,12 +1,31 @@
 #!/usr/bin/env bash
 # ============================================================
 #  glia - AI terminal assistant (Ollama + aichat)
-#  Version: 3.1.0 - 2026-07-19
+#  Version: 3.2.0 - 2026-07-19
 #  Author: Michele (with Claude)
 #  Project: GLIA (GNU Linux IA)
 #
 #  Design pillar: commands follow standard terminal conventions, so
 #  what you learn here you can reuse in other programs (and vice versa).
+#
+#  What's new in v3.2.0 ("shrink without starting over"):
+#   - `/compatta` (aliases /compact, /kompakt): the missing middle way
+#     between the red bar and /nuova. With /fonte and /web the window
+#     finally fills up for real, and the only exits were "lose everything"
+#     or "watch the model forget the beginning". Now: the model summarizes
+#     the dialogue, and the conversation becomes base (untouched) + the
+#     summary + the LAST 2 EXCHANGES VERBATIM - the immediate thread stays
+#     exact, "e quindi?" keeps working.
+#   - Safety net BEFORE scissors: the full conversation is saved to a .md
+#     (same file /salva writes) before anything is compressed. If the
+#     summary disappoints, the whole text exists on disk.
+#   - Honesty, twice: compaction is LOSSY by definition and the messages
+#     say so; it costs one inference and the messages say that too. The
+#     summary enters the dialogue MARKED as a summary - even the model
+#     knows it is reading a digest, not the real conversation. On any
+#     failure (engine down, empty answer) the conversation is untouched.
+#   - The red-bar hint now offers all three roads: /compatta to keep
+#     going, /salva to keep, /nuova to restart.
 #
 #  What's new in v3.1.0 ("the net into the conversation"):
 #   - `/web <question>` in the chat (aliases /cerca, /suche): grab a piece
@@ -698,7 +717,7 @@
 # ============================================================
 
 # ----------------- CONFIGURATION -----------------
-VERSION="3.1.0"
+VERSION="3.2.0"
 DEFAULT_MODEL="qwen2.5-coder:7b"
 # -m bench (D6b): CPU vs iGPU on THIS machine, config up top on purpose.
 BENCH_OVERRIDE_DIR="/etc/systemd/system/ollama.service.d"
@@ -1284,9 +1303,9 @@ t() {
         it:chat_turn)       echo "turno" ;;
         de:chat_turn)       echo "Runde" ;;
         *:chat_turn)        echo "turn" ;;
-        it:chat_full)       echo "Contesto quasi pieno: il modello sta per scordare l'inizio. /salva per conservare, /nuova per ripartire." ;;
-        de:chat_full)       echo "Kontext fast voll: das Modell vergisst gleich den Anfang. /speichern zum Sichern, /neu für den Neustart." ;;
-        *:chat_full)        echo "Context almost full: the model is about to forget the beginning. /save to keep it, /new to start over." ;;
+        it:chat_full)       echo "Contesto quasi pieno: il modello sta per scordare l'inizio. /compatta per proseguire (riassume e libera spazio), /salva per conservare, /nuova per ripartire." ;;
+        de:chat_full)       echo "Kontext fast voll: das Modell vergisst gleich den Anfang. /kompakt zum Weitermachen (fasst zusammen, macht Platz), /speichern zum Sichern, /neu für den Neustart." ;;
+        *:chat_full)        echo "Context almost full: the model is about to forget the beginning. /compact to keep going (summarizes, frees room), /save to keep it, /new to start over." ;;
         it:chat_cleared)    echo "Contesto azzerato: la chat riparte da zero." ;;
         de:chat_cleared)    echo "Kontext geleert: der Chat beginnt von vorn." ;;
         *:chat_cleared)     echo "Context cleared: the chat starts fresh." ;;
@@ -2019,6 +2038,27 @@ t() {
         it:cw_frame2)       echo "Usali quando la conversazione li tocca: cita la fonte come [n], e se non bastano dillo invece di inventare." ;;
         de:cw_frame2)       echo "Nutze sie, wenn das Gespräch sie berührt: zitiere die Quelle als [n]; reichen sie nicht, sag es, statt zu erfinden." ;;
         *:cw_frame2)        echo "Use them when the conversation touches them: cite the source as [n], and if they are not enough say so instead of inventing." ;;
+        it:cc_empty)        echo "conversazione ancora corta: niente da compattare" ;;
+        de:cc_empty)        echo "Gespräch noch kurz: nichts zu komprimieren" ;;
+        *:cc_empty)         echo "conversation still short: nothing to compact" ;;
+        it:cc_saving)       echo "prima la rete di sicurezza: salvo la conversazione integrale..." ;;
+        de:cc_saving)       echo "erst das Sicherheitsnetz: sichere das vollständige Gespräch..." ;;
+        *:cc_saving)        echo "safety net first: saving the full conversation..." ;;
+        it:cc_working)      echo "il modello riassume (un'inferenza; un riassunto perde qualcosa per definizione)..." ;;
+        de:cc_working)      echo "das Modell fasst zusammen (eine Inferenz; eine Zusammenfassung verliert per Definition etwas)..." ;;
+        *:cc_working)       echo "the model is summarizing (one inference; a summary loses something by definition)..." ;;
+        it:cc_fail)         echo "riassunto non riuscito: la conversazione è INTATTA, non ho toccato nulla" ;;
+        de:cc_fail)         echo "Zusammenfassung fehlgeschlagen: das Gespräch ist UNVERÄNDERT" ;;
+        *:cc_fail)          echo "summary failed: the conversation is UNTOUCHED" ;;
+        it:cc_done)         echo "compattata: base + riassunto + ultimi 2 scambi testuali. Il testo integrale è nel file salvato; la barra dirà il numero vero al prossimo turno." ;;
+        de:cc_done)         echo "komprimiert: Basis + Zusammenfassung + letzte 2 Wechsel im Wortlaut. Der volle Text liegt in der gesicherten Datei; der Balken zeigt die echte Zahl beim nächsten Zug." ;;
+        *:cc_done)          echo "compacted: base + summary + last 2 exchanges verbatim. The full text is in the saved file; the bar shows the real number next turn." ;;
+        it:cc_sumprompt)    echo "Riassumi la conversazione fin qui, in modo fedele e compatto: le decisioni prese, i fatti citati (con le fonti [n] se c'erano), i tiri di dado rilevanti, le cose rimaste aperte. Niente premesse né commenti: solo il riassunto." ;;
+        de:cc_sumprompt)    echo "Fasse das bisherige Gespräch treu und kompakt zusammen: getroffene Entscheidungen, genannte Fakten (mit Quellen [n], falls vorhanden), relevante Würfelwürfe, offene Punkte. Keine Vorrede, kein Kommentar: nur die Zusammenfassung." ;;
+        *:cc_sumprompt)     echo "Summarize the conversation so far, faithfully and compactly: decisions taken, facts cited (with [n] sources if any), relevant dice rolls, open points. No preamble, no commentary: the summary only." ;;
+        it:cc_sumhead)      echo "Riassunto della conversazione precedente (è un RIASSUNTO, non il testo integrale: la versione completa è salvata su file). Prosegui da qui:" ;;
+        de:cc_sumhead)      echo "Zusammenfassung des bisherigen Gesprächs (eine ZUSAMMENFASSUNG, nicht der volle Text: die vollständige Fassung ist als Datei gesichert). Mach hier weiter:" ;;
+        *:cc_sumhead)       echo "Summary of the earlier conversation (a SUMMARY, not the full text: the complete version is saved to a file). Continue from here:" ;;
         it:flag_unknown)    echo "flag sconosciuto:" ;;
         de:flag_unknown)    echo "unbekanntes Flag:" ;;
         *:flag_unknown)     echo "unknown flag:" ;;
@@ -2369,7 +2409,7 @@ Aiuto per area — ogni help elenca TUTTI i suoi sotto-comandi:
   -w help        ricerca web: -w veloce · -w+ approfondita · -ws senza IA · --web-engine · --web-model
   -T help        traduci un file: file nuovo accanto · lingua · --translate-model
   -i help        modalità interattiva (frasi con simboli speciali)
-  -c help        chat: /contesto · /ricorda · /dadi · /web (dati dalla rete) · /fonte (solo un documento)
+  -c help        chat: /contesto · /dadi · /web (dati dalla rete) · /fonte (un documento) · /compatta
   --memory help  memoria: --remember salva · --forget scorda · --memory elenca
   --update help  aggiorna: -U · --check · --channel · --rollback · engine
 
@@ -2405,7 +2445,7 @@ Hilfe pro Bereich — jede Hilfe listet ALLE ihre Unterbefehle:
   -w help        Websuche: -w schnell · -w+ gründlich · -ws ohne KI · --web-engine · --web-model
   -T help        Datei übersetzen: neue Datei daneben · Sprache · --translate-model
   -i help        interaktiver Modus (Sätze mit Sonderzeichen)
-  -c help        Chat: /kontext · /merken · /wuerfel · /suche (Daten aus dem Netz) · /quelle (nur ein Dokument)
+  -c help        Chat: /kontext · /wuerfel · /suche (Daten aus dem Netz) · /quelle (ein Dokument) · /kompakt
   --memory help  Gedächtnis: --remember merken · --forget vergessen · --memory
   --update help  aktualisieren: -U · --check · --channel · --rollback · Engine
 
@@ -2441,7 +2481,7 @@ Help per area — each help lists ALL of its subcommands:
   -w help        web search: -w fast · -w+ deep · -ws no AI · --web-engine · --web-model
   -T help        translate a file: new file next to it · language · --translate-model
   -i help        interactive mode (requests with special characters)
-  -c help        chat: /context · /remember · /roll · /web (data from the net) · /source (one document only)
+  -c help        chat: /context · /roll · /web (data from the net) · /source (one document) · /compact
   --memory help  memory: --remember saves · --forget drops · --memory lists
   --update help  updating: -U · --check · --channel · --rollback · engine
 
@@ -5162,6 +5202,9 @@ Comandi della chat (tutto il resto è conversazione):
               raccolta): i risultati entrano nel dialogo, con le fonti
   /fonte <file>  SOLO quel documento come base (studio, GdR con regole tue):
               scheda e memoria sospese, l'IA cita il testo · /fonte off
+  /compatta   comprime la chat piena: salva TUTTO su file, poi riassume e
+              tiene testuali gli ultimi 2 scambi (un riassunto perde
+              qualcosa: per questo prima salva)
   /aiuto      questo promemoria
 La barra sotto ogni risposta dice quanto è piena la finestra: token veri
 contati da Ollama. Non parte da 0% perché la base (scheda comandi, fatti)
@@ -5183,6 +5226,8 @@ Chat-Befehle (alles andere ist Unterhaltung):
               Sammeln): die Ergebnisse gehen in den Dialog, mit Quellen
   /quelle <Datei>  NUR dieses Dokument als Basis (Lernen, Rollenspiel mit
               eigenen Regeln): Blatt und Gedächtnis pausiert · /quelle off
+  /kompakt    komprimiert den vollen Chat: sichert ALLES in eine Datei,
+              fasst zusammen, behält die letzten 2 Wechsel im Wortlaut
   /hilfe      diese Übersicht
 Der Balken unter jeder Antwort zeigt, wie voll das Fenster ist: echte Token
 von Ollama. Er startet nicht bei 0%, weil die Basis (Befehlsblatt, Fakten)
@@ -5204,6 +5249,8 @@ Chat commands (everything else is conversation):
              collection): the results join the dialogue, with sources
   /source <file>  ONLY that document as the base (study, RPG with house
              rules): sheet and memory suspended, the AI cites it · /source off
+  /compact   compacts a full chat: saves EVERYTHING to a file, then
+             summarizes and keeps the last 2 exchanges verbatim
   /help      this reminder
 The bar under every answer shows how full the window is: real tokens counted
 by Ollama. It does not start at 0% because the base (command sheet, facts)
@@ -5470,6 +5517,41 @@ $(t cw_frame2)" '. + [{role:"user",content:$c}]' <<<"$CHAT_MSGS")
     echo -e "${GREEN}$(t cw_added)${NC}"
 }
 
+# ---- /compatta: shrink without starting over (v3.2) ----
+
+chat_compact_cmd() {
+    # The middle way between the red bar and /nuova. The model SUMMARIZES
+    # the dialogue, then the conversation becomes: base (sheet/memory or
+    # source, untouched) + the summary MARKED as a summary + the last 2
+    # exchanges VERBATIM - the immediate thread stays exact, "e quindi?"
+    # keeps working. Compaction is LOSSY by definition and SAYS so; the
+    # full text is saved to a .md FIRST (safety net before scissors), the
+    # inference is declared, and on any failure nothing is touched.
+    local n req summary tail
+    n=$(jq length <<<"$CHAT_MSGS")
+    # system + 4 kept verbatim: below 7 there is nothing worth squeezing
+    if [ "$n" -le 7 ]; then echo "$(t cc_empty)"; return 1; fi
+    echo -e "${BLUE}$(t cc_saving)${NC}"
+    chat_save
+    echo -e "${BLUE}$(t cc_working)${NC}"
+    req=$(jq -cn --arg m "${MODEL#ollama:}" --argjson h "$CHAT_MSGS" --argjson n "$CHAT_CTX" \
+              --arg p "$(t cc_sumprompt)$(nothink)" \
+          '{model:$m, messages:($h + [{role:"user",content:$p}]), stream:false,
+            options:{num_ctx:$n}}')
+    summary=$(curl -fsS --max-time 300 "$OLLAMA_URL/api/chat" -d "$req" 2>/dev/null \
+              | jq -r '.message.content // empty' \
+              | sed -z 's/<think>.*<\/think>//g')
+    summary="${summary#"${summary%%[![:space:]]*}"}"
+    if [ -z "$summary" ]; then
+        echo -e "${RED}$(t cc_fail)${NC}"; return 1
+    fi
+    tail=$(jq -c '.[-4:]' <<<"$CHAT_MSGS")
+    CHAT_MSGS=$(jq -c --arg s "$(t cc_sumhead)
+
+$summary" --argjson tail "$tail" '[.[0], {role:"user",content:$s}] + $tail' <<<"$CHAT_MSGS")
+    echo -e "${GREEN}$(t cc_done)${NC}"
+}
+
 chat_help() {
     case "$UILANG" in
     it) cat <<EOF
@@ -5503,6 +5585,11 @@ Comandi dentro la chat:
              per un GdR con le tue regole. Scheda e memoria sospese (meno
              allucinazioni, più spazio), l'IA cita il testo · /fonte off
              All'avvio: $ASSIST_NAME -c --fonte <file> [prima domanda]
+  /compatta  la via di mezzo tra la barra rossa e /nuova: prima salva TUTTO
+             in un .md (la rete di sicurezza), poi il modello riassume e la
+             conversazione diventa base + riassunto (marcato come tale) +
+             ultimi 2 scambi testuali. Un riassunto perde qualcosa per
+             definizione, e costa un'inferenza: entrambe le cose dichiarate.
   /aiuto     promemoria dei comandi
 
 La barra sotto ogni risposta:
@@ -5576,6 +5663,11 @@ Befehle im Chat:
               ein Rollenspiel mit eigenen Regeln. Blatt und Gedächtnis
               pausiert, die KI zitiert den Text · /quelle off
               Beim Start: $ASSIST_NAME -c --fonte <Datei> [erste Frage]
+  /kompakt    der Mittelweg zwischen rotem Balken und /neu: erst wird ALLES
+              in eine .md gesichert (das Sicherheitsnetz), dann fasst das
+              Modell zusammen - Basis + Zusammenfassung (als solche markiert)
+              + letzte 2 Wechsel im Wortlaut. Eine Zusammenfassung verliert
+              per Definition etwas und kostet eine Inferenz: beides gesagt.
   /hilfe      Übersicht der Befehle
 
 Der Balken unter jeder Antwort:
@@ -5638,6 +5730,11 @@ Commands inside the chat:
              an RPG with house rules. Sheet and memory suspended, the AI
              cites the text · /source off
              At launch: $ASSIST_NAME -c --fonte <file> [first question]
+  /compact   the middle way between the red bar and /new: EVERYTHING is
+             saved to a .md first (the safety net), then the model
+             summarizes - base + summary (marked as such) + last 2
+             exchanges verbatim. A summary loses something by definition
+             and costs one inference: both said out loud.
   /help      command reminder
 
 The bar under every answer:
@@ -5755,6 +5852,7 @@ chat_mode() {
                                          CHAT_MSGS=$(jq -c --arg s "$sys" '.[0].content=$s' <<<"$CHAT_MSGS")
                                          continue ;;
             /scorda|/forget|/vergiss)    echo "$(t forget_usage)"; continue ;;
+            /compatta|/compact|/kompakt) chat_compact_cmd || true; continue ;;
             '/web '*|'/cerca '*|'/suche '*)
                                          chat_web_cmd "${line#* }" || true; continue ;;
             /web|/cerca|/suche)          echo "$(t cw_usage)"; continue ;;

@@ -467,6 +467,9 @@ Comandi della chat (tutto il resto è conversazione):
               raccolta): i risultati entrano nel dialogo, con le fonti
   /fonte <file>  SOLO quel documento come base (studio, GdR con regole tue):
               scheda e memoria sospese, l'IA cita il testo · /fonte off
+  /compatta   comprime la chat piena: salva TUTTO su file, poi riassume e
+              tiene testuali gli ultimi 2 scambi (un riassunto perde
+              qualcosa: per questo prima salva)
   /aiuto      questo promemoria
 La barra sotto ogni risposta dice quanto è piena la finestra: token veri
 contati da Ollama. Non parte da 0% perché la base (scheda comandi, fatti)
@@ -488,6 +491,8 @@ Chat-Befehle (alles andere ist Unterhaltung):
               Sammeln): die Ergebnisse gehen in den Dialog, mit Quellen
   /quelle <Datei>  NUR dieses Dokument als Basis (Lernen, Rollenspiel mit
               eigenen Regeln): Blatt und Gedächtnis pausiert · /quelle off
+  /kompakt    komprimiert den vollen Chat: sichert ALLES in eine Datei,
+              fasst zusammen, behält die letzten 2 Wechsel im Wortlaut
   /hilfe      diese Übersicht
 Der Balken unter jeder Antwort zeigt, wie voll das Fenster ist: echte Token
 von Ollama. Er startet nicht bei 0%, weil die Basis (Befehlsblatt, Fakten)
@@ -509,6 +514,8 @@ Chat commands (everything else is conversation):
              collection): the results join the dialogue, with sources
   /source <file>  ONLY that document as the base (study, RPG with house
              rules): sheet and memory suspended, the AI cites it · /source off
+  /compact   compacts a full chat: saves EVERYTHING to a file, then
+             summarizes and keeps the last 2 exchanges verbatim
   /help      this reminder
 The bar under every answer shows how full the window is: real tokens counted
 by Ollama. It does not start at 0% because the base (command sheet, facts)
