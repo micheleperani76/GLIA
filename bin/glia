@@ -1,12 +1,31 @@
 #!/usr/bin/env bash
 # ============================================================
 #  glia - AI terminal assistant (Ollama + aichat)
-#  Version: 2.23.0 - 2026-07-19
+#  Version: 2.24.0 - 2026-07-19
 #  Author: Michele (with Claude)
 #  Project: GLIA (GNU Linux IA)
 #
 #  Design pillar: commands follow standard terminal conventions, so
 #  what you learn here you can reuse in other programs (and vice versa).
+#
+#  What's new in v2.24 ("you roll, the AI narrates"):
+#   - Green tools live INSIDE the chat now. "/dadi 8d6" resolves WHERE it
+#     sits in the sentence: "lancio una palla di fuoco che fa /dadi 8d6"
+#     reaches the model as "... che fa [8d6 → 3 + 5 + ... = 29]". The roll is
+#     local, instant, zero tokens; the model gets a FACT it cannot fudge -
+#     the master rolls, the AI narrates. Your dice are echoed in green before
+#     the model speaks, and history keeps what you TYPED, not the expansion.
+#   - It is a registry (CHAT_TOOLS), not a special case: aliases=function,
+#     one entry today (dice - dice_roll itself, not a copy), the next green
+#     tool is one line and one function. CHAT_BLOCKS taught us to be born
+#     parametric instead of discovering it three copies later.
+#   - An unrecognized flag is a TYPO, not a sentence. "arx -ask comando -c"
+#     used to reach the model as natural language and came back as an
+#     invented echo with a confident voice - the design pillar (standard
+#     terminal conventions) violated by the fallback itself. Now: "unknown
+#     flag: -ask · long flags take TWO dashes (e.g. --ask)", exit 2, like
+#     every program you have ever used. Natural language does not start
+#     with a dash; a typo does.
 #
 #  What's new in v2.23 ("a d20 does not need a 7B model"):
 #   - `glia -D 2d6` / `--dice`: dice in role-playing notation, [N]dM[+K|-K]
@@ -621,7 +640,7 @@
 # ============================================================
 
 # ----------------- CONFIGURATION -----------------
-VERSION="2.23.0"
+VERSION="2.24.0"
 DEFAULT_MODEL="qwen2.5-coder:7b"
 # -m bench (D6b): CPU vs iGPU on THIS machine, config up top on purpose.
 BENCH_OVERRIDE_DIR="/etc/systemd/system/ollama.service.d"
@@ -757,6 +776,14 @@ CHAT_BLOCKS=(
     "memory|on|chat_blk_memory"    # the facts you stored with --remember
 )
 CHAT_BLOCKS_FILE="$HOME/.config/glia/chat-blocks"   # name=on|off, one per line
+# Green tools INSIDE the chat (v2.24): no AI, resolved on the spot, the
+# result goes into the sentence. "aliases=function": the function gets the
+# word after the alias and prints the resolved text - or fails, and the text
+# stays as typed. One entry today (the -D dice, same function, not a copy);
+# the next green tool is one line here plus its function, not a redesign.
+CHAT_TOOLS=(
+    "dadi|wuerfel|roll|dice=dice_roll"
+)
 
 # --- Release channel / self-update (v2.17, Part E) ---
 # Everything here is meant to be easy to change. Discovery uses the HTTPS repo
@@ -1873,6 +1900,15 @@ t() {
         it:dice_limit)      echo "limiti: da 1 a 100 dadi, facce da 1 a 10000" ;;
         de:dice_limit)      echo "Grenzen: 1 bis 100 Würfel, 1 bis 10000 Seiten" ;;
         *:dice_limit)       echo "limits: 1 to 100 dice, 1 to 10000 sides" ;;
+        it:flag_unknown)    echo "flag sconosciuto:" ;;
+        de:flag_unknown)    echo "unbekanntes Flag:" ;;
+        *:flag_unknown)     echo "unknown flag:" ;;
+        it:flag_dashes)     echo "i flag lunghi vogliono DUE trattini (es." ;;
+        de:flag_dashes)     echo "lange Flags brauchen ZWEI Striche (z.B." ;;
+        *:flag_dashes)      echo "long flags take TWO dashes (e.g." ;;
+        it:flag_list)       echo "· $ASSIST_NAME -h per l'elenco" ;;
+        de:flag_list)       echo "· $ASSIST_NAME -h für die Liste" ;;
+        *:flag_list)        echo "· $ASSIST_NAME -h for the list" ;;
         it:web_sys)         echo "Sei un assistente esperto. Rispondi alla DOMANDA in italiano usando SOLO le FONTI qui sotto. Sii conciso, accurato e concreto. Se le fonti non bastano o si contraddicono, dillo. Chiudi SEMPRE con una riga vuota e poi 'Fonti:' elencando solo le fonti che hai citato, come [n] titolo - url." ;;
         de:web_sys)         echo "Du bist ein erfahrener Assistent. Beantworte die FRAGE auf Deutsch und nutze NUR die QUELLEN unten. Sei knapp, genau und konkret. Wenn die Quellen nicht reichen oder sich widersprechen, sage es. Schließe IMMER mit einer Leerzeile und dann 'Quellen:' und liste nur die zitierten Quellen als [n] Titel - url." ;;
         *:web_sys)          echo "You are an expert assistant. Answer the QUESTION using ONLY the SOURCES below. Be concise, accurate and concrete. If the sources are insufficient or conflicting, say so. ALWAYS end with a blank line then 'Sources:' listing only the sources you cited, as [n] title - url." ;;
@@ -4974,6 +5010,8 @@ Comandi della chat (tutto il resto è conversazione):
   /contesto   cosa c'è nella base, quanto costa davvero, e come spegnerlo
   /ricorda    salva un fatto nella memoria condivisa (/ricorda <fatto>)
   /memoria    elenca i fatti   ·   /scorda <n>   toglie il fatto n
+  /dadi 2d6   tira i dadi DOVE sta la frase, senza IA: "palla di fuoco da
+              /dadi 8d6" arriva al modello col risultato già dentro (come -D)
   /aiuto      questo promemoria
 La barra sotto ogni risposta dice quanto è piena la finestra: token veri
 contati da Ollama. Non parte da 0% perché la base (scheda comandi, fatti)
@@ -4989,6 +5027,8 @@ Chat-Befehle (alles andere ist Unterhaltung):
   /kontext    was in der Basis steckt, was es kostet, wie man es abschaltet
   /merken     einen Fakt ins gemeinsame Gedächtnis (/merken <Fakt>)
   /gedaechtnis  Fakten auflisten   ·   /vergiss <n>   entfernt Fakt n
+  /wuerfel 2d6  würfelt IM Satz, ohne KI: "Feuerball für /wuerfel 8d6" erreicht
+              das Modell mit dem Ergebnis schon drin (wie -D)
   /hilfe      diese Übersicht
 Der Balken unter jeder Antwort zeigt, wie voll das Fenster ist: echte Token
 von Ollama. Er startet nicht bei 0%, weil die Basis (Befehlsblatt, Fakten)
@@ -5004,6 +5044,8 @@ Chat commands (everything else is conversation):
   /context   what is in the base, what it really costs, how to turn it off
   /remember  store a fact in the shared memory (/remember <fact>)
   /memory    list the facts   ·   /forget <n>   drops fact n
+  /roll 2d6  rolls dice WHERE the sentence is, no AI: "fireball for
+             /roll 8d6" reaches the model with the result already in (as -D)
   /help      this reminder
 The bar under every answer shows how full the window is: real tokens counted
 by Ollama. It does not start at 0% because the base (command sheet, facts)
@@ -5068,6 +5110,9 @@ Come si usa:
   $ASSIST_NAME -D 1d100+4      col modificatore            →  1d100+4 → 87 +4 = 91
   $ASSIST_NAME -D 2d6 1d8+2    più tiri in un colpo, una riga ciascuno
 
+Dentro la chat (-c): /dadi 2d6 in mezzo alla frase si risolve sul posto,
+e il modello riceve la frase col risultato già dentro — tu tiri, l'IA narra.
+
 Limiti: da 1 a 100 dadi per tiro, facce da 1 a 10000, modificatore +K o -K.
 EOF
         ;;
@@ -5086,6 +5131,10 @@ Nutzung:
   $ASSIST_NAME -D d20          die 1 davor ist optional
   $ASSIST_NAME -D 1d100+4      mit Modifikator              →  1d100+4 → 87 +4 = 91
   $ASSIST_NAME -D 2d6 1d8+2    mehrere Würfe auf einmal, je eine Zeile
+
+Im Chat (-c): /wuerfel 2d6 mitten im Satz wird an Ort und Stelle gewürfelt,
+und das Modell erhält den Satz mit dem Ergebnis schon drin — du würfelst,
+die KI erzählt.
 
 Grenzen: 1 bis 100 Würfel pro Wurf, 1 bis 10000 Seiten, Modifikator +K oder -K.
 EOF
@@ -5106,10 +5155,39 @@ Usage:
   $ASSIST_NAME -D 1d100+4      with a modifier             →  1d100+4 → 87 +4 = 91
   $ASSIST_NAME -D 2d6 1d8+2    several rolls at once, one line each
 
+Inside the chat (-c): /roll 2d6 in the middle of a sentence resolves on the
+spot, and the model receives the sentence with the result already in —
+you roll, the AI narrates.
+
 Limits: 1 to 100 dice per roll, 1 to 10000 sides, modifier +K or -K.
 EOF
         ;;
     esac
+}
+
+chat_tools_expand() {
+    # $1 = the line as typed. Echoes it with every green-tool call resolved
+    # IN PLACE: "palla di fuoco da /dadi 8d6" becomes "palla di fuoco da
+    # [8d6 → 3 + 5 + ... = 29]", and THAT is what the model receives: you
+    # roll, the AI narrates. The roll is printed to stderr too, in green -
+    # your dice, seen by you before the model sees the sentence. An invalid
+    # expression warns and stays as typed: a tool must not eat your words.
+    local line="$1" entry aliases fn out pre tok arg res
+    for entry in "${CHAT_TOOLS[@]}"; do
+        aliases="${entry%%=*}"; fn="${entry#*=}"; out=""
+        while [[ "$line" =~ /($aliases)[[:space:]]+([^[:space:]]+) ]]; do
+            tok="${BASH_REMATCH[0]}"; arg="${BASH_REMATCH[2]}"
+            pre="${line%%"$tok"*}"; line="${line#*"$tok"}"
+            if res="$("$fn" "$arg")"; then
+                echo -e "${GREEN}${res}${NC}" >&2
+                out+="${pre}[${res}]"
+            else
+                out+="${pre}${tok}"
+            fi
+        done
+        line="${out}${line}"
+    done
+    printf '%s' "$line"
 }
 
 chat_help() {
@@ -5135,6 +5213,8 @@ Comandi dentro la chat:
   /modello   cambia IA al volo, SOLO per questa chat: il default resta
   /contesto  cosa c'è nella base e quanto costa · /contesto <nome> on|off
   /ricorda   salva un fatto · /memoria elenca · /scorda <n> toglie
+  /dadi 2d6  tira i dadi NELLA frase, senza IA: "palla di fuoco da /dadi 8d6"
+             arriva al modello col risultato già dentro — tu tiri, l'IA narra
   /aiuto     promemoria dei comandi
 
 La barra sotto ogni risposta:
@@ -5198,6 +5278,8 @@ Befehle im Chat:
   /modell     KI wechseln, NUR für diesen Chat: der Standard bleibt
   /kontext    was in der Basis steckt und was es kostet · /kontext <Name> on|off
   /merken     einen Fakt sichern · /gedaechtnis auflisten · /vergiss <n>
+  /wuerfel 2d6  würfelt IM Satz, ohne KI: "Feuerball für /wuerfel 8d6" erreicht
+              das Modell mit dem Ergebnis schon drin — du würfelst, die KI erzählt
   /hilfe      Übersicht der Befehle
 
 Der Balken unter jeder Antwort:
@@ -5250,6 +5332,8 @@ Commands inside the chat:
   /model     switch AI on the fly, THIS chat only: the default stays
   /context   what is in the base and what it costs · /context <name> on|off
   /remember  store a fact · /memory lists · /forget <n> drops one
+  /roll 2d6  rolls dice IN the sentence, no AI: "fireball for /roll 8d6"
+             reaches the model with the result already in — you roll, the AI narrates
   /help      command reminder
 
 The bar under every answer:
@@ -5316,6 +5400,11 @@ chat_mode() {
             IFS= read -r -e -p "$(t chat_prompt)> " line || { echo; break; }
             history -s -- "$line" 2>/dev/null
         fi
+        # Green tools resolve FIRST (v2.24): /dadi 2d6 anywhere in the line
+        # becomes its result before anything else looks at it. A line that is
+        # ONLY a roll goes to the model like any sentence - the master rolled,
+        # the AI narrates. History keeps what you typed, not the expansion.
+        line="$(chat_tools_expand "$line")"
         case "$line" in
             "")                          continue ;;
             /esci|/exit|/quit|/ende)     break ;;
@@ -8159,6 +8248,19 @@ case "$1" in
         else
             echo "$(t no_log)"
         fi
+        ;;
+    -?*)
+        # An unrecognized flag is a TYPO, not a sentence (v2.24). A normal
+        # terminal program says "unknown option"; handing "-ask comando -c"
+        # to the model got back an invented echo with a confident voice -
+        # the design pillar (standard conventions) violated by the fallback
+        # itself. Natural language does not start with a dash; a typo does.
+        case "$1" in
+            -[a-zA-Z][a-zA-Z]*)
+                echo -e "${YELLOW}$(t flag_unknown) $1 · $(t flag_dashes) --${1#-}) $(t flag_list)${NC}" >&2 ;;
+            *)  echo -e "${YELLOW}$(t flag_unknown) $1 $(t flag_list)${NC}" >&2 ;;
+        esac
+        exit 2
         ;;
     *)
         check_ai

@@ -151,7 +151,11 @@ check_flags() {
     section "2. Flag del parser presenti in README, commands.html e completions"
     local arm primary tok surface found miss=0
     while IFS= read -r arm; do
-        case "$arm" in '""'|'*') continue ;; esac
+        # '""' e '*' sono i default; un ramo con '?' e' un catch-all glob
+        # (es. -?*, la guardia sui flag sbagliati della v2.24): acchiappa
+        # ERRORI, non e' un flag documentabile - nessuna superficie deve
+        # elencarlo.
+        case "$arm" in '""'|'*'|*'?'*) continue ;; esac
         # tieni solo i token che sono flag (iniziano con '-')
         local -a toks=() ; IFS='|' read -ra toks <<< "$arm"
         local -a flags=() ; for tok in "${toks[@]}"; do

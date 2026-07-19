@@ -167,7 +167,9 @@ green by design, and it's a whole system, not a lone command.
   `2d6`, `1d100+4`, several rolls per call, single rolls shown (`2d6 → 4 + 5
   = 9`). Green by construction: no model, no wait, no token — the numbers
   come from `shuf`, i.e. the kernel's entropy, and it works with Ollama
-  stopped.
+  stopped. And the dice live in the chat too: `/dadi 8d6` **inside a
+  sentence** resolves on the spot, and the model receives the sentence with
+  the result already in it — you roll, the AI narrates.
   Pick the AI per job: `glia -m` sets the default and shows
   role tags (default / web / project / translate) next to each model, while
   `glia --web-model`, `glia --project-model` and `glia --translate-model` pin a
