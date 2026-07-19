@@ -113,6 +113,14 @@ green by design, and it's a whole system, not a lone command.
 | 4. Calamares installer with AI setup step | ✅ working, full install tested in QEMU (UEFI) |
 | 5. Btrfs snapshots, branding, polish | ⏳ |
 
+> 🚧 **`scripts/glia-iso.sh` — guided ISO builder, work in progress.** A
+> bilingual (EN/IT) guided front-end for the whole ISO workflow:
+> prerequisites → build → QEMU test → USB write, plus the assistant-only
+> install. It follows the GLIA loop — every command is shown and approved
+> before it runs. **The procedure is incomplete and under active revision**:
+> the flow and wording are still being refined. Treat it as a working base,
+> not a finished tool — contributions and feedback are very welcome.
+
 ## Components
 
 - **`bin/glia`** — AI terminal assistant (Ollama + aichat).
