@@ -1,3 +1,31 @@
+# ---- /web: the net INTO the conversation (v3.1) ----
+
+chat_web_cmd() {
+    # /web <question> - grab a piece of the web WITHOUT leaving the chat.
+    # The collection is the -ws pipeline (w3m asks the engine): NO AI, so
+    # the chat model never moves, no swap, and the dialogue stays exactly
+    # where it is - the fear of "freezing the chat to go search" dissolves
+    # because nothing needs freezing. The results enter the conversation
+    # as a marked block, like a die roll: the tool brings a FACT, the
+    # model uses it at your NEXT message. Refused in source mode: there
+    # the document is the only truth, both promises cannot hold at once.
+    local q="$*" ctx
+    [ -z "$q" ] && { echo "$(t cw_usage)"; return 1; }
+    if [ -n "${CHAT_SOURCE_FILE:-}" ]; then
+        echo -e "${YELLOW}$(t cw_source)${NC}"; return 1
+    fi
+    web_deps_ok || return 1
+    echo -e "${BLUE}$(t cw_searching)${NC}"
+    ctx="$(build_web_context "$q" 0)"
+    [ -z "$ctx" ] && { echo -e "${YELLOW}$(t cw_nores)${NC}"; return 1; }
+    printf '%s\n' "$ctx"   # the \n is HERE: $(...) ate the trailing one (the usual suspect)
+    CHAT_MSGS=$(jq -c --arg c "$(t cw_frame) \"$q\":
+
+$ctx
+$(t cw_frame2)" '. + [{role:"user",content:$c}]' <<<"$CHAT_MSGS")
+    echo -e "${GREEN}$(t cw_added)${NC}"
+}
+
 chat_help() {
     case "$UILANG" in
     it) cat <<EOF
@@ -23,6 +51,10 @@ Comandi dentro la chat:
   /ricorda   salva un fatto · /memoria elenca · /scorda <n> toglie
   /dadi 2d6  tira i dadi NELLA frase, senza IA: "palla di fuoco da /dadi 8d6"
              arriva al modello col risultato già dentro — tu tiri, l'IA narra
+  /web <domanda>  un dato dal web SENZA uscire dalla chat: la raccolta è
+             la stessa di -ws (w3m, niente IA, il modello non si muove),
+             i risultati entrano nel dialogo con le fonti [n] e il modello
+             li usa dal tuo prossimo messaggio. Non in modalità fonte.
   /fonte <file>  SOLO quel documento come base di conoscenza: per studiare o
              per un GdR con le tue regole. Scheda e memoria sospese (meno
              allucinazioni, più spazio), l'IA cita il testo · /fonte off
@@ -92,6 +124,10 @@ Befehle im Chat:
   /merken     einen Fakt sichern · /gedaechtnis auflisten · /vergiss <n>
   /wuerfel 2d6  würfelt IM Satz, ohne KI: "Feuerball für /wuerfel 8d6" erreicht
               das Modell mit dem Ergebnis schon drin — du würfelst, die KI erzählt
+  /suche <Frage>  ein Datum aus dem Web OHNE den Chat zu verlassen: das
+              Sammeln ist dasselbe wie -ws (w3m, keine KI, das Modell
+              bleibt geladen), die Ergebnisse gehen mit Quellen [n] in den
+              Dialog. Nicht im Quellen-Modus.
   /quelle <Datei>  NUR dieses Dokument als Wissensbasis: zum Lernen oder für
               ein Rollenspiel mit eigenen Regeln. Blatt und Gedächtnis
               pausiert, die KI zitiert den Text · /quelle off
@@ -150,6 +186,10 @@ Commands inside the chat:
   /remember  store a fact · /memory lists · /forget <n> drops one
   /roll 2d6  rolls dice IN the sentence, no AI: "fireball for /roll 8d6"
              reaches the model with the result already in — you roll, the AI narrates
+  /web <question>  a piece of the web WITHOUT leaving the chat: the
+             collection is the same as -ws (w3m, no AI, the model stays
+             loaded), the results join the dialogue with [n] sources.
+             Not in source mode.
   /source <file>  ONLY that document as the knowledge base: for studying, or
              an RPG with house rules. Sheet and memory suspended, the AI
              cites the text · /source off
@@ -271,6 +311,9 @@ chat_mode() {
                                          CHAT_MSGS=$(jq -c --arg s "$sys" '.[0].content=$s' <<<"$CHAT_MSGS")
                                          continue ;;
             /scorda|/forget|/vergiss)    echo "$(t forget_usage)"; continue ;;
+            '/web '*|'/cerca '*|'/suche '*)
+                                         chat_web_cmd "${line#* }" || true; continue ;;
+            /web|/cerca|/suche)          echo "$(t cw_usage)"; continue ;;
             /fonte|/source|/quelle)      chat_source_cmd ""; continue ;;
             '/fonte '*|'/source '*|'/quelle '*)
                                          chat_source_cmd "${line#* }" || true

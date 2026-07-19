@@ -1,12 +1,29 @@
 #!/usr/bin/env bash
 # ============================================================
 #  glia - AI terminal assistant (Ollama + aichat)
-#  Version: 3.0.0 - 2026-07-19
+#  Version: 3.1.0 - 2026-07-19
 #  Author: Michele (with Claude)
 #  Project: GLIA (GNU Linux IA)
 #
 #  Design pillar: commands follow standard terminal conventions, so
 #  what you learn here you can reuse in other programs (and vice versa).
+#
+#  What's new in v3.1.0 ("the net into the conversation"):
+#   - `/web <question>` in the chat (aliases /cerca, /suche): grab a piece
+#     of the web WITHOUT leaving the dialogue. The collection is the -ws
+#     pipeline - w3m asks the engine, NO AI - so the chat model never
+#     moves and nothing needs saving or freezing: the user's fear ("do we
+#     exit, run -w, come back carrying the saves?") dissolves because the
+#     conversation lives in the running process and the collection never
+#     touches the model. No swap, no exit, no loss.
+#   - The results join the conversation as a marked block ([n] sources,
+#     "cite them, and if they are not enough SAY SO") and the model uses
+#     them at your NEXT message - the dice pattern again: the tool brings
+#     a FACT the model cannot fudge, the model narrates when you speak.
+#   - Refused in source mode: there the document is the ONLY truth, and
+#     two exclusive promises cannot hold at once. /fonte off first.
+#   - The cost is honest as always: the results live in the window like
+#     any message, the bar counts them, /nuova clears them.
 #
 #  What's new in v3.0.0 ("the version where GLIA becomes a project"):
 #   - For the USER: nothing changes. Same flags, same behaviour, same
@@ -681,7 +698,7 @@
 # ============================================================
 
 # ----------------- CONFIGURATION -----------------
-VERSION="3.0.0"
+VERSION="3.1.0"
 DEFAULT_MODEL="qwen2.5-coder:7b"
 # -m bench (D6b): CPU vs iGPU on THIS machine, config up top on purpose.
 BENCH_OVERRIDE_DIR="/etc/systemd/system/ollama.service.d"
@@ -1981,6 +1998,27 @@ t() {
         it:src_mode)        echo "fonte:" ;;
         de:src_mode)        echo "Quelle:" ;;
         *:src_mode)         echo "source:" ;;
+        it:cw_usage)        echo "Uso: /web <domanda> — cerca sul web e porta i risultati nella chat (senza IA)" ;;
+        de:cw_usage)        echo "Nutzung: /suche <Frage> — sucht im Web und bringt die Ergebnisse in den Chat (ohne KI)" ;;
+        *:cw_usage)         echo "Usage: /web <question> — searches the web and brings the results into the chat (no AI)" ;;
+        it:cw_source)       echo "sei in modalità fonte: il documento è l'unica verità. Prima /fonte off, poi /web" ;;
+        de:cw_source)       echo "Quellen-Modus aktiv: das Dokument ist die einzige Wahrheit. Erst /quelle off, dann /suche" ;;
+        *:cw_source)        echo "source mode is on: the document is the only truth. /source off first, then /web" ;;
+        it:cw_searching)    echo "cerco sul web (senza IA: il modello non si muove, la chat resta dov'è)..." ;;
+        de:cw_searching)    echo "suche im Web (ohne KI: das Modell bleibt geladen, der Chat bleibt, wo er ist)..." ;;
+        *:cw_searching)     echo "searching the web (no AI: the model stays put, the chat stays where it is)..." ;;
+        it:cw_nores)        echo "nessun risultato (rete? motore?) — riprova con altre parole" ;;
+        de:cw_nores)        echo "keine Ergebnisse (Netz? Suchmaschine?) — anders formulieren" ;;
+        *:cw_nores)         echo "no results (network? engine?) — try different words" ;;
+        it:cw_added)        echo "risultati nella conversazione: il modello li userà dal tuo prossimo messaggio" ;;
+        de:cw_added)        echo "Ergebnisse im Gespräch: das Modell nutzt sie ab deiner nächsten Nachricht" ;;
+        *:cw_added)         echo "results are in the conversation: the model will use them from your next message" ;;
+        it:cw_frame)        echo "Risultati web appena raccolti per" ;;
+        de:cw_frame)        echo "Soeben gesammelte Web-Ergebnisse zu" ;;
+        *:cw_frame)         echo "Web results just collected for" ;;
+        it:cw_frame2)       echo "Usali quando la conversazione li tocca: cita la fonte come [n], e se non bastano dillo invece di inventare." ;;
+        de:cw_frame2)       echo "Nutze sie, wenn das Gespräch sie berührt: zitiere die Quelle als [n]; reichen sie nicht, sag es, statt zu erfinden." ;;
+        *:cw_frame2)        echo "Use them when the conversation touches them: cite the source as [n], and if they are not enough say so instead of inventing." ;;
         it:flag_unknown)    echo "flag sconosciuto:" ;;
         de:flag_unknown)    echo "unbekanntes Flag:" ;;
         *:flag_unknown)     echo "unknown flag:" ;;
@@ -2331,7 +2369,7 @@ Aiuto per area — ogni help elenca TUTTI i suoi sotto-comandi:
   -w help        ricerca web: -w veloce · -w+ approfondita · -ws senza IA · --web-engine · --web-model
   -T help        traduci un file: file nuovo accanto · lingua · --translate-model
   -i help        modalità interattiva (frasi con simboli speciali)
-  -c help        chat: /contesto · /ricorda · /modello · /dadi · /fonte (solo un documento)
+  -c help        chat: /contesto · /ricorda · /dadi · /web (dati dalla rete) · /fonte (solo un documento)
   --memory help  memoria: --remember salva · --forget scorda · --memory elenca
   --update help  aggiorna: -U · --check · --channel · --rollback · engine
 
@@ -2367,7 +2405,7 @@ Hilfe pro Bereich — jede Hilfe listet ALLE ihre Unterbefehle:
   -w help        Websuche: -w schnell · -w+ gründlich · -ws ohne KI · --web-engine · --web-model
   -T help        Datei übersetzen: neue Datei daneben · Sprache · --translate-model
   -i help        interaktiver Modus (Sätze mit Sonderzeichen)
-  -c help        Chat: /kontext · /merken · /modell · /wuerfel · /quelle (nur ein Dokument)
+  -c help        Chat: /kontext · /merken · /wuerfel · /suche (Daten aus dem Netz) · /quelle (nur ein Dokument)
   --memory help  Gedächtnis: --remember merken · --forget vergessen · --memory
   --update help  aktualisieren: -U · --check · --channel · --rollback · Engine
 
@@ -2403,7 +2441,7 @@ Help per area — each help lists ALL of its subcommands:
   -w help        web search: -w fast · -w+ deep · -ws no AI · --web-engine · --web-model
   -T help        translate a file: new file next to it · language · --translate-model
   -i help        interactive mode (requests with special characters)
-  -c help        chat: /context · /remember · /model · /roll · /source (one document only)
+  -c help        chat: /context · /remember · /roll · /web (data from the net) · /source (one document only)
   --memory help  memory: --remember saves · --forget drops · --memory lists
   --update help  updating: -U · --check · --channel · --rollback · engine
 
@@ -5120,6 +5158,8 @@ Comandi della chat (tutto il resto è conversazione):
   /memoria    elenca i fatti   ·   /scorda <n>   toglie il fatto n
   /dadi 2d6   tira i dadi DOVE sta la frase, senza IA: "palla di fuoco da
               /dadi 8d6" arriva al modello col risultato già dentro (come -D)
+  /web <domanda>  cerca sul web SENZA uscire dalla chat (niente IA nella
+              raccolta): i risultati entrano nel dialogo, con le fonti
   /fonte <file>  SOLO quel documento come base (studio, GdR con regole tue):
               scheda e memoria sospese, l'IA cita il testo · /fonte off
   /aiuto      questo promemoria
@@ -5139,6 +5179,8 @@ Chat-Befehle (alles andere ist Unterhaltung):
   /gedaechtnis  Fakten auflisten   ·   /vergiss <n>   entfernt Fakt n
   /wuerfel 2d6  würfelt IM Satz, ohne KI: "Feuerball für /wuerfel 8d6" erreicht
               das Modell mit dem Ergebnis schon drin (wie -D)
+  /suche <Frage>  sucht im Web OHNE den Chat zu verlassen (keine KI beim
+              Sammeln): die Ergebnisse gehen in den Dialog, mit Quellen
   /quelle <Datei>  NUR dieses Dokument als Basis (Lernen, Rollenspiel mit
               eigenen Regeln): Blatt und Gedächtnis pausiert · /quelle off
   /hilfe      diese Übersicht
@@ -5158,6 +5200,8 @@ Chat commands (everything else is conversation):
   /memory    list the facts   ·   /forget <n>   drops fact n
   /roll 2d6  rolls dice WHERE the sentence is, no AI: "fireball for
              /roll 8d6" reaches the model with the result already in (as -D)
+  /web <question>  searches the web WITHOUT leaving the chat (no AI in the
+             collection): the results join the dialogue, with sources
   /source <file>  ONLY that document as the base (study, RPG with house
              rules): sheet and memory suspended, the AI cites it · /source off
   /help      this reminder
@@ -5398,6 +5442,34 @@ chat_source_cmd() {
     esac
 }
 
+# ---- /web: the net INTO the conversation (v3.1) ----
+
+chat_web_cmd() {
+    # /web <question> - grab a piece of the web WITHOUT leaving the chat.
+    # The collection is the -ws pipeline (w3m asks the engine): NO AI, so
+    # the chat model never moves, no swap, and the dialogue stays exactly
+    # where it is - the fear of "freezing the chat to go search" dissolves
+    # because nothing needs freezing. The results enter the conversation
+    # as a marked block, like a die roll: the tool brings a FACT, the
+    # model uses it at your NEXT message. Refused in source mode: there
+    # the document is the only truth, both promises cannot hold at once.
+    local q="$*" ctx
+    [ -z "$q" ] && { echo "$(t cw_usage)"; return 1; }
+    if [ -n "${CHAT_SOURCE_FILE:-}" ]; then
+        echo -e "${YELLOW}$(t cw_source)${NC}"; return 1
+    fi
+    web_deps_ok || return 1
+    echo -e "${BLUE}$(t cw_searching)${NC}"
+    ctx="$(build_web_context "$q" 0)"
+    [ -z "$ctx" ] && { echo -e "${YELLOW}$(t cw_nores)${NC}"; return 1; }
+    printf '%s\n' "$ctx"   # the \n is HERE: $(...) ate the trailing one (the usual suspect)
+    CHAT_MSGS=$(jq -c --arg c "$(t cw_frame) \"$q\":
+
+$ctx
+$(t cw_frame2)" '. + [{role:"user",content:$c}]' <<<"$CHAT_MSGS")
+    echo -e "${GREEN}$(t cw_added)${NC}"
+}
+
 chat_help() {
     case "$UILANG" in
     it) cat <<EOF
@@ -5423,6 +5495,10 @@ Comandi dentro la chat:
   /ricorda   salva un fatto · /memoria elenca · /scorda <n> toglie
   /dadi 2d6  tira i dadi NELLA frase, senza IA: "palla di fuoco da /dadi 8d6"
              arriva al modello col risultato già dentro — tu tiri, l'IA narra
+  /web <domanda>  un dato dal web SENZA uscire dalla chat: la raccolta è
+             la stessa di -ws (w3m, niente IA, il modello non si muove),
+             i risultati entrano nel dialogo con le fonti [n] e il modello
+             li usa dal tuo prossimo messaggio. Non in modalità fonte.
   /fonte <file>  SOLO quel documento come base di conoscenza: per studiare o
              per un GdR con le tue regole. Scheda e memoria sospese (meno
              allucinazioni, più spazio), l'IA cita il testo · /fonte off
@@ -5492,6 +5568,10 @@ Befehle im Chat:
   /merken     einen Fakt sichern · /gedaechtnis auflisten · /vergiss <n>
   /wuerfel 2d6  würfelt IM Satz, ohne KI: "Feuerball für /wuerfel 8d6" erreicht
               das Modell mit dem Ergebnis schon drin — du würfelst, die KI erzählt
+  /suche <Frage>  ein Datum aus dem Web OHNE den Chat zu verlassen: das
+              Sammeln ist dasselbe wie -ws (w3m, keine KI, das Modell
+              bleibt geladen), die Ergebnisse gehen mit Quellen [n] in den
+              Dialog. Nicht im Quellen-Modus.
   /quelle <Datei>  NUR dieses Dokument als Wissensbasis: zum Lernen oder für
               ein Rollenspiel mit eigenen Regeln. Blatt und Gedächtnis
               pausiert, die KI zitiert den Text · /quelle off
@@ -5550,6 +5630,10 @@ Commands inside the chat:
   /remember  store a fact · /memory lists · /forget <n> drops one
   /roll 2d6  rolls dice IN the sentence, no AI: "fireball for /roll 8d6"
              reaches the model with the result already in — you roll, the AI narrates
+  /web <question>  a piece of the web WITHOUT leaving the chat: the
+             collection is the same as -ws (w3m, no AI, the model stays
+             loaded), the results join the dialogue with [n] sources.
+             Not in source mode.
   /source <file>  ONLY that document as the knowledge base: for studying, or
              an RPG with house rules. Sheet and memory suspended, the AI
              cites the text · /source off
@@ -5671,6 +5755,9 @@ chat_mode() {
                                          CHAT_MSGS=$(jq -c --arg s "$sys" '.[0].content=$s' <<<"$CHAT_MSGS")
                                          continue ;;
             /scorda|/forget|/vergiss)    echo "$(t forget_usage)"; continue ;;
+            '/web '*|'/cerca '*|'/suche '*)
+                                         chat_web_cmd "${line#* }" || true; continue ;;
+            /web|/cerca|/suche)          echo "$(t cw_usage)"; continue ;;
             /fonte|/source|/quelle)      chat_source_cmd ""; continue ;;
             '/fonte '*|'/source '*|'/quelle '*)
                                          chat_source_cmd "${line#* }" || true

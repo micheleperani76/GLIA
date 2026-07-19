@@ -1,12 +1,29 @@
 #!/usr/bin/env bash
 # ============================================================
 #  glia - AI terminal assistant (Ollama + aichat)
-#  Version: 3.0.0 - 2026-07-19
+#  Version: 3.1.0 - 2026-07-19
 #  Author: Michele (with Claude)
 #  Project: GLIA (GNU Linux IA)
 #
 #  Design pillar: commands follow standard terminal conventions, so
 #  what you learn here you can reuse in other programs (and vice versa).
+#
+#  What's new in v3.1.0 ("the net into the conversation"):
+#   - `/web <question>` in the chat (aliases /cerca, /suche): grab a piece
+#     of the web WITHOUT leaving the dialogue. The collection is the -ws
+#     pipeline - w3m asks the engine, NO AI - so the chat model never
+#     moves and nothing needs saving or freezing: the user's fear ("do we
+#     exit, run -w, come back carrying the saves?") dissolves because the
+#     conversation lives in the running process and the collection never
+#     touches the model. No swap, no exit, no loss.
+#   - The results join the conversation as a marked block ([n] sources,
+#     "cite them, and if they are not enough SAY SO") and the model uses
+#     them at your NEXT message - the dice pattern again: the tool brings
+#     a FACT the model cannot fudge, the model narrates when you speak.
+#   - Refused in source mode: there the document is the ONLY truth, and
+#     two exclusive promises cannot hold at once. /fonte off first.
+#   - The cost is honest as always: the results live in the window like
+#     any message, the bar counts them, /nuova clears them.
 #
 #  What's new in v3.0.0 ("the version where GLIA becomes a project"):
 #   - For the USER: nothing changes. Same flags, same behaviour, same

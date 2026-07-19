@@ -463,6 +463,8 @@ Comandi della chat (tutto il resto è conversazione):
   /memoria    elenca i fatti   ·   /scorda <n>   toglie il fatto n
   /dadi 2d6   tira i dadi DOVE sta la frase, senza IA: "palla di fuoco da
               /dadi 8d6" arriva al modello col risultato già dentro (come -D)
+  /web <domanda>  cerca sul web SENZA uscire dalla chat (niente IA nella
+              raccolta): i risultati entrano nel dialogo, con le fonti
   /fonte <file>  SOLO quel documento come base (studio, GdR con regole tue):
               scheda e memoria sospese, l'IA cita il testo · /fonte off
   /aiuto      questo promemoria
@@ -482,6 +484,8 @@ Chat-Befehle (alles andere ist Unterhaltung):
   /gedaechtnis  Fakten auflisten   ·   /vergiss <n>   entfernt Fakt n
   /wuerfel 2d6  würfelt IM Satz, ohne KI: "Feuerball für /wuerfel 8d6" erreicht
               das Modell mit dem Ergebnis schon drin (wie -D)
+  /suche <Frage>  sucht im Web OHNE den Chat zu verlassen (keine KI beim
+              Sammeln): die Ergebnisse gehen in den Dialog, mit Quellen
   /quelle <Datei>  NUR dieses Dokument als Basis (Lernen, Rollenspiel mit
               eigenen Regeln): Blatt und Gedächtnis pausiert · /quelle off
   /hilfe      diese Übersicht
@@ -501,6 +505,8 @@ Chat commands (everything else is conversation):
   /memory    list the facts   ·   /forget <n>   drops fact n
   /roll 2d6  rolls dice WHERE the sentence is, no AI: "fireball for
              /roll 8d6" reaches the model with the result already in (as -D)
+  /web <question>  searches the web WITHOUT leaving the chat (no AI in the
+             collection): the results join the dialogue, with sources
   /source <file>  ONLY that document as the base (study, RPG with house
              rules): sheet and memory suspended, the AI cites it · /source off
   /help      this reminder

@@ -1067,6 +1067,27 @@ t() {
         it:src_mode)        echo "fonte:" ;;
         de:src_mode)        echo "Quelle:" ;;
         *:src_mode)         echo "source:" ;;
+        it:cw_usage)        echo "Uso: /web <domanda> — cerca sul web e porta i risultati nella chat (senza IA)" ;;
+        de:cw_usage)        echo "Nutzung: /suche <Frage> — sucht im Web und bringt die Ergebnisse in den Chat (ohne KI)" ;;
+        *:cw_usage)         echo "Usage: /web <question> — searches the web and brings the results into the chat (no AI)" ;;
+        it:cw_source)       echo "sei in modalità fonte: il documento è l'unica verità. Prima /fonte off, poi /web" ;;
+        de:cw_source)       echo "Quellen-Modus aktiv: das Dokument ist die einzige Wahrheit. Erst /quelle off, dann /suche" ;;
+        *:cw_source)        echo "source mode is on: the document is the only truth. /source off first, then /web" ;;
+        it:cw_searching)    echo "cerco sul web (senza IA: il modello non si muove, la chat resta dov'è)..." ;;
+        de:cw_searching)    echo "suche im Web (ohne KI: das Modell bleibt geladen, der Chat bleibt, wo er ist)..." ;;
+        *:cw_searching)     echo "searching the web (no AI: the model stays put, the chat stays where it is)..." ;;
+        it:cw_nores)        echo "nessun risultato (rete? motore?) — riprova con altre parole" ;;
+        de:cw_nores)        echo "keine Ergebnisse (Netz? Suchmaschine?) — anders formulieren" ;;
+        *:cw_nores)         echo "no results (network? engine?) — try different words" ;;
+        it:cw_added)        echo "risultati nella conversazione: il modello li userà dal tuo prossimo messaggio" ;;
+        de:cw_added)        echo "Ergebnisse im Gespräch: das Modell nutzt sie ab deiner nächsten Nachricht" ;;
+        *:cw_added)         echo "results are in the conversation: the model will use them from your next message" ;;
+        it:cw_frame)        echo "Risultati web appena raccolti per" ;;
+        de:cw_frame)        echo "Soeben gesammelte Web-Ergebnisse zu" ;;
+        *:cw_frame)         echo "Web results just collected for" ;;
+        it:cw_frame2)       echo "Usali quando la conversazione li tocca: cita la fonte come [n], e se non bastano dillo invece di inventare." ;;
+        de:cw_frame2)       echo "Nutze sie, wenn das Gespräch sie berührt: zitiere die Quelle als [n]; reichen sie nicht, sag es, statt zu erfinden." ;;
+        *:cw_frame2)        echo "Use them when the conversation touches them: cite the source as [n], and if they are not enough say so instead of inventing." ;;
         it:flag_unknown)    echo "flag sconosciuto:" ;;
         de:flag_unknown)    echo "unbekanntes Flag:" ;;
         *:flag_unknown)     echo "unknown flag:" ;;
@@ -1417,7 +1438,7 @@ Aiuto per area — ogni help elenca TUTTI i suoi sotto-comandi:
   -w help        ricerca web: -w veloce · -w+ approfondita · -ws senza IA · --web-engine · --web-model
   -T help        traduci un file: file nuovo accanto · lingua · --translate-model
   -i help        modalità interattiva (frasi con simboli speciali)
-  -c help        chat: /contesto · /ricorda · /modello · /dadi · /fonte (solo un documento)
+  -c help        chat: /contesto · /ricorda · /dadi · /web (dati dalla rete) · /fonte (solo un documento)
   --memory help  memoria: --remember salva · --forget scorda · --memory elenca
   --update help  aggiorna: -U · --check · --channel · --rollback · engine
 
@@ -1453,7 +1474,7 @@ Hilfe pro Bereich — jede Hilfe listet ALLE ihre Unterbefehle:
   -w help        Websuche: -w schnell · -w+ gründlich · -ws ohne KI · --web-engine · --web-model
   -T help        Datei übersetzen: neue Datei daneben · Sprache · --translate-model
   -i help        interaktiver Modus (Sätze mit Sonderzeichen)
-  -c help        Chat: /kontext · /merken · /modell · /wuerfel · /quelle (nur ein Dokument)
+  -c help        Chat: /kontext · /merken · /wuerfel · /suche (Daten aus dem Netz) · /quelle (nur ein Dokument)
   --memory help  Gedächtnis: --remember merken · --forget vergessen · --memory
   --update help  aktualisieren: -U · --check · --channel · --rollback · Engine
 
@@ -1489,7 +1510,7 @@ Help per area — each help lists ALL of its subcommands:
   -w help        web search: -w fast · -w+ deep · -ws no AI · --web-engine · --web-model
   -T help        translate a file: new file next to it · language · --translate-model
   -i help        interactive mode (requests with special characters)
-  -c help        chat: /context · /remember · /model · /roll · /source (one document only)
+  -c help        chat: /context · /remember · /roll · /web (data from the net) · /source (one document only)
   --memory help  memory: --remember saves · --forget drops · --memory lists
   --update help  updating: -U · --check · --channel · --rollback · engine
 
