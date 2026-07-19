@@ -163,6 +163,11 @@ green by design, and it's a whole system, not a lone command.
   must still be Markdown, a `.sh` must pass `bash -n`) — if a check keeps
   failing it saves **with a warning** instead of pretending. In code only
   comments and messages are translated, never the code itself.
+  Roll dice, no AI: `glia -D 2d6` (`--dice`) — role-playing notation, `1d4`,
+  `2d6`, `1d100+4`, several rolls per call, single rolls shown (`2d6 → 4 + 5
+  = 9`). Green by construction: no model, no wait, no token — the numbers
+  come from `shuf`, i.e. the kernel's entropy, and it works with Ollama
+  stopped.
   Pick the AI per job: `glia -m` sets the default and shows
   role tags (default / web / project / translate) next to each model, while
   `glia --web-model`, `glia --project-model` and `glia --translate-model` pin a

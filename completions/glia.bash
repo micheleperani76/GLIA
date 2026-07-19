@@ -36,7 +36,7 @@ _glia() {
     flags="-h --help -V --version -i --interactive -c --chat -d --ask -l --log
            -a --alias -m --model -p --project -n --new --remember --memory --forget
            -w --web -w+ --web-deep -ws --web-search --web-model --web-engine --project-model
-           -T --translate --translate-model
+           -T --translate --translate-model -D --dice
            --clear-cache --doctor -U --update --update-engine --channel --rollback
            --rename --lang"
 
