@@ -304,6 +304,10 @@ bash scripts/install-assistant.sh             # then the real install
 > installer has so far been tested on **Arch/CachyOS only**. The **Debian and
 > Fedora** paths are work-in-progress and **not yet tested** — if you try them,
 > feedback, issues and PRs are very welcome.
+>
+> **Want to touch the code?** Since v3.0.0 development is modular: `src/`,
+> one module per area, `make build`. Start from [CONTRIBUTING.md](CONTRIBUTING.md)
+> — it has the module map and the house rules.
 
 **Shell notes.** `glia` itself is a bash script but runs fine from any shell.
 The installer adapts to yours: if `~/.local/bin` is missing from your PATH it

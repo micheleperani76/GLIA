@@ -1,12 +1,32 @@
 #!/usr/bin/env bash
 # ============================================================
 #  glia - AI terminal assistant (Ollama + aichat)
-#  Version: 2.25.0 - 2026-07-19
+#  Version: 3.0.0 - 2026-07-19
 #  Author: Michele (with Claude)
 #  Project: GLIA (GNU Linux IA)
 #
 #  Design pillar: commands follow standard terminal conventions, so
 #  what you learn here you can reuse in other programs (and vice versa).
+#
+#  What's new in v3.0.0 ("the version where GLIA becomes a project"):
+#   - For the USER: nothing changes. Same flags, same behaviour, same
+#     --update. That is not an empty release note, it is the PROOF the
+#     migration is sound: the first build of the new layout reproduced
+#     the old bin/glia byte for byte (cmp, not "looks the same").
+#   - For anyone touching the CODE: development moved to src/ - 26 modules,
+#     one area each, numeric prefix = load order. bin/glia is now the
+#     GENERATED artifact (cat src/[0-9]*.sh), still committed, so --update
+#     and --rollback keep installing ONE file: no runtime sourcing, no
+#     version skew between modules, and the installer never learns src/
+#     exists. Edit src/, run `make build`.
+#   - check-docs gained check #6: rebuild and compare, byte for byte. A
+#     hand edit of the artifact is drift, and drift gets screamed at -
+#     the five-copies lesson applied to the code itself.
+#   - CONTRIBUTING.md: the module map, the workflow, and the house rules
+#     (one truth, localized strings, honest numbers, changelog that
+#     explains WHY). `make lint` runs shellcheck on the modules,
+#     informative, not blocking. The major version number is for THIS:
+#     the project opens its door, and the door now has a map on it.
 #
 #  What's new in v2.25 ("one document as the whole truth"):
 #   - Source mode: `glia -c --fonte <file>` (or `/fonte <file>` in chat)
@@ -661,7 +681,7 @@
 # ============================================================
 
 # ----------------- CONFIGURATION -----------------
-VERSION="2.25.0"
+VERSION="3.0.0"
 DEFAULT_MODEL="qwen2.5-coder:7b"
 # -m bench (D6b): CPU vs iGPU on THIS machine, config up top on purpose.
 BENCH_OVERRIDE_DIR="/etc/systemd/system/ollama.service.d"

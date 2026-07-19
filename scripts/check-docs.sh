@@ -237,6 +237,30 @@ check_confirm() {
 }
 
 # ============================================================
+#  Check #6 (v3.0.0) - bin/glia e' GENERATO da src/: ricostruisci
+#  e confronta. Se qualcuno ha editato l'artefatto a mano invece
+#  dei moduli, il drift viene urlato qui - stessa filosofia delle
+#  cinque copie: una sola fonte di verita', e uno script che se ne
+#  accorge. Byte-per-byte: "quasi uguale" non esiste.
+# ============================================================
+check_build() {
+    section "6. bin/glia combacia con la build da src/ (v3: l'artefatto e' generato)"
+    if [ ! -d "$REPO/src" ]; then
+        bad "src/ non trovata - repo incompleto?"
+        return
+    fi
+    local tmp; tmp="$(mktemp)"
+    cat "$REPO"/src/[0-9]*.sh > "$tmp" 2>/dev/null
+    if cmp -s "$tmp" "$REPO/$GLIA_BIN"; then
+        ok "bin/glia = cat src/[0-9]*.sh, byte per byte ($(ls "$REPO"/src/[0-9]*.sh | wc -l) moduli)"
+    else
+        bad "bin/glia NON combacia con la build da src/ - edita src/ e lancia 'make build'"
+        cmp "$tmp" "$REPO/$GLIA_BIN" 2>&1 | sed 's/^/      /' || true
+    fi
+    rm -f "$tmp"
+}
+
+# ============================================================
 #  Main
 # ============================================================
 printf '%s== check-docs ==%s  fonte di verita'\'': %s  (repo: %s)\n' \
@@ -246,6 +270,7 @@ check_version
 check_flags
 check_navs
 check_confirm
+check_build
 
 section "Riepilogo"
 if [ "$FAIL" -eq 0 ]; then
