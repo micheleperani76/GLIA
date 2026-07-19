@@ -1,12 +1,34 @@
 #!/usr/bin/env bash
 # ============================================================
 #  glia - AI terminal assistant (Ollama + aichat)
-#  Version: 3.2.0 - 2026-07-19
+#  Version: 3.3.0 - 2026-07-19
 #  Author: Michele (with Claude)
 #  Project: GLIA (GNU Linux IA)
 #
 #  Design pillar: commands follow standard terminal conventions, so
 #  what you learn here you can reuse in other programs (and vice versa).
+#
+#  What's new in v3.3.0 ("the toolbox"):
+#   - The dice stop being a curiosity and become a FAMILY: green tools,
+#     each one deterministic, instant, NO AI - because a language model
+#     gets arithmetic and randomness wrong, and these never do. New:
+#     -R/--random (plain number, 1-N or A-B), -X/--calc (awk arithmetic,
+#     NOT bc: bc was missing on the author's own machine, awk is POSIX),
+#     --conv (units: lengths, masses, C/F/K, volumes, areas, speeds,
+#     GB vs GiB, energy, pressure, time - categories never mix), --days
+#     (days until/since, weekday, span between two dates), --pw (password/
+#     uuid from /dev/urandom), --pick (draw from a list). --tools shows
+#     the whole box; the site gives them their own section.
+#   - In the chat they resolve IN the sentence, like the dice: /caso,
+#     /calc, /conv, /giorni; /scegli as a command (a variable list has no
+#     inline end). CHAT_TOOLS entries now declare argc - /conv eats three
+#     words, the others one, and no tool ever bites into your prose.
+#   - /pw does NOT exist in chat, deliberately: a password that transits
+#     a model's context is no longer a secret. Written in the help, so
+#     the absence reads as a decision, not a gap.
+#   - Found while testing: bc was not installed on the dev machine - the
+#     calculator was born on awk instead of gaining a dependency. The
+#     tools' cost of entry stays zero.
 #
 #  What's new in v3.2.0 ("shrink without starting over"):
 #   - `/compatta` (aliases /compact, /kompakt): the missing middle way

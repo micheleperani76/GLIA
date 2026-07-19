@@ -362,6 +362,17 @@ chat_mode() {
                                          continue ;;
             /scorda|/forget|/vergiss)    echo "$(t forget_usage)"; continue ;;
             /compatta|/compact|/kompakt) chat_compact_cmd || true; continue ;;
+            '/scegli '*|'/pick '*|'/waehle '*)
+                # a draw with a variable list cannot live inline (where
+                # would it end?), so it is a command: result shown AND
+                # dropped into the dialogue - the tool brings the fact.
+                if res_pick="$(pick_cmd ${line#* })"; then
+                    echo -e "${GREEN}${res_pick}${NC}"
+                    CHAT_MSGS=$(jq -c --arg c "$(t pick_frame) ${line#* } ${res_pick}" \
+                        '. + [{role:"user",content:$c}]' <<<"$CHAT_MSGS")
+                fi
+                continue ;;
+            /scegli|/pick|/waehle)       echo "$(t pick_usage)"; continue ;;
             '/web '*|'/cerca '*|'/suche '*)
                                          chat_web_cmd "${line#* }" || true; continue ;;
             /web|/cerca|/suche)          echo "$(t cw_usage)"; continue ;;

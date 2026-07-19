@@ -117,14 +117,15 @@ footer .fbrand{font-weight:800;color:var(--white);font-size:1.05rem;margin-botto
     <a href="#ask">2 · Ask &amp; explain</a>
     <a href="#chat">3 · Chat</a>
     <a href="#alias">4 · Shortcuts</a>
-    <a href="#memory">5 · Memory</a>
-    <a href="#models">6 · Models</a>
-    <a href="#project">7 · Code (-p / --new)</a>
-    <a href="#translate">8 · Translate</a>
-    <a href="#interactive">9 · Interactive</a>
-    <a href="#log">10 · Log</a>
-    <a href="#settings">11 · Settings</a>
-    <a href="#hardware">12 · Hardware</a>
+    <a href="#tools">5 · Green tools</a>
+    <a href="#memory">6 · Memory</a>
+    <a href="#models">7 · Models</a>
+    <a href="#project">8 · Code (-p / --new)</a>
+    <a href="#translate">9 · Translate</a>
+    <a href="#interactive">10 · Interactive</a>
+    <a href="#log">11 · Log</a>
+    <a href="#settings">12 · Settings</a>
+    <a href="#hardware">13 · Hardware</a>
   </div>
 </div>
 
@@ -166,7 +167,6 @@ footer .fbrand{font-weight:800;color:var(--white);font-size:1.05rem;margin-botto
       <tr><td class="c">glia -w &lt;question&gt;</td><td class="d"><b>Search the web and answer, with sources.</b> Uses the <code style="font-family:var(--mono);color:var(--teal)">w3m</code> text browser to query the chosen engine (DuckDuckGo by default) — <b>no API key</b> — then the model summarizes the results and ends with a <b>Sources</b> list. Ideal for anything past the model's training: latest versions, release dates, recent facts.</td></tr>
       <tr><td class="c">glia -w+ &lt;question&gt;</td><td class="d">Deep mode: also reads the top result pages in full for more detail (slower). Plain <code style="font-family:var(--mono);color:var(--teal)">-w</code> reads only the result snippets (faster).</td></tr>
       <tr><td class="c">glia -ws &lt;search | URL&gt;</td><td class="d"><b>Direct results, no AI</b> (new in v2.18): titles, URLs and snippets straight from the engine, in a couple of seconds — for quick lookups. Give it a <b>URL or bare domain</b> (<code style="font-family:var(--mono);color:var(--teal)">glia -ws www.morrolinux.it</code>) and it opens that page directly, paged.</td></tr>
-      <tr><td class="c">glia -D 2d6</td><td class="d"><b>Dice roll, no AI</b> (new in v2.23, long form <code style="font-family:var(--mono);color:var(--teal)">--dice</code>): role-playing notation — <code>1d4</code>, <code>2d6</code>, <code>d20</code>, <code>1d100+4</code>, several rolls per call, single dice shown (<code>2d6 → 4 + 5 = 9</code>). Green by construction: the numbers come from <code>shuf</code>, i.e. the kernel's entropy, and it works with Ollama stopped. <code style="font-family:var(--mono);color:var(--teal)">glia -D help</code> for the details.</td></tr>
       <tr><td class="c">glia -w bing: &lt;question&gt;</td><td class="d">Engine prefix (new in v2.18): <code style="font-family:var(--mono);color:var(--teal)">ddg:</code> <code style="font-family:var(--mono);color:var(--teal)">bing:</code> <code style="font-family:var(--mono);color:var(--teal)">searx:</code> pick the engine <b>for this one search</b>. Works with <code style="font-family:var(--mono);color:var(--teal)">-w</code>, <code style="font-family:var(--mono);color:var(--teal)">-w+</code> and <code style="font-family:var(--mono);color:var(--teal)">-ws</code>.</td></tr>
       <tr><td class="c">glia --web-engine [engine]</td><td class="d">Show or switch the <b>default</b> search engine: <code style="font-family:var(--mono);color:var(--teal)">ddg</code> | <code style="font-family:var(--mono);color:var(--teal)">bing</code> | <code style="font-family:var(--mono);color:var(--teal)">searx</code>. For SearXNG set your instance first: <code style="font-family:var(--mono);color:var(--teal)">glia --web-engine searx &lt;URL&gt;</code> — searx refuses to become the default without one.</td></tr>
       <tr><td class="c">glia -w help</td><td class="d">Detailed help for web search, with the tunable settings.</td></tr>
@@ -216,8 +216,24 @@ footer .fbrand{font-weight:800;color:var(--white);font-size:1.05rem;margin-botto
     <div class="note"><b>Two types.</b> <b>Direct</b> — runs the saved command immediately. <b>With-AI</b> — shows the command and asks: Enter = use the shortcut, <code>a</code> = ask the AI instead (handy when the original request was vague).<br><br>Names are case-insensitive · removal always confirms (Enter = no) · if you repeat the same request within 10 minutes, GLIA offers once to save it as a shortcut · <span class="file">file: <b>~/.config/glia/aliases</b></span></div>
   </section>
 
+  <section class="grp" id="tools">
+    <div class="grp-h"><span class="n">05</span><h2>Green tools <span class="pill">no AI, ever — and open to new ones</span></h2></div>
+    <p class="why"><b>What it is:</b> a toolbox of small, deterministic commands that <b>never touch the model</b> — instant, offline, zero tokens. <b>Why it exists:</b> a language model gets arithmetic and randomness <i>wrong</i>; these tools never do. The model narrates, the tools bring the facts. <b>The point to steal:</b> every tool works <b>standalone</b> at the prompt AND <b>inside the integrations</b> — in the chat it resolves in the middle of your sentence (<code>/calc</code>, <code>/conv</code>, <code>/dadi</code>...), and the registry is open: a new tool is one function and one line, not a redesign.</p>
+    <table class="cmds">
+      <tr><td class="c">glia -D 2d6</td><td class="d"><b>RPG dice</b> (long form <code style="font-family:var(--mono);color:var(--teal)">--dice</code>): <code>1d4</code>, <code>2d6</code>, <code>d20</code>, <code>1d100+4</code>, several rolls per call, single dice shown (<code>2d6 → 4 + 5 = 9</code>) — from <code>shuf</code>, the kernel's entropy. In chat: <code style="font-family:var(--mono);color:var(--teal)">/dadi</code>, inside the sentence. <code style="font-family:var(--mono);color:var(--teal)">glia -D help</code> for details.</td></tr>
+      <tr><td class="c">glia -R 100</td><td class="d"><b>Random number</b> (long form <code style="font-family:var(--mono);color:var(--teal)">--random</code>): the institutional cousin of the dice — <code>-R 100</code> draws 1–100, <code style="font-family:var(--mono);color:var(--teal)">-R 5-50</code> in a range. Same kernel entropy, none of the RPG flavour. In chat: <code style="font-family:var(--mono);color:var(--teal)">/caso</code>.</td></tr>
+      <tr><td class="c">glia -X "340*1.22"</td><td class="d"><b>Calculator</b> (long form <code style="font-family:var(--mono);color:var(--teal)">--calc</code>): awk arithmetic — <code>= 414.8</code>. Decimal comma accepted, <code>^</code> is power. Letters refused outright: a calculator that only knows numbers cannot be talked into anything. In chat: <code style="font-family:var(--mono);color:var(--teal)">/calc</code> — and the model stops doing sums it would get wrong.</td></tr>
+      <tr><td class="c">glia --conv 100 mi km</td><td class="d"><b>Unit converter</b>: lengths, masses, temperatures (°C/°F/K), volumes, areas, speeds, data (<b>GB vs GiB</b>, finally settled by arithmetic), energy, pressure, time — <code>100 mi = 160.934 km</code>. Different categories are refused: apples do not convert into kilometres. Full unit list: <code style="font-family:var(--mono);color:var(--teal)">glia --conv help</code>. In chat: <code style="font-family:var(--mono);color:var(--teal)">/conv 100 mi km</code>.</td></tr>
+      <tr><td class="c">glia --days 2026-12-25</td><td class="d"><b>Day counter</b>: how many days until (or since), and the weekday — <code>2026-12-25 (venerdì) → tra 159 giorni</code>. Two dates = the span between them. <code>DD/MM/YYYY</code> accepted too. In chat: <code style="font-family:var(--mono);color:var(--teal)">/giorni</code>.</td></tr>
+      <tr><td class="c">glia --pw 16</td><td class="d"><b>Password / UUID generator</b>: straight from <code>/dev/urandom</code> (8–128 chars, default 20; <code style="font-family:var(--mono);color:var(--teal)">--pw uuid</code> for a UUID). Deliberately <b>absent from the chat</b>: a password that transits a model's context is no longer a secret.</td></tr>
+      <tr><td class="c">glia --pick a b c</td><td class="d"><b>Draw from a list</b>: who does the dishes — <code>→ sushi</code>; <code style="font-family:var(--mono);color:var(--teal)">--pick -n 2</code> draws two. In chat: <code style="font-family:var(--mono);color:var(--teal)">/scegli a b c</code>, and the result drops into the dialogue.</td></tr>
+      <tr><td class="c">glia --tools</td><td class="d">The whole toolbox on one page, with the chat aliases and the unit list.</td></tr>
+    </table>
+    <div class="note"><b>Why "green":</b> every one of these answers in milliseconds with Ollama stopped, on the smallest server, spending zero GPU. And in the chat they are not commands beside the conversation — they resolve <b>inside</b> it: <code>il forziere dista /conv 30 yd m e per scassinarlo tiro /dadi 1d20+5</code> reaches the model with both facts already computed. The tool brings the fact, the AI narrates.</div>
+  </section>
+
   <section class="grp" id="memory">
-    <div class="grp-h"><span class="n">05</span><h2>Memory</h2></div>
+    <div class="grp-h"><span class="n">06</span><h2>Memory</h2></div>
     <p class="why"><b>What it is:</b> GLIA can remember short facts — machines, paths, habits — and adds them to the context of each request. <b>Why it exists:</b> so the AI keeps your setup in mind without you repeating it every time.</p>
     <table class="cmds">
       <tr><td class="c">glia --remember "&lt;fact&gt;"</td><td class="d">Remember a fact.</td></tr>
@@ -228,7 +244,7 @@ footer .fbrand{font-weight:800;color:var(--white);font-size:1.05rem;margin-botto
   </section>
 
   <section class="grp" id="models">
-    <div class="grp-h"><span class="n">06</span><h2>Models / AI</h2></div>
+    <div class="grp-h"><span class="n">07</span><h2>Models / AI</h2></div>
     <p class="why"><b>What it is:</b> the models are downloaded and kept by Ollama; GLIA uses one at a time. <b>Why it exists:</b> different machines and tasks want different models — pick the right one, or override it just for a single command.</p>
     <table class="cmds">
       <tr><td class="c">glia -m</td><td class="d">List downloaded models (numbered) and choose the default (guided). <code>glia -m list</code> and <code>glia -m ls</code> do the same. Each model shows the roles pinned onto it — <b>default · web · project · translate</b> — so you see at a glance which AI serves which command, e.g. <code style="font-family:var(--mono);color:var(--teal)">1) gemma4:latest ← default · web</code>. One AI can hold several roles, or none.</td></tr>
@@ -252,7 +268,7 @@ footer .fbrand{font-weight:800;color:var(--white);font-size:1.05rem;margin-botto
   </section>
 
   <section class="grp" id="project">
-    <div class="grp-h"><span class="n">07</span><h2>Code: edit files (-p) and new projects (--new)</h2></div>
+    <div class="grp-h"><span class="n">08</span><h2>Code: edit files (-p) and new projects (--new)</h2></div>
     <p class="why"><b>What it is:</b> two opposite jobs, two flags. <code>-p</code> changes a file you already have; <code>--new</code> plans a new project and writes its files. Both confirm at every step. <b>Why it exists:</b> for work that goes beyond a single command — still transparent, still one approval at a time. <b>Heads-up (v2.18):</b> <code>-p</code> used to be the generator. It is now the editor, and the generator moved to <code>--new</code>. <code>glia -p something-that-is-not-a-file</code> tells you so instead of guessing — a typo in a filename must never silently scaffold a project.</p>
     <table class="cmds">
       <tr><td class="c">glia -p &lt;file&gt; "&lt;request&gt;"</td><td class="d">Edit a file that <b>already exists</b>: shows the diff and the exact <code>git apply</code> command, then asks. New in v2.18.</td></tr>
@@ -268,7 +284,7 @@ footer .fbrand{font-weight:800;color:var(--white);font-size:1.05rem;margin-botto
   </section>
 
   <section class="grp" id="translate">
-    <div class="grp-h"><span class="n">08</span><h2>Translate a file</h2></div>
+    <div class="grp-h"><span class="n">09</span><h2>Translate a file</h2></div>
     <p class="why"><b>What it is:</b> you hand it a file, it writes the translation into a <b>new file next to it</b>. <b>Why it exists:</b> a README, a script's comments, some notes — translating them by hand is tedious, and pasting them into a web service means shipping your work to someone else's computer. This stays on your machine. <b>The original is never touched:</b> the translation is always a new file, so there is nothing to undo.</p>
     <table class="cmds">
       <tr><td class="c">glia -T &lt;file&gt;</td><td class="d">Translate into the <b>interface language</b> (the one from <code style="font-family:var(--mono);color:var(--teal)">glia --lang</code>).</td></tr>
@@ -284,7 +300,7 @@ footer .fbrand{font-weight:800;color:var(--white);font-size:1.05rem;margin-botto
   </section>
 
   <section class="grp" id="interactive">
-    <div class="grp-h"><span class="n">09</span><h2>Interactive mode</h2></div>
+    <div class="grp-h"><span class="n">10</span><h2>Interactive mode</h2></div>
     <p class="why"><b>What it is:</b> a dedicated prompt where special characters are taken literally. <b>Why it exists:</b> the shell interprets <code>'  "  $  |  ;  &amp;  *  ( )  `</code> before GLIA ever sees them, breaking a sentence that contains them. The interactive prompt reads your request character by character instead.</p>
     <table class="cmds">
       <tr><td class="c">glia</td><td class="d">On its own, enters the prompt <code style="font-family:var(--mono);color:var(--teal)">glia&gt;</code> — a real REPL: type request after request, the conversation context carries over.</td></tr>
@@ -294,7 +310,7 @@ footer .fbrand{font-weight:800;color:var(--white);font-size:1.05rem;margin-botto
   </section>
 
   <section class="grp" id="log">
-    <div class="grp-h"><span class="n">10</span><h2>Log</h2></div>
+    <div class="grp-h"><span class="n">11</span><h2>Log</h2></div>
     <p class="why"><b>What it is:</b> the history of commands GLIA actually executed. <b>Why it exists:</b> transparency you can audit — see exactly what ran on your machine.</p>
     <table class="cmds">
       <tr><td class="c">glia -l</td><td class="d">Show the log of executed commands.</td></tr>
@@ -304,7 +320,7 @@ footer .fbrand{font-weight:800;color:var(--white);font-size:1.05rem;margin-botto
   </section>
 
   <section class="grp" id="settings">
-    <div class="grp-h"><span class="n">11</span><h2>Settings &amp; identity</h2></div>
+    <div class="grp-h"><span class="n">12</span><h2>Settings &amp; identity</h2></div>
     <p class="why"><b>What it is:</b> naming, language and housekeeping. <b>Why it exists:</b> the assistant is yours to name and tune — and you can always find it again, because <code>glia</code> never goes away.</p>
     <table class="cmds">
       <tr><td class="c">glia --rename &lt;name&gt;</td><td class="d">Give the assistant a new name (e.g. <code style="font-family:var(--mono);color:var(--teal)">mypc</code>). The <code style="font-family:var(--mono);color:var(--teal)">glia</code> command always stays as a fallback. <b>A nickname is a command in your PATH</b>, so since v2.18.2 a name that already exists is <b>refused</b>, not silently buried: reserved names (<code>ls</code>, <code>sudo</code>, <code>rm</code>, <code>git</code>, <code>glia</code>, <code>ollama</code>…) never pass, and any other existing command is refused too — showing you the real path it would have covered, plus free names to use instead. <b>One rename, one name:</b> the previous nickname is removed, and the removal is announced with the command that did it.</td></tr>
@@ -320,7 +336,7 @@ footer .fbrand{font-weight:800;color:var(--white);font-size:1.05rem;margin-botto
   </section>
 
   <section class="grp" id="hardware">
-    <div class="grp-h"><span class="n">12</span><h2>Hardware helper</h2></div>
+    <div class="grp-h"><span class="n">13</span><h2>Hardware helper</h2></div>
     <p class="why"><b>What it is:</b> a companion command that reads your machine and recommends the right model tier. <b>Why it exists:</b> picking a model that's too big stalls; too small underperforms. Let the hardware decide.</p>
     <table class="cmds">
       <tr><td class="c">glia-hardware</td><td class="d">Hardware report (RAM / GPU / VRAM) and recommended models.</td></tr>

@@ -207,12 +207,64 @@ case "$1" in
     -D|--dice)
         # GREEN: no check_ai on purpose - the whole point is that a d20
         # works with ollama stopped, on the server, in a dead shell.
+        # Same for every tool below: the toolbox never needs the engine.
         shift
         case "${1:-}" in
             help|-h|--help) page dice_help ;;
             "")             echo -e "${YELLOW}$(t dice_usage)${NC}" >&2; exit 1 ;;
             *)              dice_cmd "$@" ;;
         esac
+        ;;
+    -R|--random)
+        shift
+        case "${1:-}" in
+            help|-h|--help) page tools_help ;;
+            "")             echo -e "${YELLOW}$(t rand_bad)${NC}" >&2; exit 1 ;;
+            *)              rc=0; for e in "$@"; do rand_roll "$e" || rc=1; done; exit $rc ;;
+        esac
+        ;;
+    -X|--calc)
+        shift
+        case "${1:-}" in
+            help|-h|--help) page tools_help ;;
+            "")             echo -e "${YELLOW}$(t calc_bad)${NC}" >&2; exit 1 ;;
+            *)              calc_eval "$*" ;;
+        esac
+        ;;
+    --conv)
+        shift
+        case "${1:-}" in
+            help|-h|--help) page tools_help ;;
+            *)  [ "$#" -eq 3 ] || { echo -e "${YELLOW}$(t conv_usage)${NC}" >&2; exit 1; }
+                conv_eval "$1" "$2" "$3" ;;
+        esac
+        ;;
+    --days)
+        shift
+        case "${1:-}" in
+            help|-h|--help) page tools_help ;;
+            "")             echo -e "${YELLOW}$(t days_bad)${NC}" >&2; exit 1 ;;
+            *)              days_cmd "$1" "${2:-}" ;;
+        esac
+        ;;
+    --pw)
+        shift
+        case "${1:-}" in
+            help|-h|--help) page tools_help ;;
+            *)              pw_cmd "${1:-}" ;;
+        esac
+        ;;
+    --pick)
+        shift
+        case "${1:-}" in
+            help|-h|--help) page tools_help ;;
+            *)              pick_cmd "$@" ;;
+        esac
+        ;;
+    --tools)
+        # a door whose only job is the map: the tools each have a flag,
+        # this page shows the whole toolbox at once
+        page tools_help
         ;;
     -T|--translate)
         shift

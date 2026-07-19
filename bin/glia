@@ -1,12 +1,34 @@
 #!/usr/bin/env bash
 # ============================================================
 #  glia - AI terminal assistant (Ollama + aichat)
-#  Version: 3.2.0 - 2026-07-19
+#  Version: 3.3.0 - 2026-07-19
 #  Author: Michele (with Claude)
 #  Project: GLIA (GNU Linux IA)
 #
 #  Design pillar: commands follow standard terminal conventions, so
 #  what you learn here you can reuse in other programs (and vice versa).
+#
+#  What's new in v3.3.0 ("the toolbox"):
+#   - The dice stop being a curiosity and become a FAMILY: green tools,
+#     each one deterministic, instant, NO AI - because a language model
+#     gets arithmetic and randomness wrong, and these never do. New:
+#     -R/--random (plain number, 1-N or A-B), -X/--calc (awk arithmetic,
+#     NOT bc: bc was missing on the author's own machine, awk is POSIX),
+#     --conv (units: lengths, masses, C/F/K, volumes, areas, speeds,
+#     GB vs GiB, energy, pressure, time - categories never mix), --days
+#     (days until/since, weekday, span between two dates), --pw (password/
+#     uuid from /dev/urandom), --pick (draw from a list). --tools shows
+#     the whole box; the site gives them their own section.
+#   - In the chat they resolve IN the sentence, like the dice: /caso,
+#     /calc, /conv, /giorni; /scegli as a command (a variable list has no
+#     inline end). CHAT_TOOLS entries now declare argc - /conv eats three
+#     words, the others one, and no tool ever bites into your prose.
+#   - /pw does NOT exist in chat, deliberately: a password that transits
+#     a model's context is no longer a secret. Written in the help, so
+#     the absence reads as a decision, not a gap.
+#   - Found while testing: bc was not installed on the dev machine - the
+#     calculator was born on awk instead of gaining a dependency. The
+#     tools' cost of entry stays zero.
 #
 #  What's new in v3.2.0 ("shrink without starting over"):
 #   - `/compatta` (aliases /compact, /kompakt): the missing middle way
@@ -717,7 +739,7 @@
 # ============================================================
 
 # ----------------- CONFIGURATION -----------------
-VERSION="3.2.0"
+VERSION="3.3.0"
 DEFAULT_MODEL="qwen2.5-coder:7b"
 # -m bench (D6b): CPU vs iGPU on THIS machine, config up top on purpose.
 BENCH_OVERRIDE_DIR="/etc/systemd/system/ollama.service.d"
@@ -853,13 +875,19 @@ CHAT_BLOCKS=(
     "memory|on|chat_blk_memory"    # the facts you stored with --remember
 )
 CHAT_BLOCKS_FILE="$HOME/.config/glia/chat-blocks"   # name=on|off, one per line
-# Green tools INSIDE the chat (v2.24): no AI, resolved on the spot, the
-# result goes into the sentence. "aliases=function": the function gets the
-# word after the alias and prints the resolved text - or fails, and the text
-# stays as typed. One entry today (the -D dice, same function, not a copy);
-# the next green tool is one line here plus its function, not a redesign.
+# Green tools INSIDE the chat (v2.24, grown in v3.3): no AI, resolved on
+# the spot, the result goes into the sentence. "aliases=function=argc":
+# the function gets argc words after the alias and prints the resolved
+# text - or fails, and the text stays as typed. The same functions serve
+# the CLI flags (-D, -R, -X, --conv, --days): one truth, two doors.
+# NOTE what is NOT here: pw. A password must never transit the model's
+# context - that tool exists only outside the chat, on purpose.
 CHAT_TOOLS=(
-    "dadi|wuerfel|roll|dice=dice_roll"
+    "dadi|wuerfel|roll|dice=dice_roll=1"
+    "caso|zufall|random=rand_roll=1"
+    "calc|rechne=calc_eval=1"
+    "conv|umrechnen=conv_eval=3"
+    "giorni|tage|days=days_eval=1"
 )
 # Source mode (v2.25): ONE document as the chat's only knowledge base
 # (glia -c --fonte <file>, or /fonte in chat). While a source is loaded the
@@ -2059,6 +2087,46 @@ t() {
         it:cc_sumhead)      echo "Riassunto della conversazione precedente (è un RIASSUNTO, non il testo integrale: la versione completa è salvata su file). Prosegui da qui:" ;;
         de:cc_sumhead)      echo "Zusammenfassung des bisherigen Gesprächs (eine ZUSAMMENFASSUNG, nicht der volle Text: die vollständige Fassung ist als Datei gesichert). Mach hier weiter:" ;;
         *:cc_sumhead)       echo "Summary of the earlier conversation (a SUMMARY, not the full text: the complete version is saved to a file). Continue from here:" ;;
+        it:rand_bad)        echo "numero non valido (uso: -R 100 · -R 5-50, max 10^9):" ;;
+        de:rand_bad)        echo "ungültige Zahl (Nutzung: -R 100 · -R 5-50, max 10^9):" ;;
+        *:rand_bad)         echo "invalid number (usage: -R 100 · -R 5-50, max 10^9):" ;;
+        it:calc_bad)        echo "espressione non valida (solo numeri e + - * / ( ) . ^ %):" ;;
+        de:calc_bad)        echo "ungültiger Ausdruck (nur Zahlen und + - * / ( ) . ^ %):" ;;
+        *:calc_bad)         echo "invalid expression (numbers and + - * / ( ) . ^ % only):" ;;
+        it:conv_bad)        echo "valore non numerico:" ;;
+        de:conv_bad)        echo "kein numerischer Wert:" ;;
+        *:conv_bad)         echo "not a numeric value:" ;;
+        it:conv_unk)        echo "unità sconosciuta:" ;;
+        de:conv_unk)        echo "unbekannte Einheit:" ;;
+        *:conv_unk)         echo "unknown unit:" ;;
+        it:conv_list)       echo "(elenco completo: $ASSIST_NAME --conv help)" ;;
+        de:conv_list)       echo "(vollständige Liste: $ASSIST_NAME --conv help)" ;;
+        *:conv_list)        echo "(full list: $ASSIST_NAME --conv help)" ;;
+        it:conv_mix)        echo "categorie diverse: non si convertono mele in chilometri" ;;
+        de:conv_mix)        echo "verschiedene Kategorien: Äpfel werden nicht zu Kilometern" ;;
+        *:conv_mix)         echo "different categories: apples do not convert into kilometres" ;;
+        it:conv_usage)      echo "Uso: $ASSIST_NAME --conv <valore> <da> <a>   (es. --conv 100 mi km · --conv help)" ;;
+        de:conv_usage)      echo "Nutzung: $ASSIST_NAME --conv <Wert> <von> <nach>   (z.B. --conv 100 mi km · --conv help)" ;;
+        *:conv_usage)       echo "Usage: $ASSIST_NAME --conv <value> <from> <to>   (e.g. --conv 100 mi km · --conv help)" ;;
+        it:days_bad)        echo "data non valida (AAAA-MM-GG o GG/MM/AAAA):" ;;
+        de:days_bad)        echo "ungültiges Datum (JJJJ-MM-TT oder TT/MM/JJJJ):" ;;
+        *:days_bad)         echo "invalid date (YYYY-MM-DD or DD/MM/YYYY):" ;;
+        it:days_in)         echo "tra" ;;      de:days_in)   echo "in" ;;      *:days_in)   echo "in" ;;
+        it:days_ago)        echo "giorni fa" ;; de:days_ago) echo "Tage zurück" ;; *:days_ago) echo "days ago" ;;
+        it:days_today)      echo "è OGGI" ;;   de:days_today) echo "ist HEUTE" ;; *:days_today) echo "is TODAY" ;;
+        it:days_days)       echo "giorni" ;;   de:days_days) echo "Tage" ;;     *:days_days) echo "days" ;;
+        it:pw_bad)          echo "Uso: --pw [8-128] (default 20) · --pw uuid" ;;
+        de:pw_bad)          echo "Nutzung: --pw [8-128] (Standard 20) · --pw uuid" ;;
+        *:pw_bad)           echo "Usage: --pw [8-128] (default 20) · --pw uuid" ;;
+        it:pick_usage)      echo "Uso: --pick [-n K] <voce> <voce> ...   (almeno 2 voci, K entro il numero di voci)" ;;
+        de:pick_usage)      echo "Nutzung: --pick [-n K] <Ding> <Ding> ...   (mindestens 2, K höchstens Anzahl)" ;;
+        *:pick_usage)       echo "Usage: --pick [-n K] <item> <item> ...   (at least 2 items, K within the count)" ;;
+        it:pick_frame)      echo "Sorteggio fatto ORA (senza IA, shuf) tra:" ;;
+        de:pick_frame)      echo "Losentscheid JETZT gezogen (ohne KI, shuf) unter:" ;;
+        *:pick_frame)       echo "Draw made NOW (no AI, shuf) among:" ;;
+        it:tool_usage)      echo "Uso: -R <N|A-B> · -X <espr> · --conv v da a · --days <data> · --pw [n] · --pick a b (--tools)" ;;
+        de:tool_usage)      echo "Nutzung: -R <N|A-B> · -X <Ausdr> · --conv w von nach · --days <Datum> · --pw [n] · --pick a b (--tools)" ;;
+        *:tool_usage)       echo "Usage: -R <N|A-B> · -X <expr> · --conv v from to · --days <date> · --pw [n] · --pick a b (--tools)" ;;
         it:flag_unknown)    echo "flag sconosciuto:" ;;
         de:flag_unknown)    echo "unbekanntes Flag:" ;;
         *:flag_unknown)     echo "unknown flag:" ;;
@@ -2410,11 +2478,12 @@ Aiuto per area — ogni help elenca TUTTI i suoi sotto-comandi:
   -T help        traduci un file: file nuovo accanto · lingua · --translate-model
   -i help        modalità interattiva (frasi con simboli speciali)
   -c help        chat: /contesto · /dadi · /web (dati dalla rete) · /fonte (un documento) · /compatta
+  --tools        tool green (SENZA IA): -D dadi · -R caso · -X calc · --conv · --days · --pw · --pick
   --memory help  memoria: --remember salva · --forget scorda · --memory elenca
   --update help  aggiorna: -U · --check · --channel · --rollback · engine
 
 Comandi secchi (una cosa sola, nessun sotto-menù):
-  --rename <nome> · --lang <it|en|de> · -T <file> [lingua] (traduci) · -D 2d6 (dadi, senza IA · -D help) · -l (log) · --clear-cache · -V
+  --rename <nome> · --lang <it|en|de> · -T <file> [lingua] (traduci) · -l (log) · --clear-cache · -V
   --kaboom  disinstallazione GUIDATA: chiede cosa togliere e mostra ogni comando
 
 Esempio:   $ASSIST_NAME trova i file più grandi in /home
@@ -2446,11 +2515,12 @@ Hilfe pro Bereich — jede Hilfe listet ALLE ihre Unterbefehle:
   -T help        Datei übersetzen: neue Datei daneben · Sprache · --translate-model
   -i help        interaktiver Modus (Sätze mit Sonderzeichen)
   -c help        Chat: /kontext · /wuerfel · /suche (Daten aus dem Netz) · /quelle (ein Dokument) · /kompakt
+  --tools        grüne Tools (OHNE KI): -D Würfel · -R Zufall · -X Rechner · --conv · --days · --pw · --pick
   --memory help  Gedächtnis: --remember merken · --forget vergessen · --memory
   --update help  aktualisieren: -U · --check · --channel · --rollback · Engine
 
 Einfache Befehle (eine Sache, kein Untermenü):
-  --rename <Name> · --lang <it|en|de> · -T <Datei> [Sprache] (übersetzen) · -D 2d6 (Würfel, ohne KI · -D help) · -l (Log) · --clear-cache · -V
+  --rename <Name> · --lang <it|en|de> · -T <Datei> [Sprache] (übersetzen) · -l (Log) · --clear-cache · -V
   --kaboom  GEFÜHRTE Deinstallation: fragt, was entfernt wird, zeigt jeden Befehl
 
 Beispiel:   $ASSIST_NAME finde die größten Dateien in /home
@@ -2482,11 +2552,12 @@ Help per area — each help lists ALL of its subcommands:
   -T help        translate a file: new file next to it · language · --translate-model
   -i help        interactive mode (requests with special characters)
   -c help        chat: /context · /roll · /web (data from the net) · /source (one document) · /compact
+  --tools        green tools (NO AI): -D dice · -R random · -X calc · --conv · --days · --pw · --pick
   --memory help  memory: --remember saves · --forget drops · --memory lists
   --update help  updating: -U · --check · --channel · --rollback · engine
 
 Plain commands (one job, no submenu):
-  --rename <name> · --lang <it|en|de> · -T <file> [lang] (translate) · -D 2d6 (dice, no AI · -D help) · -l (log) · --clear-cache · -V
+  --rename <name> · --lang <it|en|de> · -T <file> [lang] (translate) · -l (log) · --clear-cache · -V
   --kaboom  GUIDED uninstall: asks what to remove and shows every command
 
 Example:   $ASSIST_NAME find the largest files in /home
@@ -5198,6 +5269,9 @@ Comandi della chat (tutto il resto è conversazione):
   /memoria    elenca i fatti   ·   /scorda <n>   toglie il fatto n
   /dadi 2d6   tira i dadi DOVE sta la frase, senza IA: "palla di fuoco da
               /dadi 8d6" arriva al modello col risultato già dentro (come -D)
+  /caso /calc /conv /giorni   gli altri tool green, sempre NELLA frase:
+              /caso 100 · /calc 340*1.22 · /conv 100 mi km · /giorni
+              2026-12-25 · /scegli a b c (sorteggio, comando) · --tools
   /web <domanda>  cerca sul web SENZA uscire dalla chat (niente IA nella
               raccolta): i risultati entrano nel dialogo, con le fonti
   /fonte <file>  SOLO quel documento come base (studio, GdR con regole tue):
@@ -5222,6 +5296,9 @@ Chat-Befehle (alles andere ist Unterhaltung):
   /gedaechtnis  Fakten auflisten   ·   /vergiss <n>   entfernt Fakt n
   /wuerfel 2d6  würfelt IM Satz, ohne KI: "Feuerball für /wuerfel 8d6" erreicht
               das Modell mit dem Ergebnis schon drin (wie -D)
+  /zufall /rechne /umrechnen /tage   die anderen grünen Tools, immer IM
+              Satz: /zufall 100 · /rechne 340*1.22 · /umrechnen 100 mi km ·
+              /tage 2026-12-25 · /waehle a b c (Los, Befehl) · --tools
   /suche <Frage>  sucht im Web OHNE den Chat zu verlassen (keine KI beim
               Sammeln): die Ergebnisse gehen in den Dialog, mit Quellen
   /quelle <Datei>  NUR dieses Dokument als Basis (Lernen, Rollenspiel mit
@@ -5245,6 +5322,9 @@ Chat commands (everything else is conversation):
   /memory    list the facts   ·   /forget <n>   drops fact n
   /roll 2d6  rolls dice WHERE the sentence is, no AI: "fireball for
              /roll 8d6" reaches the model with the result already in (as -D)
+  /random /calc /conv /days   the other green tools, always IN the
+             sentence: /random 100 · /calc 340*1.22 · /conv 100 mi km ·
+             /days 2026-12-25 · /pick a b c (draw, command) · --tools
   /web <question>  searches the web WITHOUT leaving the chat (no AI in the
              collection): the results join the dialogue, with sources
   /source <file>  ONLY that document as the base (study, RPG with house
@@ -5374,16 +5454,22 @@ chat_tools_expand() {
     # $1 = the line as typed. Echoes it with every green-tool call resolved
     # IN PLACE: "palla di fuoco da /dadi 8d6" becomes "palla di fuoco da
     # [8d6 → 3 + 5 + ... = 29]", and THAT is what the model receives: you
-    # roll, the AI narrates. The roll is printed to stderr too, in green -
-    # your dice, seen by you before the model sees the sentence. An invalid
-    # expression warns and stays as typed: a tool must not eat your words.
-    local line="$1" entry aliases fn out pre tok arg res
+    # roll, the AI narrates. Since v3.3 each tool declares how many words
+    # it eats (argc): /conv takes three (100 mi km), the others one - the
+    # regex repeats {argc} times, so the tool never bites into your prose.
+    # The result is printed to stderr too, in green - your fact, seen by
+    # you before the model sees the sentence. An invalid expression warns
+    # and stays as typed: a tool must not eat your words.
+    local line="$1" entry aliases fn argc out pre tok rest res
+    local -a args
     for entry in "${CHAT_TOOLS[@]}"; do
-        aliases="${entry%%=*}"; fn="${entry#*=}"; out=""
-        while [[ "$line" =~ /($aliases)[[:space:]]+([^[:space:]]+) ]]; do
-            tok="${BASH_REMATCH[0]}"; arg="${BASH_REMATCH[2]}"
+        IFS='=' read -r aliases fn argc <<< "$entry"; out=""
+        while [[ "$line" =~ /($aliases)([[:space:]]+[^[:space:]]+){$argc} ]]; do
+            tok="${BASH_REMATCH[0]}"
             pre="${line%%"$tok"*}"; line="${line#*"$tok"}"
-            if res="$("$fn" "$arg")"; then
+            read -r _ rest <<< "$tok"          # drop the /alias, keep the args
+            read -ra args <<< "$rest"
+            if res="$("$fn" "${args[@]}")"; then
                 echo -e "${GREEN}${res}${NC}" >&2
                 out+="${pre}[${res}]"
             else
@@ -5395,6 +5481,265 @@ chat_tools_expand() {
     printf '%s' "$line"
 }
 
+
+# ---- the green toolbox (v3.3): -R -X --conv --days --pw --pick ----
+# Tools, not features: each one is a small, deterministic, NO-AI command
+# that works alone at the prompt AND inside the integrations (the chat
+# expands /caso, /calc, /conv, /giorni in place, like /dadi). The model
+# is bad at arithmetic and randomness; these never are. One tool = one
+# function here + one dispatch arm + one line in the registries.
+
+rand_roll() {
+    # $1 = N (1..N) or A-B. The institutional cousin of the dice: same
+    # kernel entropy (shuf), none of the RPG flavour.
+    local expr="$1" a b
+    if [[ "$expr" =~ ^([0-9]+)-([0-9]+)$ ]]; then
+        a="${BASH_REMATCH[1]}"; b="${BASH_REMATCH[2]}"
+    elif [[ "$expr" =~ ^([0-9]+)$ ]]; then
+        a=1; b="${BASH_REMATCH[1]}"
+    else
+        echo -e "${YELLOW}$(t rand_bad) $expr${NC}" >&2; return 1
+    fi
+    if [ "$a" -ge "$b" ] || [ "$b" -gt 1000000000 ]; then
+        echo -e "${YELLOW}$(t rand_bad) $expr${NC}" >&2; return 1
+    fi
+    printf '%s-%s → %s\n' "$a" "$b" "$(shuf -i "$a"-"$b" -n1)"
+}
+
+calc_eval() {
+    # $1 = arithmetic expression, evaluated by awk - NOT bc: bc is not
+    # installed everywhere (this very machine proved it), awk is POSIX
+    # and already carries --conv. Letters are refused OUTRIGHT: no names
+    # means no functions, no variables, no surprises - a calculator that
+    # only knows numbers cannot be talked into anything. Commas become
+    # dots (Italian fingers type 1,5), ^ is power, % is modulo.
+    local expr="${1//,/.}" out
+    if ! [[ "$expr" =~ ^[0-9+*/().^%[:space:]-]+$ ]]; then
+        echo -e "${YELLOW}$(t calc_bad) $1${NC}" >&2; return 1
+    fi
+    out=$(awk "BEGIN{printf \"%.6f\", $expr}" 2>/dev/null)
+    case "$out" in ''|*inf*|*nan*) echo -e "${YELLOW}$(t calc_bad) $1${NC}" >&2; return 1 ;; esac
+    # trim trailing zeros (2.440000 -> 2.44, 3.000000 -> 3)
+    out=$(sed -E 's/(\.[0-9]*[1-9])0+$/\1/; s/\.0+$//' <<<"$out")
+    printf '%s = %s\n' "$1" "$out"
+}
+
+conv_unit() {
+    # <unit> -> "category factor-to-base", or nothing if unknown.
+    # One table, symbols only (km not "chilometri"): predictable beats
+    # clever. Bases: m, kg, l, m2, m/s, byte, J, Pa, s. Temperatures are
+    # formulas, not factors: handled apart in conv_eval.
+    case "$1" in
+        mm)   echo "len 0.001" ;;      cm)  echo "len 0.01" ;;
+        m)    echo "len 1" ;;          km)  echo "len 1000" ;;
+        in)   echo "len 0.0254" ;;     ft)  echo "len 0.3048" ;;
+        yd)   echo "len 0.9144" ;;     mi)  echo "len 1609.344" ;;
+        nmi)  echo "len 1852" ;;
+        mg)   echo "mass 0.000001" ;;  g)   echo "mass 0.001" ;;
+        kg)   echo "mass 1" ;;         t)   echo "mass 1000" ;;
+        oz)   echo "mass 0.0283495" ;; lb)  echo "mass 0.453592" ;;
+        st)   echo "mass 6.35029" ;;
+        ml)   echo "vol 0.001" ;;      cl)  echo "vol 0.01" ;;
+        l)    echo "vol 1" ;;          m3)  echo "vol 1000" ;;
+        floz) echo "vol 0.0295735" ;;  cup) echo "vol 0.24" ;;
+        pt)   echo "vol 0.473176" ;;   qt)  echo "vol 0.946353" ;;
+        gal)  echo "vol 3.78541" ;;
+        m2)   echo "area 1" ;;         km2) echo "area 1000000" ;;
+        ha)   echo "area 10000" ;;     acre) echo "area 4046.86" ;;
+        ft2)  echo "area 0.092903" ;;
+        mps)  echo "speed 1" ;;        kmh) echo "speed 0.2777778" ;;
+        mph)  echo "speed 0.44704" ;;  kn)  echo "speed 0.5144444" ;;
+        b)    echo "data 1" ;;         bit) echo "data 0.125" ;;
+        kb)   echo "data 1000" ;;      mb)  echo "data 1000000" ;;
+        gb)   echo "data 1000000000" ;; tb) echo "data 1000000000000" ;;
+        kib)  echo "data 1024" ;;      mib) echo "data 1048576" ;;
+        gib)  echo "data 1073741824" ;; tib) echo "data 1099511627776" ;;
+        j)    echo "en 1" ;;           kj)  echo "en 1000" ;;
+        cal)  echo "en 4.184" ;;       kcal) echo "en 4184" ;;
+        wh)   echo "en 3600" ;;        kwh) echo "en 3600000" ;;
+        pa)   echo "press 1" ;;        hpa) echo "press 100" ;;
+        kpa)  echo "press 1000" ;;     bar) echo "press 100000" ;;
+        mbar) echo "press 100" ;;      atm) echo "press 101325" ;;
+        psi)  echo "press 6894.76" ;;  mmhg) echo "press 133.322" ;;
+        s)    echo "time 1" ;;         min) echo "time 60" ;;
+        h)    echo "time 3600" ;;      d)   echo "time 86400" ;;
+        w)    echo "time 604800" ;;
+        *)    return 1 ;;
+    esac
+}
+
+conv_eval() {
+    # $1=value $2=from $3=to. Same category or refusal - converting kg
+    # into km is a question the tool must not pretend to answer.
+    local v="${1//,/.}" from to c1 f1 c2 f2
+    from="$(tr 'A-Z' 'a-z' <<<"$2")" to="$(tr 'A-Z' 'a-z' <<<"$3")"
+    [[ "$v" =~ ^-?[0-9]+(\.[0-9]+)?$ ]] || { echo -e "${YELLOW}$(t conv_bad) $1${NC}" >&2; return 1; }
+    # temperatures first: formulas, not factors
+    case "$from:$to" in
+        c:f) awk -v v="$v" 'BEGIN{printf "%.6g °C = %.6g °F\n", v, v*9/5+32}'; return 0 ;;
+        f:c) awk -v v="$v" 'BEGIN{printf "%.6g °F = %.6g °C\n", v, (v-32)*5/9}'; return 0 ;;
+        c:k) awk -v v="$v" 'BEGIN{printf "%.6g °C = %.6g K\n", v, v+273.15}'; return 0 ;;
+        k:c) awk -v v="$v" 'BEGIN{printf "%.6g K = %.6g °C\n", v, v-273.15}'; return 0 ;;
+        f:k) awk -v v="$v" 'BEGIN{printf "%.6g °F = %.6g K\n", v, (v-32)*5/9+273.15}'; return 0 ;;
+        k:f) awk -v v="$v" 'BEGIN{printf "%.6g K = %.6g °F\n", v, (v-273.15)*9/5+32}'; return 0 ;;
+        c:c|f:f|k:k) printf '%s %s = %s %s\n' "$v" "$from" "$v" "$to"; return 0 ;;
+    esac
+    read -r c1 f1 <<<"$(conv_unit "$from")" || true
+    read -r c2 f2 <<<"$(conv_unit "$to")"   || true
+    [ -z "$c1" ] && { echo -e "${YELLOW}$(t conv_unk) $from${NC} $(t conv_list)" >&2; return 1; }
+    [ -z "$c2" ] && { echo -e "${YELLOW}$(t conv_unk) $to${NC} $(t conv_list)" >&2; return 1; }
+    if [ "$c1" != "$c2" ]; then
+        echo -e "${YELLOW}$(t conv_mix) ($from ≠ $to)${NC}" >&2; return 1
+    fi
+    awk -v v="$v" -v f1="$f1" -v f2="$f2" -v a="$from" -v b="$to" \
+        'BEGIN{printf "%.6g %s = %.6g %s\n", v, a, v*f1/f2, b}'
+}
+
+days_eval() {
+    # $1 = date (YYYY-MM-DD, or DD/MM/YYYY - Italian fingers again).
+    # "How far is that day?" answered by date(1), which never guesses.
+    local d="$1" ts today diff wd
+    [[ "$d" =~ ^([0-9]{1,2})/([0-9]{1,2})/([0-9]{4})$ ]] && \
+        d="${BASH_REMATCH[3]}-${BASH_REMATCH[2]}-${BASH_REMATCH[1]}"
+    ts=$(date -d "$d" +%s 2>/dev/null) || { echo -e "${YELLOW}$(t days_bad) $1${NC}" >&2; return 1; }
+    today=$(date -d "$(date +%F)" +%s)
+    diff=$(( (ts - today) / 86400 ))
+    wd=$(date -d "$d" +%A)
+    if   [ "$diff" -gt 0 ]; then printf '%s (%s) → %s %s %s\n' "$1" "$wd" "$(t days_in)" "$diff" "$(t days_days)"
+    elif [ "$diff" -lt 0 ]; then printf '%s (%s) → %s %s\n' "$1" "$wd" "$(( -diff ))" "$(t days_ago)"
+    else printf '%s (%s) → %s\n' "$1" "$wd" "$(t days_today)"
+    fi
+}
+
+days_cmd() {
+    # --days <date> [date2]: one date = distance from today; two dates =
+    # the span between them, sign included.
+    local a="$1" b="${2:-}" t1 t2
+    if [ -n "$b" ]; then
+        [[ "$a" =~ ^([0-9]{1,2})/([0-9]{1,2})/([0-9]{4})$ ]] && a="${BASH_REMATCH[3]}-${BASH_REMATCH[2]}-${BASH_REMATCH[1]}"
+        [[ "$b" =~ ^([0-9]{1,2})/([0-9]{1,2})/([0-9]{4})$ ]] && b="${BASH_REMATCH[3]}-${BASH_REMATCH[2]}-${BASH_REMATCH[1]}"
+        t1=$(date -d "$a" +%s 2>/dev/null) || { echo -e "${YELLOW}$(t days_bad) $1${NC}" >&2; return 1; }
+        t2=$(date -d "$b" +%s 2>/dev/null) || { echo -e "${YELLOW}$(t days_bad) $2${NC}" >&2; return 1; }
+        printf '%s → %s: %s %s\n' "$1" "$2" "$(( (t2 - t1) / 86400 ))" "$(t days_days)"
+    else
+        days_eval "$a"
+    fi
+}
+
+pw_cmd() {
+    # --pw [len|uuid]. Passwords are born HERE, from /dev/urandom, and
+    # nowhere near a model: a secret that transits an AI context is not
+    # a secret. This tool is deliberately NOT available in the chat.
+    local n="${1:-20}"
+    if [ "$n" = "uuid" ]; then cat /proc/sys/kernel/random/uuid; return 0; fi
+    [[ "$n" =~ ^[0-9]+$ ]] && [ "$n" -ge 8 ] && [ "$n" -le 128 ] \
+        || { echo -e "${YELLOW}$(t pw_bad)${NC}" >&2; return 1; }
+    LC_ALL=C tr -dc 'A-Za-z0-9!@#%+=_.-' < /dev/urandom | head -c "$n"; echo
+}
+
+pick_cmd() {
+    # --pick [-n K] item item ... : draw K (default 1). The institutional
+    # "who does the dishes": same shuf, zero drama.
+    local k=1
+    if [ "${1:-}" = "-n" ]; then k="${2:-1}"; shift 2; fi
+    [ "$#" -ge 2 ] || { echo -e "${YELLOW}$(t pick_usage)${NC}" >&2; return 1; }
+    [[ "$k" =~ ^[0-9]+$ ]] && [ "$k" -ge 1 ] && [ "$k" -le "$#" ] \
+        || { echo -e "${YELLOW}$(t pick_usage)${NC}" >&2; return 1; }
+    printf '→ %s\n' "$(shuf -n "$k" -e "$@" | paste -sd, | sed 's/,/, /g')"
+}
+
+tools_help() {
+    case "$UILANG" in
+    it) cat <<EOF
+Tool green - $ASSIST_NAME --tools  (comandi SENZA IA: istantanei, deterministici)
+
+Perché esistono: il modello coi numeri e col caso sbaglia, questi mai.
+Ognuno funziona da solo al prompt E dentro la chat (-c), dove si scrive
+nella frase e si risolve sul posto — il tool porta il fatto, l'IA ragiona.
+
+  $ASSIST_NAME -D 2d6           dadi GdR: 1d4, 2d6, d20, 1d100+4 (-D help)
+  $ASSIST_NAME -R 100           numero casuale 1-100 · -R 5-50 nel range
+  $ASSIST_NAME -X "340*1.22"    calcolatrice (awk): = 414.8 · virgola ok
+  $ASSIST_NAME --conv 100 mi km conversioni: lunghezze, masse, °C/°F/K,
+                                volumi, aree, velocità, GB/GiB, energia,
+                                pressioni, tempo (elenco: --conv help)
+  $ASSIST_NAME --days 2026-12-25  quanti giorni mancano (o sono passati),
+                                e che giorno era · due date = differenza
+  $ASSIST_NAME --pw 16          password da /dev/urandom · --pw uuid
+  $ASSIST_NAME --pick a b c     sorteggio · --pick -n 2 ne estrae due
+
+In chat: /dadi 2d6 · /caso 100 · /calc 340*1.22 · /conv 100 mi km ·
+/giorni 2026-12-25 dentro la frase; /scegli a b c come comando.
+/pw NON esiste in chat, di proposito: una password che passa dal
+contesto di un modello non è più un segreto.
+
+Unità di --conv:
+  lunghezze  mm cm m km in ft yd mi nmi     masse  mg g kg t oz lb st
+  temperature c f k                          volumi ml cl l m3 floz cup pt qt gal
+  aree       m2 km2 ha acre ft2              velocità mps kmh mph kn
+  dati       b bit kb mb gb tb kib mib gib tib
+  energia    j kj cal kcal wh kwh            pressioni pa hpa kpa bar mbar atm psi mmhg
+  tempo      s min h d w
+EOF
+        ;;
+    de) cat <<EOF
+Grüne Tools - $ASSIST_NAME --tools  (Befehle OHNE KI: sofort, deterministisch)
+
+Warum es sie gibt: das Modell irrt bei Zahlen und Zufall, diese nie.
+Jedes funktioniert allein am Prompt UND im Chat (-c), mitten im Satz,
+an Ort und Stelle gelöst — das Tool bringt den Fakt, die KI denkt.
+
+  $ASSIST_NAME -D 2d6           Rollenspiel-Würfel: 1d4, 2d6, d20 (-D help)
+  $ASSIST_NAME -R 100           Zufallszahl 1-100 · -R 5-50 im Bereich
+  $ASSIST_NAME -X "340*1.22"    Taschenrechner (awk): = 414.8 · Komma ok
+  $ASSIST_NAME --conv 100 mi km Umrechnungen: Längen, Massen, °C/°F/K,
+                                Volumen, Flächen, Tempo, GB/GiB, Energie,
+                                Druck, Zeit (Liste: --conv help)
+  $ASSIST_NAME --days 2026-12-25  wie viele Tage hin (oder her), und
+                                welcher Wochentag · zwei Daten = Abstand
+  $ASSIST_NAME --pw 16          Passwort aus /dev/urandom · --pw uuid
+  $ASSIST_NAME --pick a b c     Losentscheid · --pick -n 2 zieht zwei
+
+Im Chat: /wuerfel 2d6 · /zufall 100 · /rechne 340*1.22 · /umrechnen
+100 mi km · /tage 2026-12-25 im Satz; /waehle a b c als Befehl.
+/pw gibt es im Chat ABSICHTLICH nicht: ein Passwort, das durch den
+Kontext eines Modells läuft, ist kein Geheimnis mehr.
+EOF
+        ;;
+    *) cat <<EOF
+Green tools - $ASSIST_NAME --tools  (commands with NO AI: instant, deterministic)
+
+Why they exist: the model gets numbers and randomness wrong, these never do.
+Each works alone at the prompt AND inside the chat (-c), written into the
+sentence and resolved on the spot — the tool brings the fact, the AI thinks.
+
+  $ASSIST_NAME -D 2d6           RPG dice: 1d4, 2d6, d20, 1d100+4 (-D help)
+  $ASSIST_NAME -R 100           random number 1-100 · -R 5-50 in a range
+  $ASSIST_NAME -X "340*1.22"    calculator (awk): = 414.8 · comma ok
+  $ASSIST_NAME --conv 100 mi km conversions: lengths, masses, °C/°F/K,
+                                volumes, areas, speeds, GB/GiB, energy,
+                                pressure, time (list: --conv help)
+  $ASSIST_NAME --days 2026-12-25  days until (or since), and the weekday ·
+                                two dates = the span between them
+  $ASSIST_NAME --pw 16          password from /dev/urandom · --pw uuid
+  $ASSIST_NAME --pick a b c     draw one · --pick -n 2 draws two
+
+In chat: /roll 2d6 · /random 100 · /calc 340*1.22 · /conv 100 mi km ·
+/days 2026-12-25 inside the sentence; /pick a b c as a command.
+/pw does NOT exist in chat, on purpose: a password that transits a
+model's context is no longer a secret.
+
+Units of --conv:
+  length  mm cm m km in ft yd mi nmi        mass  mg g kg t oz lb st
+  temp    c f k                             volume ml cl l m3 floz cup pt qt gal
+  area    m2 km2 ha acre ft2                speed mps kmh mph kn
+  data    b bit kb mb gb tb kib mib gib tib
+  energy  j kj cal kcal wh kwh              pressure pa hpa kpa bar mbar atm psi mmhg
+  time    s min h d w
+EOF
+        ;;
+    esac
+}
 # ---- source mode (/fonte, v2.25) ----
 
 chat_blk_source() {
@@ -5853,6 +6198,17 @@ chat_mode() {
                                          continue ;;
             /scorda|/forget|/vergiss)    echo "$(t forget_usage)"; continue ;;
             /compatta|/compact|/kompakt) chat_compact_cmd || true; continue ;;
+            '/scegli '*|'/pick '*|'/waehle '*)
+                # a draw with a variable list cannot live inline (where
+                # would it end?), so it is a command: result shown AND
+                # dropped into the dialogue - the tool brings the fact.
+                if res_pick="$(pick_cmd ${line#* })"; then
+                    echo -e "${GREEN}${res_pick}${NC}"
+                    CHAT_MSGS=$(jq -c --arg c "$(t pick_frame) ${line#* } ${res_pick}" \
+                        '. + [{role:"user",content:$c}]' <<<"$CHAT_MSGS")
+                fi
+                continue ;;
+            /scegli|/pick|/waehle)       echo "$(t pick_usage)"; continue ;;
             '/web '*|'/cerca '*|'/suche '*)
                                          chat_web_cmd "${line#* }" || true; continue ;;
             /web|/cerca|/suche)          echo "$(t cw_usage)"; continue ;;
@@ -8640,12 +8996,64 @@ case "$1" in
     -D|--dice)
         # GREEN: no check_ai on purpose - the whole point is that a d20
         # works with ollama stopped, on the server, in a dead shell.
+        # Same for every tool below: the toolbox never needs the engine.
         shift
         case "${1:-}" in
             help|-h|--help) page dice_help ;;
             "")             echo -e "${YELLOW}$(t dice_usage)${NC}" >&2; exit 1 ;;
             *)              dice_cmd "$@" ;;
         esac
+        ;;
+    -R|--random)
+        shift
+        case "${1:-}" in
+            help|-h|--help) page tools_help ;;
+            "")             echo -e "${YELLOW}$(t rand_bad)${NC}" >&2; exit 1 ;;
+            *)              rc=0; for e in "$@"; do rand_roll "$e" || rc=1; done; exit $rc ;;
+        esac
+        ;;
+    -X|--calc)
+        shift
+        case "${1:-}" in
+            help|-h|--help) page tools_help ;;
+            "")             echo -e "${YELLOW}$(t calc_bad)${NC}" >&2; exit 1 ;;
+            *)              calc_eval "$*" ;;
+        esac
+        ;;
+    --conv)
+        shift
+        case "${1:-}" in
+            help|-h|--help) page tools_help ;;
+            *)  [ "$#" -eq 3 ] || { echo -e "${YELLOW}$(t conv_usage)${NC}" >&2; exit 1; }
+                conv_eval "$1" "$2" "$3" ;;
+        esac
+        ;;
+    --days)
+        shift
+        case "${1:-}" in
+            help|-h|--help) page tools_help ;;
+            "")             echo -e "${YELLOW}$(t days_bad)${NC}" >&2; exit 1 ;;
+            *)              days_cmd "$1" "${2:-}" ;;
+        esac
+        ;;
+    --pw)
+        shift
+        case "${1:-}" in
+            help|-h|--help) page tools_help ;;
+            *)              pw_cmd "${1:-}" ;;
+        esac
+        ;;
+    --pick)
+        shift
+        case "${1:-}" in
+            help|-h|--help) page tools_help ;;
+            *)              pick_cmd "$@" ;;
+        esac
+        ;;
+    --tools)
+        # a door whose only job is the map: the tools each have a flag,
+        # this page shows the whole toolbox at once
+        page tools_help
         ;;
     -T|--translate)
         shift

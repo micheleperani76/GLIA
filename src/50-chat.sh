@@ -463,6 +463,9 @@ Comandi della chat (tutto il resto è conversazione):
   /memoria    elenca i fatti   ·   /scorda <n>   toglie il fatto n
   /dadi 2d6   tira i dadi DOVE sta la frase, senza IA: "palla di fuoco da
               /dadi 8d6" arriva al modello col risultato già dentro (come -D)
+  /caso /calc /conv /giorni   gli altri tool green, sempre NELLA frase:
+              /caso 100 · /calc 340*1.22 · /conv 100 mi km · /giorni
+              2026-12-25 · /scegli a b c (sorteggio, comando) · --tools
   /web <domanda>  cerca sul web SENZA uscire dalla chat (niente IA nella
               raccolta): i risultati entrano nel dialogo, con le fonti
   /fonte <file>  SOLO quel documento come base (studio, GdR con regole tue):
@@ -487,6 +490,9 @@ Chat-Befehle (alles andere ist Unterhaltung):
   /gedaechtnis  Fakten auflisten   ·   /vergiss <n>   entfernt Fakt n
   /wuerfel 2d6  würfelt IM Satz, ohne KI: "Feuerball für /wuerfel 8d6" erreicht
               das Modell mit dem Ergebnis schon drin (wie -D)
+  /zufall /rechne /umrechnen /tage   die anderen grünen Tools, immer IM
+              Satz: /zufall 100 · /rechne 340*1.22 · /umrechnen 100 mi km ·
+              /tage 2026-12-25 · /waehle a b c (Los, Befehl) · --tools
   /suche <Frage>  sucht im Web OHNE den Chat zu verlassen (keine KI beim
               Sammeln): die Ergebnisse gehen in den Dialog, mit Quellen
   /quelle <Datei>  NUR dieses Dokument als Basis (Lernen, Rollenspiel mit
@@ -510,6 +516,9 @@ Chat commands (everything else is conversation):
   /memory    list the facts   ·   /forget <n>   drops fact n
   /roll 2d6  rolls dice WHERE the sentence is, no AI: "fireball for
              /roll 8d6" reaches the model with the result already in (as -D)
+  /random /calc /conv /days   the other green tools, always IN the
+             sentence: /random 100 · /calc 340*1.22 · /conv 100 mi km ·
+             /days 2026-12-25 · /pick a b c (draw, command) · --tools
   /web <question>  searches the web WITHOUT leaving the chat (no AI in the
              collection): the results join the dialogue, with sources
   /source <file>  ONLY that document as the base (study, RPG with house

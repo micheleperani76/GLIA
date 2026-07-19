@@ -163,13 +163,20 @@ green by design, and it's a whole system, not a lone command.
   must still be Markdown, a `.sh` must pass `bash -n`) — if a check keeps
   failing it saves **with a warning** instead of pretending. In code only
   comments and messages are translated, never the code itself.
-  Roll dice, no AI: `glia -D 2d6` (`--dice`) — role-playing notation, `1d4`,
-  `2d6`, `1d100+4`, several rolls per call, single rolls shown (`2d6 → 4 + 5
-  = 9`). Green by construction: no model, no wait, no token — the numbers
-  come from `shuf`, i.e. the kernel's entropy, and it works with Ollama
-  stopped. And the dice live in the chat too: `/dadi 8d6` **inside a
-  sentence** resolves on the spot, and the model receives the sentence with
-  the result already in it — you roll, the AI narrates.
+  A green toolbox, no AI ever: small deterministic commands that answer in
+  milliseconds with Ollama stopped — because a language model gets
+  arithmetic and randomness wrong, and these never do. `glia -D 2d6`
+  (`--dice`, RPG notation) · `glia -R 100` (`--random`, plain random
+  number) · `glia -X "340*1.22"` (`--calc`, awk arithmetic) · `glia --conv
+  100 mi km` (units: lengths, masses, °C/°F/K, volumes, areas, speeds,
+  GB/GiB, energy, pressure, time) · `glia --days 2026-12-25` (days until,
+  and the weekday) · `glia --pw 16` (passwords from `/dev/urandom` — born
+  locally, never near a model) · `glia --pick a b c` (draw from a list).
+  `glia --tools` shows the whole box. And they live **inside the chat
+  too**: `/dadi 8d6`, `/calc`, `/conv`, `/giorni`, `/caso` resolve in the
+  middle of your sentence, and the model receives the result already in
+  place — the tool brings the fact, the AI narrates. The registry is open:
+  a new tool is one function and one line.
   One document as the whole truth: `glia -c --fonte <file>` (or `/fonte` in
   chat) makes that document the chat's **only** knowledge base — study a
   text, or play an RPG by **your** house rules. The file goes to the model

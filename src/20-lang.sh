@@ -1109,6 +1109,46 @@ t() {
         it:cc_sumhead)      echo "Riassunto della conversazione precedente (è un RIASSUNTO, non il testo integrale: la versione completa è salvata su file). Prosegui da qui:" ;;
         de:cc_sumhead)      echo "Zusammenfassung des bisherigen Gesprächs (eine ZUSAMMENFASSUNG, nicht der volle Text: die vollständige Fassung ist als Datei gesichert). Mach hier weiter:" ;;
         *:cc_sumhead)       echo "Summary of the earlier conversation (a SUMMARY, not the full text: the complete version is saved to a file). Continue from here:" ;;
+        it:rand_bad)        echo "numero non valido (uso: -R 100 · -R 5-50, max 10^9):" ;;
+        de:rand_bad)        echo "ungültige Zahl (Nutzung: -R 100 · -R 5-50, max 10^9):" ;;
+        *:rand_bad)         echo "invalid number (usage: -R 100 · -R 5-50, max 10^9):" ;;
+        it:calc_bad)        echo "espressione non valida (solo numeri e + - * / ( ) . ^ %):" ;;
+        de:calc_bad)        echo "ungültiger Ausdruck (nur Zahlen und + - * / ( ) . ^ %):" ;;
+        *:calc_bad)         echo "invalid expression (numbers and + - * / ( ) . ^ % only):" ;;
+        it:conv_bad)        echo "valore non numerico:" ;;
+        de:conv_bad)        echo "kein numerischer Wert:" ;;
+        *:conv_bad)         echo "not a numeric value:" ;;
+        it:conv_unk)        echo "unità sconosciuta:" ;;
+        de:conv_unk)        echo "unbekannte Einheit:" ;;
+        *:conv_unk)         echo "unknown unit:" ;;
+        it:conv_list)       echo "(elenco completo: $ASSIST_NAME --conv help)" ;;
+        de:conv_list)       echo "(vollständige Liste: $ASSIST_NAME --conv help)" ;;
+        *:conv_list)        echo "(full list: $ASSIST_NAME --conv help)" ;;
+        it:conv_mix)        echo "categorie diverse: non si convertono mele in chilometri" ;;
+        de:conv_mix)        echo "verschiedene Kategorien: Äpfel werden nicht zu Kilometern" ;;
+        *:conv_mix)         echo "different categories: apples do not convert into kilometres" ;;
+        it:conv_usage)      echo "Uso: $ASSIST_NAME --conv <valore> <da> <a>   (es. --conv 100 mi km · --conv help)" ;;
+        de:conv_usage)      echo "Nutzung: $ASSIST_NAME --conv <Wert> <von> <nach>   (z.B. --conv 100 mi km · --conv help)" ;;
+        *:conv_usage)       echo "Usage: $ASSIST_NAME --conv <value> <from> <to>   (e.g. --conv 100 mi km · --conv help)" ;;
+        it:days_bad)        echo "data non valida (AAAA-MM-GG o GG/MM/AAAA):" ;;
+        de:days_bad)        echo "ungültiges Datum (JJJJ-MM-TT oder TT/MM/JJJJ):" ;;
+        *:days_bad)         echo "invalid date (YYYY-MM-DD or DD/MM/YYYY):" ;;
+        it:days_in)         echo "tra" ;;      de:days_in)   echo "in" ;;      *:days_in)   echo "in" ;;
+        it:days_ago)        echo "giorni fa" ;; de:days_ago) echo "Tage zurück" ;; *:days_ago) echo "days ago" ;;
+        it:days_today)      echo "è OGGI" ;;   de:days_today) echo "ist HEUTE" ;; *:days_today) echo "is TODAY" ;;
+        it:days_days)       echo "giorni" ;;   de:days_days) echo "Tage" ;;     *:days_days) echo "days" ;;
+        it:pw_bad)          echo "Uso: --pw [8-128] (default 20) · --pw uuid" ;;
+        de:pw_bad)          echo "Nutzung: --pw [8-128] (Standard 20) · --pw uuid" ;;
+        *:pw_bad)           echo "Usage: --pw [8-128] (default 20) · --pw uuid" ;;
+        it:pick_usage)      echo "Uso: --pick [-n K] <voce> <voce> ...   (almeno 2 voci, K entro il numero di voci)" ;;
+        de:pick_usage)      echo "Nutzung: --pick [-n K] <Ding> <Ding> ...   (mindestens 2, K höchstens Anzahl)" ;;
+        *:pick_usage)       echo "Usage: --pick [-n K] <item> <item> ...   (at least 2 items, K within the count)" ;;
+        it:pick_frame)      echo "Sorteggio fatto ORA (senza IA, shuf) tra:" ;;
+        de:pick_frame)      echo "Losentscheid JETZT gezogen (ohne KI, shuf) unter:" ;;
+        *:pick_frame)       echo "Draw made NOW (no AI, shuf) among:" ;;
+        it:tool_usage)      echo "Uso: -R <N|A-B> · -X <espr> · --conv v da a · --days <data> · --pw [n] · --pick a b (--tools)" ;;
+        de:tool_usage)      echo "Nutzung: -R <N|A-B> · -X <Ausdr> · --conv w von nach · --days <Datum> · --pw [n] · --pick a b (--tools)" ;;
+        *:tool_usage)       echo "Usage: -R <N|A-B> · -X <expr> · --conv v from to · --days <date> · --pw [n] · --pick a b (--tools)" ;;
         it:flag_unknown)    echo "flag sconosciuto:" ;;
         de:flag_unknown)    echo "unbekanntes Flag:" ;;
         *:flag_unknown)     echo "unknown flag:" ;;
@@ -1460,11 +1500,12 @@ Aiuto per area — ogni help elenca TUTTI i suoi sotto-comandi:
   -T help        traduci un file: file nuovo accanto · lingua · --translate-model
   -i help        modalità interattiva (frasi con simboli speciali)
   -c help        chat: /contesto · /dadi · /web (dati dalla rete) · /fonte (un documento) · /compatta
+  --tools        tool green (SENZA IA): -D dadi · -R caso · -X calc · --conv · --days · --pw · --pick
   --memory help  memoria: --remember salva · --forget scorda · --memory elenca
   --update help  aggiorna: -U · --check · --channel · --rollback · engine
 
 Comandi secchi (una cosa sola, nessun sotto-menù):
-  --rename <nome> · --lang <it|en|de> · -T <file> [lingua] (traduci) · -D 2d6 (dadi, senza IA · -D help) · -l (log) · --clear-cache · -V
+  --rename <nome> · --lang <it|en|de> · -T <file> [lingua] (traduci) · -l (log) · --clear-cache · -V
   --kaboom  disinstallazione GUIDATA: chiede cosa togliere e mostra ogni comando
 
 Esempio:   $ASSIST_NAME trova i file più grandi in /home
@@ -1496,11 +1537,12 @@ Hilfe pro Bereich — jede Hilfe listet ALLE ihre Unterbefehle:
   -T help        Datei übersetzen: neue Datei daneben · Sprache · --translate-model
   -i help        interaktiver Modus (Sätze mit Sonderzeichen)
   -c help        Chat: /kontext · /wuerfel · /suche (Daten aus dem Netz) · /quelle (ein Dokument) · /kompakt
+  --tools        grüne Tools (OHNE KI): -D Würfel · -R Zufall · -X Rechner · --conv · --days · --pw · --pick
   --memory help  Gedächtnis: --remember merken · --forget vergessen · --memory
   --update help  aktualisieren: -U · --check · --channel · --rollback · Engine
 
 Einfache Befehle (eine Sache, kein Untermenü):
-  --rename <Name> · --lang <it|en|de> · -T <Datei> [Sprache] (übersetzen) · -D 2d6 (Würfel, ohne KI · -D help) · -l (Log) · --clear-cache · -V
+  --rename <Name> · --lang <it|en|de> · -T <Datei> [Sprache] (übersetzen) · -l (Log) · --clear-cache · -V
   --kaboom  GEFÜHRTE Deinstallation: fragt, was entfernt wird, zeigt jeden Befehl
 
 Beispiel:   $ASSIST_NAME finde die größten Dateien in /home
@@ -1532,11 +1574,12 @@ Help per area — each help lists ALL of its subcommands:
   -T help        translate a file: new file next to it · language · --translate-model
   -i help        interactive mode (requests with special characters)
   -c help        chat: /context · /roll · /web (data from the net) · /source (one document) · /compact
+  --tools        green tools (NO AI): -D dice · -R random · -X calc · --conv · --days · --pw · --pick
   --memory help  memory: --remember saves · --forget drops · --memory lists
   --update help  updating: -U · --check · --channel · --rollback · engine
 
 Plain commands (one job, no submenu):
-  --rename <name> · --lang <it|en|de> · -T <file> [lang] (translate) · -D 2d6 (dice, no AI · -D help) · -l (log) · --clear-cache · -V
+  --rename <name> · --lang <it|en|de> · -T <file> [lang] (translate) · -l (log) · --clear-cache · -V
   --kaboom  GUIDED uninstall: asks what to remove and shows every command
 
 Example:   $ASSIST_NAME find the largest files in /home

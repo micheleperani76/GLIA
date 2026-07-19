@@ -1,7 +1,7 @@
 # ============================================================
 
 # ----------------- CONFIGURATION -----------------
-VERSION="3.2.0"
+VERSION="3.3.0"
 DEFAULT_MODEL="qwen2.5-coder:7b"
 # -m bench (D6b): CPU vs iGPU on THIS machine, config up top on purpose.
 BENCH_OVERRIDE_DIR="/etc/systemd/system/ollama.service.d"
@@ -137,13 +137,19 @@ CHAT_BLOCKS=(
     "memory|on|chat_blk_memory"    # the facts you stored with --remember
 )
 CHAT_BLOCKS_FILE="$HOME/.config/glia/chat-blocks"   # name=on|off, one per line
-# Green tools INSIDE the chat (v2.24): no AI, resolved on the spot, the
-# result goes into the sentence. "aliases=function": the function gets the
-# word after the alias and prints the resolved text - or fails, and the text
-# stays as typed. One entry today (the -D dice, same function, not a copy);
-# the next green tool is one line here plus its function, not a redesign.
+# Green tools INSIDE the chat (v2.24, grown in v3.3): no AI, resolved on
+# the spot, the result goes into the sentence. "aliases=function=argc":
+# the function gets argc words after the alias and prints the resolved
+# text - or fails, and the text stays as typed. The same functions serve
+# the CLI flags (-D, -R, -X, --conv, --days): one truth, two doors.
+# NOTE what is NOT here: pw. A password must never transit the model's
+# context - that tool exists only outside the chat, on purpose.
 CHAT_TOOLS=(
-    "dadi|wuerfel|roll|dice=dice_roll"
+    "dadi|wuerfel|roll|dice=dice_roll=1"
+    "caso|zufall|random=rand_roll=1"
+    "calc|rechne=calc_eval=1"
+    "conv|umrechnen=conv_eval=3"
+    "giorni|tage|days=days_eval=1"
 )
 # Source mode (v2.25): ONE document as the chat's only knowledge base
 # (glia -c --fonte <file>, or /fonte in chat). While a source is loaded the
