@@ -317,6 +317,21 @@ chat_mode() {
             IFS= read -r -e -p "$(t chat_prompt)> " line || { echo; break; }
             history -s -- "$line" 2>/dev/null
         fi
+        # /calc in LINE mode (v3.3.1) intercepts BEFORE the inline pass:
+        # when the line STARTS with /calc, everything after it is the
+        # expression - spaces welcome, no shell here, end-of-line delimits.
+        # Result echoed and dropped into the dialogue, NO inference: a
+        # calculator is institutional, it does not need the model to react.
+        # Inline /calc inside a sentence stays one-word, as declared.
+        case "$line" in
+            '/calc '*|'/rechne '*)
+                if res_calc="$(calc_eval "${line#* }")"; then
+                    echo -e "${GREEN}${res_calc}${NC}"
+                    CHAT_MSGS=$(jq -c --arg c "[calc: ${res_calc}]" \
+                        '. + [{role:"user",content:$c}]' <<<"$CHAT_MSGS")
+                fi
+                continue ;;
+        esac
         # Green tools resolve FIRST (v2.24): /dadi 2d6 anywhere in the line
         # becomes its result before anything else looks at it. A line that is
         # ONLY a roll goes to the model like any sentence - the master rolled,

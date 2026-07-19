@@ -1115,6 +1115,9 @@ t() {
         it:calc_bad)        echo "espressione non valida (solo numeri e + - * / ( ) . ^ %):" ;;
         de:calc_bad)        echo "ungültiger Ausdruck (nur Zahlen und + - * / ( ) . ^ %):" ;;
         *:calc_bad)         echo "invalid expression (numbers and + - * / ( ) . ^ % only):" ;;
+        it:calc_glob)       echo "vedo spazi e lettere insieme: probabilmente la shell ha espanso un * nudo nei nomi dei file. Metti le virgolette: $ASSIST_NAME -X \"340 * 1.22\"" ;;
+        de:calc_glob)       echo "Leerzeichen und Buchstaben zusammen: vermutlich hat die Shell ein nacktes * zu Dateinamen expandiert. Nimm Anführungszeichen: $ASSIST_NAME -X \"340 * 1.22\"" ;;
+        *:calc_glob)        echo "spaces and letters together: the shell probably expanded a naked * into filenames. Use quotes: $ASSIST_NAME -X \"340 * 1.22\"" ;;
         it:conv_bad)        echo "valore non numerico:" ;;
         de:conv_bad)        echo "kein numerischer Wert:" ;;
         *:conv_bad)         echo "not a numeric value:" ;;

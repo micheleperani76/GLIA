@@ -1,7 +1,7 @@
 # ============================================================
 
 # ----------------- CONFIGURATION -----------------
-VERSION="3.3.0"
+VERSION="3.3.1"
 DEFAULT_MODEL="qwen2.5-coder:7b"
 # -m bench (D6b): CPU vs iGPU on THIS machine, config up top on purpose.
 BENCH_OVERRIDE_DIR="/etc/systemd/system/ollama.service.d"

@@ -1,12 +1,30 @@
 #!/usr/bin/env bash
 # ============================================================
 #  glia - AI terminal assistant (Ollama + aichat)
-#  Version: 3.3.0 - 2026-07-19
+#  Version: 3.3.1 - 2026-07-19
 #  Author: Michele (with Claude)
 #  Project: GLIA (GNU Linux IA)
 #
 #  Design pillar: commands follow standard terminal conventions, so
 #  what you learn here you can reuse in other programs (and vice versa).
+#
+#  What's new in v3.3.1 ("the calculator, both ways"):
+#   - /calc in the chat gains LINE mode: when the line STARTS with /calc,
+#     everything after it is the expression - spaces welcome, because
+#     there is no shell in the chat and the end of the line delimits by
+#     itself. Result echoed and dropped into the dialogue with NO
+#     inference: a calculator is institutional, it does not need the
+#     model to react. Inline /calc inside a sentence stays one-word.
+#   - At the CLI both modes already existed (-X 340*1.22 unquoted, or
+#     -X "340 * 1.22" quoted); what was missing was the honest error.
+#     When the shell expands a naked * into filenames, the calculator
+#     now NAMES the real cause ("the shell ate your *, use quotes")
+#     instead of describing the symptom. The pillar again: we do not
+#     fight the shell's conventions, we explain them.
+#   - -D help now points to --tools: the dice were found, the rest of
+#     the box was not - a help page that does not send you onward is a
+#     dead end, and the calculator was invisible to whoever landed on
+#     the dice page first.
 #
 #  What's new in v3.3.0 ("the toolbox"):
 #   - The dice stop being a curiosity and become a FAMILY: green tools,
@@ -739,7 +757,7 @@
 # ============================================================
 
 # ----------------- CONFIGURATION -----------------
-VERSION="3.3.0"
+VERSION="3.3.1"
 DEFAULT_MODEL="qwen2.5-coder:7b"
 # -m bench (D6b): CPU vs iGPU on THIS machine, config up top on purpose.
 BENCH_OVERRIDE_DIR="/etc/systemd/system/ollama.service.d"
@@ -2093,6 +2111,9 @@ t() {
         it:calc_bad)        echo "espressione non valida (solo numeri e + - * / ( ) . ^ %):" ;;
         de:calc_bad)        echo "ungültiger Ausdruck (nur Zahlen und + - * / ( ) . ^ %):" ;;
         *:calc_bad)         echo "invalid expression (numbers and + - * / ( ) . ^ % only):" ;;
+        it:calc_glob)       echo "vedo spazi e lettere insieme: probabilmente la shell ha espanso un * nudo nei nomi dei file. Metti le virgolette: $ASSIST_NAME -X \"340 * 1.22\"" ;;
+        de:calc_glob)       echo "Leerzeichen und Buchstaben zusammen: vermutlich hat die Shell ein nacktes * zu Dateinamen expandiert. Nimm Anführungszeichen: $ASSIST_NAME -X \"340 * 1.22\"" ;;
+        *:calc_glob)        echo "spaces and letters together: the shell probably expanded a naked * into filenames. Use quotes: $ASSIST_NAME -X \"340 * 1.22\"" ;;
         it:conv_bad)        echo "valore non numerico:" ;;
         de:conv_bad)        echo "kein numerischer Wert:" ;;
         *:conv_bad)         echo "not a numeric value:" ;;
@@ -5398,6 +5419,9 @@ Come si usa:
 Dentro la chat (-c): /dadi 2d6 in mezzo alla frase si risolve sul posto,
 e il modello riceve la frase col risultato già dentro — tu tiri, l'IA narra.
 
+I dadi sono UNO dei tool green: il resto della cassetta (numero casuale,
+calcolatrice, conversioni, giorni, password, sorteggio) è in: $ASSIST_NAME --tools
+
 Limiti: da 1 a 100 dadi per tiro, facce da 1 a 10000, modificatore +K o -K.
 EOF
         ;;
@@ -5421,6 +5445,9 @@ Im Chat (-c): /wuerfel 2d6 mitten im Satz wird an Ort und Stelle gewürfelt,
 und das Modell erhält den Satz mit dem Ergebnis schon drin — du würfelst,
 die KI erzählt.
 
+Die Würfel sind EINES der grünen Tools: der Rest des Kastens (Zufallszahl,
+Rechner, Umrechnungen, Tage, Passwort, Los) steht in: $ASSIST_NAME --tools
+
 Grenzen: 1 bis 100 Würfel pro Wurf, 1 bis 10000 Seiten, Modifikator +K oder -K.
 EOF
         ;;
@@ -5443,6 +5470,9 @@ Usage:
 Inside the chat (-c): /roll 2d6 in the middle of a sentence resolves on the
 spot, and the model receives the sentence with the result already in —
 you roll, the AI narrates.
+
+The dice are ONE of the green tools: the rest of the box (random number,
+calculator, conversions, days, password, draw) lives in: $ASSIST_NAME --tools
 
 Limits: 1 to 100 dice per roll, 1 to 10000 sides, modifier +K or -K.
 EOF
@@ -5515,7 +5545,13 @@ calc_eval() {
     # dots (Italian fingers type 1,5), ^ is power, % is modulo.
     local expr="${1//,/.}" out
     if ! [[ "$expr" =~ ^[0-9+*/().^%[:space:]-]+$ ]]; then
-        echo -e "${YELLOW}$(t calc_bad) $1${NC}" >&2; return 1
+        echo -e "${YELLOW}$(t calc_bad) $1${NC}" >&2
+        # spaces AND letters together: almost always a naked * the shell
+        # expanded into filenames BEFORE we were called. Name the real
+        # cause, not the symptom - the fix is one pair of quotes away.
+        [[ "$expr" == *" "* && "$expr" =~ [a-zA-Z] ]] && \
+            echo -e "${YELLOW}$(t calc_glob)${NC}" >&2
+        return 1
     fi
     out=$(awk "BEGIN{printf \"%.6f\", $expr}" 2>/dev/null)
     case "$out" in ''|*inf*|*nan*) echo -e "${YELLOW}$(t calc_bad) $1${NC}" >&2; return 1 ;; esac
@@ -5660,6 +5696,8 @@ nella frase e si risolve sul posto — il tool porta il fatto, l'IA ragiona.
   $ASSIST_NAME -D 2d6           dadi GdR: 1d4, 2d6, d20, 1d100+4 (-D help)
   $ASSIST_NAME -R 100           numero casuale 1-100 · -R 5-50 nel range
   $ASSIST_NAME -X "340*1.22"    calcolatrice (awk): = 414.8 · virgola ok
+                                con gli SPAZI servono le virgolette (il *
+                                nudo lo mangia la shell, non glia)
   $ASSIST_NAME --conv 100 mi km conversioni: lunghezze, masse, °C/°F/K,
                                 volumi, aree, velocità, GB/GiB, energia,
                                 pressioni, tempo (elenco: --conv help)
@@ -5670,6 +5708,8 @@ nella frase e si risolve sul posto — il tool porta il fatto, l'IA ragiona.
 
 In chat: /dadi 2d6 · /caso 100 · /calc 340*1.22 · /conv 100 mi km ·
 /giorni 2026-12-25 dentro la frase; /scegli a b c come comando.
+E /calc a INIZIO riga prende tutto il resto, spazi compresi:
+"/calc 340 * 1.22" → risultato subito, senza scomodare il modello.
 /pw NON esiste in chat, di proposito: una password che passa dal
 contesto di un modello non è più un segreto.
 
@@ -6153,6 +6193,21 @@ chat_mode() {
             IFS= read -r -e -p "$(t chat_prompt)> " line || { echo; break; }
             history -s -- "$line" 2>/dev/null
         fi
+        # /calc in LINE mode (v3.3.1) intercepts BEFORE the inline pass:
+        # when the line STARTS with /calc, everything after it is the
+        # expression - spaces welcome, no shell here, end-of-line delimits.
+        # Result echoed and dropped into the dialogue, NO inference: a
+        # calculator is institutional, it does not need the model to react.
+        # Inline /calc inside a sentence stays one-word, as declared.
+        case "$line" in
+            '/calc '*|'/rechne '*)
+                if res_calc="$(calc_eval "${line#* }")"; then
+                    echo -e "${GREEN}${res_calc}${NC}"
+                    CHAT_MSGS=$(jq -c --arg c "[calc: ${res_calc}]" \
+                        '. + [{role:"user",content:$c}]' <<<"$CHAT_MSGS")
+                fi
+                continue ;;
+        esac
         # Green tools resolve FIRST (v2.24): /dadi 2d6 anywhere in the line
         # becomes its result before anything else looks at it. A line that is
         # ONLY a roll goes to the model like any sentence - the master rolled,

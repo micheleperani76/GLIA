@@ -1,12 +1,30 @@
 #!/usr/bin/env bash
 # ============================================================
 #  glia - AI terminal assistant (Ollama + aichat)
-#  Version: 3.3.0 - 2026-07-19
+#  Version: 3.3.1 - 2026-07-19
 #  Author: Michele (with Claude)
 #  Project: GLIA (GNU Linux IA)
 #
 #  Design pillar: commands follow standard terminal conventions, so
 #  what you learn here you can reuse in other programs (and vice versa).
+#
+#  What's new in v3.3.1 ("the calculator, both ways"):
+#   - /calc in the chat gains LINE mode: when the line STARTS with /calc,
+#     everything after it is the expression - spaces welcome, because
+#     there is no shell in the chat and the end of the line delimits by
+#     itself. Result echoed and dropped into the dialogue with NO
+#     inference: a calculator is institutional, it does not need the
+#     model to react. Inline /calc inside a sentence stays one-word.
+#   - At the CLI both modes already existed (-X 340*1.22 unquoted, or
+#     -X "340 * 1.22" quoted); what was missing was the honest error.
+#     When the shell expands a naked * into filenames, the calculator
+#     now NAMES the real cause ("the shell ate your *, use quotes")
+#     instead of describing the symptom. The pillar again: we do not
+#     fight the shell's conventions, we explain them.
+#   - -D help now points to --tools: the dice were found, the rest of
+#     the box was not - a help page that does not send you onward is a
+#     dead end, and the calculator was invisible to whoever landed on
+#     the dice page first.
 #
 #  What's new in v3.3.0 ("the toolbox"):
 #   - The dice stop being a curiosity and become a FAMILY: green tools,

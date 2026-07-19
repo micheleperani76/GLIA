@@ -56,6 +56,9 @@ Come si usa:
 Dentro la chat (-c): /dadi 2d6 in mezzo alla frase si risolve sul posto,
 e il modello riceve la frase col risultato già dentro — tu tiri, l'IA narra.
 
+I dadi sono UNO dei tool green: il resto della cassetta (numero casuale,
+calcolatrice, conversioni, giorni, password, sorteggio) è in: $ASSIST_NAME --tools
+
 Limiti: da 1 a 100 dadi per tiro, facce da 1 a 10000, modificatore +K o -K.
 EOF
         ;;
@@ -79,6 +82,9 @@ Im Chat (-c): /wuerfel 2d6 mitten im Satz wird an Ort und Stelle gewürfelt,
 und das Modell erhält den Satz mit dem Ergebnis schon drin — du würfelst,
 die KI erzählt.
 
+Die Würfel sind EINES der grünen Tools: der Rest des Kastens (Zufallszahl,
+Rechner, Umrechnungen, Tage, Passwort, Los) steht in: $ASSIST_NAME --tools
+
 Grenzen: 1 bis 100 Würfel pro Wurf, 1 bis 10000 Seiten, Modifikator +K oder -K.
 EOF
         ;;
@@ -101,6 +107,9 @@ Usage:
 Inside the chat (-c): /roll 2d6 in the middle of a sentence resolves on the
 spot, and the model receives the sentence with the result already in —
 you roll, the AI narrates.
+
+The dice are ONE of the green tools: the rest of the box (random number,
+calculator, conversions, days, password, draw) lives in: $ASSIST_NAME --tools
 
 Limits: 1 to 100 dice per roll, 1 to 10000 sides, modifier +K or -K.
 EOF
@@ -173,7 +182,13 @@ calc_eval() {
     # dots (Italian fingers type 1,5), ^ is power, % is modulo.
     local expr="${1//,/.}" out
     if ! [[ "$expr" =~ ^[0-9+*/().^%[:space:]-]+$ ]]; then
-        echo -e "${YELLOW}$(t calc_bad) $1${NC}" >&2; return 1
+        echo -e "${YELLOW}$(t calc_bad) $1${NC}" >&2
+        # spaces AND letters together: almost always a naked * the shell
+        # expanded into filenames BEFORE we were called. Name the real
+        # cause, not the symptom - the fix is one pair of quotes away.
+        [[ "$expr" == *" "* && "$expr" =~ [a-zA-Z] ]] && \
+            echo -e "${YELLOW}$(t calc_glob)${NC}" >&2
+        return 1
     fi
     out=$(awk "BEGIN{printf \"%.6f\", $expr}" 2>/dev/null)
     case "$out" in ''|*inf*|*nan*) echo -e "${YELLOW}$(t calc_bad) $1${NC}" >&2; return 1 ;; esac
@@ -318,6 +333,8 @@ nella frase e si risolve sul posto — il tool porta il fatto, l'IA ragiona.
   $ASSIST_NAME -D 2d6           dadi GdR: 1d4, 2d6, d20, 1d100+4 (-D help)
   $ASSIST_NAME -R 100           numero casuale 1-100 · -R 5-50 nel range
   $ASSIST_NAME -X "340*1.22"    calcolatrice (awk): = 414.8 · virgola ok
+                                con gli SPAZI servono le virgolette (il *
+                                nudo lo mangia la shell, non glia)
   $ASSIST_NAME --conv 100 mi km conversioni: lunghezze, masse, °C/°F/K,
                                 volumi, aree, velocità, GB/GiB, energia,
                                 pressioni, tempo (elenco: --conv help)
@@ -328,6 +345,8 @@ nella frase e si risolve sul posto — il tool porta il fatto, l'IA ragiona.
 
 In chat: /dadi 2d6 · /caso 100 · /calc 340*1.22 · /conv 100 mi km ·
 /giorni 2026-12-25 dentro la frase; /scegli a b c come comando.
+E /calc a INIZIO riga prende tutto il resto, spazi compresi:
+"/calc 340 * 1.22" → risultato subito, senza scomodare il modello.
 /pw NON esiste in chat, di proposito: una password che passa dal
 contesto di un modello non è più un segreto.
 
