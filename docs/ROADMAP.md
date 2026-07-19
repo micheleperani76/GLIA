@@ -679,6 +679,30 @@ Open questions, none of them answerable from memory:
   One measurement is an anecdote; this repo already has
   `docs/design/bench-gpu-2026-07-17.txt` as the shape to follow.
 
+### D9. RAG — a source that does not fit the window (noted 2026-07-19)
+
+v2.25's `/fonte` loads ONE document whole into the system message: for
+anything that fits the window it is simpler and MORE reliable than RAG,
+because the model sees the entire text, not fragments a retriever guessed
+at. That is the right default and it stays.
+
+But a 300-page manual does not fit 32k tokens, and no window setting will
+change that. The NotebookLM answer is RAG: chunk the document, embed the
+chunks (Ollama has embedding models - `nomic-embed-text` and friends), and
+at every question retrieve only the few chunks that look relevant. The
+price is real and must be said out loud: the model never sees the whole
+document, retrieval can miss the right chunk, and then the answer is wrong
+with a confident voice - the exact failure `/fonte` exists to prevent.
+
+So the bar for building it: `/fonte` already refuses oversized files and
+POINTS HERE. RAG becomes worth building the day that refusal actually
+bothers someone (a real manual, a real session), not before. When it does:
+- embeddings computed ONCE per file, cached (hash-keyed), not per question;
+- the retrieved chunks go into the same anti-invention frame `/fonte` uses,
+  each with its position in the document, so the citation habit survives;
+- and the honest line at load time: "fonte grande: risponderò per estratti,
+  non ho il documento intero davanti" - the limitation declared, not hidden.
+
 ## TODO
 
 - **An AI in RAM that GLIA did not load** (decided 2026-07-16, not yet built).

@@ -1,12 +1,33 @@
 #!/usr/bin/env bash
 # ============================================================
 #  glia - AI terminal assistant (Ollama + aichat)
-#  Version: 2.24.0 - 2026-07-19
+#  Version: 2.25.0 - 2026-07-19
 #  Author: Michele (with Claude)
 #  Project: GLIA (GNU Linux IA)
 #
 #  Design pillar: commands follow standard terminal conventions, so
 #  what you learn here you can reuse in other programs (and vice versa).
+#
+#  What's new in v2.25 ("one document as the whole truth"):
+#   - Source mode: `glia -c --fonte <file>` (or `/fonte <file>` in chat)
+#     makes ONE document the chat's ONLY knowledge base - study a text, play
+#     an RPG by YOUR house rules. The file goes to the model WHOLE, with the
+#     sheet's own anti-invention rule (what is not in the document does not
+#     exist: say so) plus the order to CITE the part it draws from. For
+#     files that fit the window this beats RAG: the model reads the entire
+#     text, not fragments a retriever guessed at (RAG for oversized files
+#     is D9 in docs/ROADMAP.md, with its price written down).
+#   - The base steps aside: sheet and memory are SUSPENDED while a source
+#     is loaded, not turned off - a session aimed at one document does not
+#     need GLIA to know itself (the user's own point), and every token saved
+#     is conversation room. /fonte off brings them back exactly as they
+#     were; the chat-blocks file is never touched.
+#   - The size is checked BEFORE loading: over 3/4 of the window = refused
+#     (no room left to talk ABOUT the document), over 1/2 = loaded with a
+#     warning. The check is chars/4 and SAYS it is an estimate ("~"); the
+#     real count is one /contesto away, which in source mode measures the
+#     source and skips the block table - listing blocks the model is not
+#     seeing would be the bar lying.
 #
 #  What's new in v2.24 ("you roll, the AI narrates"):
 #   - Green tools live INSIDE the chat now. "/dadi 8d6" resolves WHERE it
@@ -640,7 +661,7 @@
 # ============================================================
 
 # ----------------- CONFIGURATION -----------------
-VERSION="2.24.0"
+VERSION="2.25.0"
 DEFAULT_MODEL="qwen2.5-coder:7b"
 # -m bench (D6b): CPU vs iGPU on THIS machine, config up top on purpose.
 BENCH_OVERRIDE_DIR="/etc/systemd/system/ollama.service.d"
@@ -784,6 +805,13 @@ CHAT_BLOCKS_FILE="$HOME/.config/glia/chat-blocks"   # name=on|off, one per line
 CHAT_TOOLS=(
     "dadi|wuerfel|roll|dice=dice_roll"
 )
+# Source mode (v2.25): ONE document as the chat's only knowledge base
+# (glia -c --fonte <file>, or /fonte in chat). While a source is loaded the
+# base blocks (sheet, memory) are SUSPENDED, not turned off: a session aimed
+# at one document does not need GLIA to know itself, and every token saved
+# is conversation room. Session-only on purpose: a rulebook is a per-game
+# choice, not a config.
+CHAT_SOURCE_FILE=""     # set at runtime; empty = normal chat
 
 # --- Release channel / self-update (v2.17, Part E) ---
 # Everything here is meant to be easy to change. Discovery uses the HTTPS repo
@@ -1900,6 +1928,39 @@ t() {
         it:dice_limit)      echo "limiti: da 1 a 100 dadi, facce da 1 a 10000" ;;
         de:dice_limit)      echo "Grenzen: 1 bis 100 Würfel, 1 bis 10000 Seiten" ;;
         *:dice_limit)       echo "limits: 1 to 100 dice, 1 to 10000 sides" ;;
+        it:src_usage)       echo "Uso: /fonte <file> carica · /fonte off toglie · all'avvio: $ASSIST_NAME -c --fonte <file>" ;;
+        de:src_usage)       echo "Nutzung: /quelle <Datei> lädt · /quelle off entfernt · beim Start: $ASSIST_NAME -c --fonte <Datei>" ;;
+        *:src_usage)        echo "Usage: /source <file> loads · /source off removes · at launch: $ASSIST_NAME -c --fonte <file>" ;;
+        it:src_nofile)      echo "fonte non trovata o non leggibile:" ;;
+        de:src_nofile)      echo "Quelle nicht gefunden oder nicht lesbar:" ;;
+        *:src_nofile)       echo "source not found or not readable:" ;;
+        it:src_binary)      echo "la fonte non è testo semplice:" ;;
+        de:src_binary)      echo "die Quelle ist kein einfacher Text:" ;;
+        *:src_binary)       echo "the source is not plain text:" ;;
+        it:src_toobig)      echo "la fonte non entra nella finestra:" ;;
+        de:src_toobig)      echo "die Quelle passt nicht ins Fenster:" ;;
+        *:src_toobig)       echo "the source does not fit the window:" ;;
+        it:src_est)         echo "tok stimati, finestra da" ;;
+        de:src_est)         echo "Tok geschätzt, Fenster von" ;;
+        *:src_est)          echo "tok estimated, window of" ;;
+        it:src_loaded)      echo "fonte caricata:" ;;
+        de:src_loaded)      echo "Quelle geladen:" ;;
+        *:src_loaded)       echo "source loaded:" ;;
+        it:src_susp)        echo "scheda e memoria sospese: questa sessione risponde SOLO dal documento" ;;
+        de:src_susp)        echo "Blatt und Gedächtnis pausiert: diese Sitzung antwortet NUR aus dem Dokument" ;;
+        *:src_susp)         echo "sheet and memory suspended: this session answers ONLY from the document" ;;
+        it:src_warn_half)   echo "attenzione: la fonte occupa oltre metà finestra, resterà poco spazio per la conversazione" ;;
+        de:src_warn_half)   echo "Achtung: die Quelle belegt über die Hälfte des Fensters, wenig Platz für das Gespräch" ;;
+        *:src_warn_half)    echo "warning: the source takes over half the window, little room left for conversation" ;;
+        it:src_off)         echo "fonte rimossa: tornano scheda e memoria" ;;
+        de:src_off)         echo "Quelle entfernt: Blatt und Gedächtnis sind zurück" ;;
+        *:src_off)          echo "source removed: sheet and memory are back" ;;
+        it:src_none)        echo "nessuna fonte caricata" ;;
+        de:src_none)        echo "keine Quelle geladen" ;;
+        *:src_none)         echo "no source loaded" ;;
+        it:src_mode)        echo "fonte:" ;;
+        de:src_mode)        echo "Quelle:" ;;
+        *:src_mode)         echo "source:" ;;
         it:flag_unknown)    echo "flag sconosciuto:" ;;
         de:flag_unknown)    echo "unbekanntes Flag:" ;;
         *:flag_unknown)     echo "unknown flag:" ;;
@@ -2250,7 +2311,7 @@ Aiuto per area — ogni help elenca TUTTI i suoi sotto-comandi:
   -w help        ricerca web: -w veloce · -w+ approfondita · -ws senza IA · --web-engine · --web-model
   -T help        traduci un file: file nuovo accanto · lingua · --translate-model
   -i help        modalità interattiva (frasi con simboli speciali)
-  -c help        chat: /contesto (cosa sa e quanto costa) · /ricorda · /modello · /salva
+  -c help        chat: /contesto · /ricorda · /modello · /dadi · /fonte (solo un documento)
   --memory help  memoria: --remember salva · --forget scorda · --memory elenca
   --update help  aggiorna: -U · --check · --channel · --rollback · engine
 
@@ -2286,7 +2347,7 @@ Hilfe pro Bereich — jede Hilfe listet ALLE ihre Unterbefehle:
   -w help        Websuche: -w schnell · -w+ gründlich · -ws ohne KI · --web-engine · --web-model
   -T help        Datei übersetzen: neue Datei daneben · Sprache · --translate-model
   -i help        interaktiver Modus (Sätze mit Sonderzeichen)
-  -c help        Chat: /kontext (was sie weiß und was es kostet) · /merken · /modell
+  -c help        Chat: /kontext · /merken · /modell · /wuerfel · /quelle (nur ein Dokument)
   --memory help  Gedächtnis: --remember merken · --forget vergessen · --memory
   --update help  aktualisieren: -U · --check · --channel · --rollback · Engine
 
@@ -2322,7 +2383,7 @@ Help per area — each help lists ALL of its subcommands:
   -w help        web search: -w fast · -w+ deep · -ws no AI · --web-engine · --web-model
   -T help        translate a file: new file next to it · language · --translate-model
   -i help        interactive mode (requests with special characters)
-  -c help        chat: /context (what it knows and what it costs) · /remember · /model
+  -c help        chat: /context · /remember · /model · /roll · /source (one document only)
   --memory help  memory: --remember saves · --forget drops · --memory lists
   --update help  updating: -U · --check · --channel · --rollback · engine
 
@@ -4856,6 +4917,9 @@ chat_blk_desc() {
 chat_blocks_on() {
     # the enabled block names, comma separated ("nothing" if none)
     local b bn out=""
+    if [ -n "${CHAT_SOURCE_FILE:-}" ]; then
+        printf '%s %s' "$(t src_mode)" "${CHAT_SOURCE_FILE##*/}"; return
+    fi
     for b in "${CHAT_BLOCKS[@]}"; do
         IFS='|' read -r bn _ <<< "$b"
         [ "$(chat_blk_state "$bn")" = "on" ] && out="${out:+$out, }$bn"
@@ -4872,12 +4936,20 @@ chat_sysmsg() {
     # reading the text the model actually receives - which is the only way to
     # catch it, since nothing errors.
     local s="" b bn bf out
+    # Source mode (v2.25) takes over: ONE document, nothing else. The base
+    # blocks are SUSPENDED, not switched off - /fonte off brings them back
+    # exactly as they were, chat-blocks state untouched.
+    if [ -n "${CHAT_SOURCE_FILE:-}" ]; then
+        out="$(chat_blk_source)"
+        [ -n "$out" ] && s="${out}"$'\n\n'
+    else
     for b in "${CHAT_BLOCKS[@]}"; do
         IFS='|' read -r bn _ bf <<< "$b"
         [ "$(chat_blk_state "$bn")" = "on" ] || continue
         out="$("$bf")"
         [ -n "$out" ] && s="${s}${out}"$'\n\n'
     done
+    fi
     case "$UILANG" in
         it) s="${s}Rispondi in italiano." ;;
         de) s="${s}Antworte auf Deutsch." ;;
@@ -4914,6 +4986,22 @@ chat_ctx_cmd() {
     fi
     echo -e "${BLUE}$(chat_ctx_line)${NC}"
     echo "$(t chat_ctx_measuring)"
+    # Source mode: the source is the whole base - measure it, remind that
+    # the blocks are suspended, and skip the block table (it would list
+    # things the model is NOT seeing right now, which is the bar lying).
+    if [ -n "${CHAT_SOURCE_FILE:-}" ]; then
+        tok=$(chat_tok_count "$(chat_blk_source)")
+        case "$tok" in ''|*[!0-9]*) tok=0 ;; esac
+        printf '  %-8s %-4s %6s tok  %2d%%   %s\n' "fonte" "on" "$tok" \
+            "$(( tok * 100 / CHAT_CTX ))" "${CHAT_SOURCE_FILE##*/}"
+        echo "  ($(t src_susp))"
+        total=$(chat_tok_count "$(chat_sysmsg)")
+        case "$total" in ''|*[!0-9]*) total=0 ;; esac
+        printf '  %s %s tok (%d%%) · %s %s\n' "$(t chat_ctx_total)" "$total" \
+            "$(( total * 100 / CHAT_CTX ))" "$(t chat_ctx_left)" "$(chat_fmt_tok $(( CHAT_CTX - total )))"
+        echo "$(t src_usage)"
+        return 0
+    fi
     for b in "${CHAT_BLOCKS[@]}"; do
         IFS='|' read -r bn _ bf <<< "$b"
         st=$(chat_blk_state "$bn")
@@ -5012,6 +5100,8 @@ Comandi della chat (tutto il resto è conversazione):
   /memoria    elenca i fatti   ·   /scorda <n>   toglie il fatto n
   /dadi 2d6   tira i dadi DOVE sta la frase, senza IA: "palla di fuoco da
               /dadi 8d6" arriva al modello col risultato già dentro (come -D)
+  /fonte <file>  SOLO quel documento come base (studio, GdR con regole tue):
+              scheda e memoria sospese, l'IA cita il testo · /fonte off
   /aiuto      questo promemoria
 La barra sotto ogni risposta dice quanto è piena la finestra: token veri
 contati da Ollama. Non parte da 0% perché la base (scheda comandi, fatti)
@@ -5029,6 +5119,8 @@ Chat-Befehle (alles andere ist Unterhaltung):
   /gedaechtnis  Fakten auflisten   ·   /vergiss <n>   entfernt Fakt n
   /wuerfel 2d6  würfelt IM Satz, ohne KI: "Feuerball für /wuerfel 8d6" erreicht
               das Modell mit dem Ergebnis schon drin (wie -D)
+  /quelle <Datei>  NUR dieses Dokument als Basis (Lernen, Rollenspiel mit
+              eigenen Regeln): Blatt und Gedächtnis pausiert · /quelle off
   /hilfe      diese Übersicht
 Der Balken unter jeder Antwort zeigt, wie voll das Fenster ist: echte Token
 von Ollama. Er startet nicht bei 0%, weil die Basis (Befehlsblatt, Fakten)
@@ -5046,6 +5138,8 @@ Chat commands (everything else is conversation):
   /memory    list the facts   ·   /forget <n>   drops fact n
   /roll 2d6  rolls dice WHERE the sentence is, no AI: "fireball for
              /roll 8d6" reaches the model with the result already in (as -D)
+  /source <file>  ONLY that document as the base (study, RPG with house
+             rules): sheet and memory suspended, the AI cites it · /source off
   /help      this reminder
 The bar under every answer shows how full the window is: real tokens counted
 by Ollama. It does not start at 0% because the base (command sheet, facts)
@@ -5190,6 +5284,100 @@ chat_tools_expand() {
     printf '%s' "$line"
 }
 
+# ---- source mode (/fonte, v2.25) ----
+
+chat_blk_source() {
+    # The session's single source of truth. NOT a CHAT_BLOCKS entry: loading
+    # a source SUSPENDS the base (sheet, memory) instead of joining it - a
+    # session aimed at one document does not need GLIA to know itself, and
+    # every token saved is conversation room. Anti-invention rule same as
+    # the sheet's: what is not in the document does not exist, say so.
+    [ -n "${CHAT_SOURCE_FILE:-}" ] && [ -r "$CHAT_SOURCE_FILE" ] || return 0
+    local doc name; doc="$(cat "$CHAT_SOURCE_FILE")"; name="${CHAT_SOURCE_FILE##*/}"
+    case "$UILANG" in
+    it) cat <<EOF
+Sei in modalità FONTE. La tua UNICA base di conoscenza per questa sessione
+è il documento qui sotto ($name). Rispondi usando SOLO ciò che c'è scritto
+nel documento: se la risposta non c'è, dì chiaramente "nella fonte non c'è"
+invece di inventare o di attingere ad altre conoscenze. Quando rispondi,
+indica da quale parte del documento prendi la risposta.
+--- inizio fonte ($name) ---
+$doc
+--- fine fonte ---
+
+EOF
+        ;;
+    de) cat <<EOF
+Du bist im QUELLEN-Modus. Deine EINZIGE Wissensbasis in dieser Sitzung ist
+das Dokument unten ($name). Antworte NUR mit dem, was im Dokument steht:
+fehlt die Antwort, sag klar "das steht nicht in der Quelle", statt zu
+erfinden oder anderes Wissen heranzuziehen. Nenne beim Antworten die
+Stelle des Dokuments, aus der du schöpfst.
+--- Quelle Anfang ($name) ---
+$doc
+--- Quelle Ende ---
+
+EOF
+        ;;
+    *) cat <<EOF
+You are in SOURCE mode. Your ONLY knowledge base for this session is the
+document below ($name). Answer using ONLY what is written in the document:
+if the answer is not there, say clearly "it is not in the source" instead
+of inventing or drawing on other knowledge. When you answer, point to the
+part of the document you take the answer from.
+--- source start ($name) ---
+$doc
+--- source end ---
+
+EOF
+        ;;
+    esac
+}
+
+chat_source_load() {
+    # $1 = path. Validates, ESTIMATES the cost (chars/4 - declared as an
+    # estimate: the real count is one /contesto away and needs the engine),
+    # refuses what cannot fit, warns when little room is left. Needs the
+    # probed window (CHAT_CTX), so at launch it runs AFTER chat_ctx_probe.
+    local f="$1" bytes est
+    f="${f/#\~\//$HOME/}"
+    [ -f "$f" ] && [ -r "$f" ] || { echo -e "${YELLOW}$(t src_nofile) $f${NC}" >&2; return 1; }
+    # NUL bytes = not text. NOT grep -q $'\0': bash strings cannot hold a
+    # NUL, so that pattern silently becomes "" and matches EVERY file -
+    # caught by the test, invisible in review. tr is a stream, NULs are fine.
+    if [ "$(head -c 8192 "$f" | LC_ALL=C tr -cd '\0' | wc -c)" -gt 0 ]; then
+        echo -e "${YELLOW}$(t src_binary) $f${NC}" >&2; return 1
+    fi
+    bytes=$(wc -c < "$f"); est=$(( bytes / 4 ))
+    if [ "$est" -gt $(( CHAT_CTX * 3 / 4 )) ]; then
+        # over 3/4 of the window: even if it fit, no room to talk ABOUT it
+        echo -e "${RED}$(t src_toobig) ~$est $(t src_est) $CHAT_CTX${NC}" >&2
+        return 1
+    fi
+    CHAT_SOURCE_FILE="$f"
+    echo -e "${GREEN}$(t src_loaded) ${f##*/} (~$est tok) · $(t src_susp)${NC}"
+    [ "$est" -gt $(( CHAT_CTX / 2 )) ] && echo -e "${YELLOW}$(t src_warn_half)${NC}"
+    return 0
+}
+
+chat_source_cmd() {
+    # /fonte [file|off] - bare: status · off: back to the normal base
+    case "${1:-}" in
+        "")  if [ -n "${CHAT_SOURCE_FILE:-}" ]; then
+                 echo -e "${BLUE}$(t src_mode) $CHAT_SOURCE_FILE${NC}"
+             else
+                 echo "$(t src_none)"; echo "$(t src_usage)"
+             fi ;;
+        off) if [ -n "${CHAT_SOURCE_FILE:-}" ]; then
+                 CHAT_SOURCE_FILE=""
+                 echo -e "${GREEN}$(t src_off)${NC}"
+             else
+                 echo "$(t src_none)"
+             fi ;;
+        *)   chat_source_load "$1" || return 1 ;;
+    esac
+}
+
 chat_help() {
     case "$UILANG" in
     it) cat <<EOF
@@ -5215,6 +5403,10 @@ Comandi dentro la chat:
   /ricorda   salva un fatto · /memoria elenca · /scorda <n> toglie
   /dadi 2d6  tira i dadi NELLA frase, senza IA: "palla di fuoco da /dadi 8d6"
              arriva al modello col risultato già dentro — tu tiri, l'IA narra
+  /fonte <file>  SOLO quel documento come base di conoscenza: per studiare o
+             per un GdR con le tue regole. Scheda e memoria sospese (meno
+             allucinazioni, più spazio), l'IA cita il testo · /fonte off
+             All'avvio: $ASSIST_NAME -c --fonte <file> [prima domanda]
   /aiuto     promemoria dei comandi
 
 La barra sotto ogni risposta:
@@ -5280,6 +5472,10 @@ Befehle im Chat:
   /merken     einen Fakt sichern · /gedaechtnis auflisten · /vergiss <n>
   /wuerfel 2d6  würfelt IM Satz, ohne KI: "Feuerball für /wuerfel 8d6" erreicht
               das Modell mit dem Ergebnis schon drin — du würfelst, die KI erzählt
+  /quelle <Datei>  NUR dieses Dokument als Wissensbasis: zum Lernen oder für
+              ein Rollenspiel mit eigenen Regeln. Blatt und Gedächtnis
+              pausiert, die KI zitiert den Text · /quelle off
+              Beim Start: $ASSIST_NAME -c --fonte <Datei> [erste Frage]
   /hilfe      Übersicht der Befehle
 
 Der Balken unter jeder Antwort:
@@ -5334,6 +5530,10 @@ Commands inside the chat:
   /remember  store a fact · /memory lists · /forget <n> drops one
   /roll 2d6  rolls dice IN the sentence, no AI: "fireball for /roll 8d6"
              reaches the model with the result already in — you roll, the AI narrates
+  /source <file>  ONLY that document as the knowledge base: for studying, or
+             an RPG with house rules. Sheet and memory suspended, the AI
+             cites the text · /source off
+             At launch: $ASSIST_NAME -c --fonte <file> [first question]
   /help      command reminder
 
 The bar under every answer:
@@ -5385,6 +5585,13 @@ chat_mode() {
     check_ai
     # the window belongs to the model and the machine, not to a constant
     chat_ctx_probe "${MODEL#ollama:}"
+    # a source given at launch (glia -c --fonte <file>) loads HERE, after
+    # the probe: the size check needs to know the real window first. If it
+    # does not fit, better to stop now than to open a chat that lies.
+    if [ -n "${CHAT_SOURCE_PENDING:-}" ]; then
+        chat_source_load "$CHAT_SOURCE_PENDING" || exit 1
+        CHAT_SOURCE_PENDING=""
+    fi
     sys="$(chat_sysmsg)"
     CHAT_MSGS=$(jq -cn --arg s "$sys" '[{role:"system",content:$s}]')
     echo -e "${BLUE}$(t chat_hint)${NC}"
@@ -5444,6 +5651,12 @@ chat_mode() {
                                          CHAT_MSGS=$(jq -c --arg s "$sys" '.[0].content=$s' <<<"$CHAT_MSGS")
                                          continue ;;
             /scorda|/forget|/vergiss)    echo "$(t forget_usage)"; continue ;;
+            /fonte|/source|/quelle)      chat_source_cmd ""; continue ;;
+            '/fonte '*|'/source '*|'/quelle '*)
+                                         chat_source_cmd "${line#* }" || true
+                                         sys="$(chat_sysmsg)"
+                                         CHAT_MSGS=$(jq -c --arg s "$sys" '.[0].content=$s' <<<"$CHAT_MSGS")
+                                         continue ;;
             /aiuto|/help|/hilfe|/\?)     chat_cmds_help; continue ;;
             /*)                          echo "$(t chat_badcmd)"; continue ;;
         esac
@@ -8159,6 +8372,13 @@ case "$1" in
         shift
         case "${1:-}" in
             help|-h|--help) page chat_help ;;
+            --fonte|--source|--quelle)
+                # one document as the ONLY knowledge base of this session
+                # (v2.25): loaded inside chat_mode, after the window probe
+                shift
+                [ -n "${1:-}" ] || { echo -e "${YELLOW}$(t src_usage)${NC}" >&2; exit 1; }
+                CHAT_SOURCE_PENDING="$1"; shift
+                chat_mode "$*" ;;
             *)              chat_mode "$*" ;;
         esac
         ;;

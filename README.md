@@ -170,6 +170,13 @@ green by design, and it's a whole system, not a lone command.
   stopped. And the dice live in the chat too: `/dadi 8d6` **inside a
   sentence** resolves on the spot, and the model receives the sentence with
   the result already in it — you roll, the AI narrates.
+  One document as the whole truth: `glia -c --fonte <file>` (or `/fonte` in
+  chat) makes that document the chat's **only** knowledge base — study a
+  text, or play an RPG by **your** house rules. The file goes to the model
+  whole, with the anti-invention rule and the order to **cite** the part it
+  draws from; the command sheet and the memory are suspended to make room.
+  Sized against the window before loading; for documents that don't fit,
+  RAG is on the roadmap.
   Pick the AI per job: `glia -m` sets the default and shows
   role tags (default / web / project / translate) next to each model, while
   `glia --web-model`, `glia --project-model` and `glia --translate-model` pin a
